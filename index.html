@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Follow-up Studio | Xertica.ai</title>
+   
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+   
+    <!-- Configuração do Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            blue: '#00BEFF',
+                            green: '#C0FF7D',
+                            pink: '#FF89FF',
+                            red: '#E14849',
+                            dark: '#0F172A',
+                            slate: '#1E293B',
+                            darker: '#020617'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Roboto', 'sans-serif'],
+                        display: ['Poppins', 'sans-serif'],
+                    },
+                    backgroundImage: {
+                        'gradient-brand': 'linear-gradient(90deg, #00BEFF 0%, #C0FF7D 100%)',
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.5s ease-out',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Google Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+
+    <style>
+        body {
+            background-color: #0F172A;
+            background-image: url('https://i.imgur.com/dULOC88.png');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            color: #e2e8f0;
+            font-family: 'Roboto', sans-serif;
+        }
+        .bg-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.92); 
+            z-index: -1;
+        }
+        .glass-card {
+            background: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+        .input-dark {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            transition: all 0.3s;
+        }
+        .input-dark:focus {
+            border-color: #00BEFF;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(0, 190, 255, 0.2);
+        }
+        .btn-gradient {
+            background: linear-gradient(90deg, #00BEFF, #C0FF7D);
+            color: #0F172A;
+            font-weight: 700;
+            text-transform: uppercase;
+            transition: all 0.3s;
+            font-family: 'Poppins', sans-serif;
+        }
+        .btn-gradient:hover {
+            filter: brightness(1.1);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(0, 190, 255, 0.4);
+        }
+        /* Tabs */
+        .tab-btn {
+            transition: all 0.2s;
+            border-bottom: 2px solid transparent;
+            color: #64748b;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 0.75rem 0.25rem;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        .tab-btn:hover { color: #94a3b8; }
+        .tab-btn.active {
+            color: #00BEFF;
+            border-bottom-color: #00BEFF;
+            background: rgba(0, 190, 255, 0.05);
+        }
+        .tab-btn .icon { font-size: 1.25rem; margin-bottom: 0.25rem; }
+        
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 1); }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <div class="bg-overlay"></div>
+
+    <!-- Header -->
+    <header class="pt-8 pb-6 text-center">
+        <div class="flex items-center justify-center gap-3 mb-2">
+             <img src="https://i.imgur.com/EocATNU.png" alt="Xertica" class="h-8">
+        </div>
+        <h1 class="text-3xl md:text-4xl font-display font-bold text-white">
+            Régua de <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#00BEFF] to-[#C0FF7D]">Comunicação</span>
+        </h1>
+        <p class="text-slate-400 text-sm mt-2 max-w-md mx-auto">Cadência completa para SDRs: Imagens e Emails.</p>
+    </header>
+
+    <main class="flex-1 container mx-auto px-4 pb-12">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 max-w-7xl mx-auto">
+
+            <!-- COLUNA ESQUERDA: CONTROLES -->
+            <div class="lg:col-span-4 space-y-6">
+                
+                <!-- Painel de Inputs -->
+                <div class="glass-card p-6">
+                    <!-- Abas de Navegação (5 Etapas) -->
+                    <div class="grid grid-cols-5 mb-6 border-b border-white/10">
+                        <button type="button" class="tab-btn active" data-phase="1">
+                            <span class="material-symbols-outlined icon">waving_hand</span>
+                            Com 1
+                        </button>
+                        <button type="button" class="tab-btn" data-phase="2">
+                            <span class="material-symbols-outlined icon">mail</span>
+                            Com 2
+                        </button>
+                        <button type="button" class="tab-btn" data-phase="3">
+                            <span class="material-symbols-outlined icon">sync</span>
+                            Com 3
+                        </button>
+                        <button type="button" class="tab-btn" data-phase="4">
+                            <span class="material-symbols-outlined icon">mail</span>
+                            Com 4
+                        </button>
+                        <button type="button" class="tab-btn" data-phase="5">
+                            <span class="material-symbols-outlined icon">rocket_launch</span>
+                            Com 5
+                        </button>
+                    </div>
+
+                    <!-- Indicador do Tipo de Material -->
+                    <div id="material-type-indicator" class="mb-4 text-center">
+                        <span class="inline-block px-3 py-1 rounded-full bg-brand-blue/10 border border-brand-blue/30 text-brand-blue text-xs font-bold uppercase tracking-wider">
+                            📱 Imagem + WhatsApp
+                        </span>
+                    </div>
+
+                    <form id="lead-form" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-brand-blue uppercase mb-1 ml-1">Nome do Lead</label>
+                            <input type="text" id="lead-name" class="w-full p-3 rounded-lg input-dark" placeholder="Ex: Ana Silva" required>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-xs font-bold text-brand-blue uppercase mb-1 ml-1">Empresa</label>
+                            <input type="text" id="company-name" class="w-full p-3 rounded-lg input-dark" placeholder="Ex: Inova Corp" required>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-brand-blue uppercase mb-1 ml-1">Setor / Vertical</label>
+                            <div class="relative">
+                                <select id="sector" class="w-full p-3 rounded-lg input-dark appearance-none cursor-pointer" required>
+                                    <option value="" disabled selected class="bg-brand-dark text-slate-400">Selecione...</option>
+                                    
+                                    <optgroup label="Setor Público & Saúde" class="bg-brand-dark">
+                                        <option value="justica">Justiça (IA)</option>
+                                        <option value="saude">Saúde (IA)</option>
+                                        <option value="governo">Governo (IA)</option>
+                                    </optgroup>
+                                    
+                                    <optgroup label="Indústria & Serviços" class="bg-brand-dark">
+                                        <option value="banking">Consumer Banking</option>
+                                        <option value="insurance">Insurance</option>
+                                        <option value="legal">Legal (Privado)</option>
+                                        <option value="retail">Varejo / Retail</option>
+                                        <option value="media">Mídia</option>
+                                    </optgroup>
+
+                                    <optgroup label="Tecnologia & Geral" class="bg-brand-dark">
+                                        <option value="gcp">Google Cloud (GCP)</option>
+                                        <option value="gws">Google Workspace</option>
+                                        <option value="outros">Outros / Geral</option>
+                                    </optgroup>
+                                </select>
+                                <span class="material-symbols-outlined absolute right-3 top-3 text-slate-400 pointer-events-none">expand_more</span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-bold text-brand-blue uppercase mb-2 ml-1">Seu Nome (SDR)</label>
+                            <div class="grid grid-cols-2 gap-3">
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="sdr-name" value="Rayssa" class="peer sr-only" checked>
+                                    <div class="p-2 rounded-lg border border-white/10 bg-white/5 text-center text-sm peer-checked:bg-brand-blue/20 peer-checked:border-brand-blue peer-checked:text-brand-blue transition-all">
+                                        Rayssa
+                                    </div>
+                                </label>
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="sdr-name" value="Alex" class="peer sr-only">
+                                    <div class="p-2 rounded-lg border border-white/10 bg-white/5 text-center text-sm peer-checked:bg-brand-pink/20 peer-checked:border-brand-pink peer-checked:text-brand-pink transition-all">
+                                        Alex
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div id="form-error" class="hidden p-3 rounded bg-red-500/20 border border-red-500/50 text-red-200 text-xs flex items-center gap-2">
+                            <span class="material-symbols-outlined text-sm">error</span> Preencha todos os campos.
+                        </div>
+
+                        <button type="submit" class="w-full btn-gradient py-3 rounded-lg shadow-lg flex items-center justify-center gap-2 mt-4 group">
+                            <span class="material-symbols-outlined group-hover:rotate-12 transition-transform">auto_awesome</span>
+                            Gerar Material
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- COLUNA DIREITA: PREVIEW -->
+            <div class="lg:col-span-8">
+                <div class="glass-card p-6 h-full flex flex-col relative overflow-hidden">
+                    <h2 class="font-display text-lg font-bold text-white mb-4 flex items-center gap-2">
+                        <span class="material-symbols-outlined text-brand-green">preview</span> Preview
+                        <span id="preview-label" class="text-slate-400 text-sm font-normal ml-auto">Comunicação 1</span>
+                    </h2>
+
+                    <!-- Estado Vazio -->
+                    <div id="result-placeholder" class="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-xl min-h-[400px] text-slate-500">
+                        <span class="material-symbols-outlined text-4xl mb-2 opacity-50">auto_fix_high</span>
+                        <p>Preencha os dados para gerar o conteúdo.</p>
+                    </div>
+
+                    <!-- Conteúdo Gerado -->
+                    <div id="result-content" class="hidden flex-col gap-6 animate-fade-in relative z-10">
+                        
+                        <!-- CONTAINER IMAGEM (Para Abas 1, 3, 5) -->
+                        <div id="image-container" class="flex flex-col gap-4">
+                            <div class="w-full overflow-x-auto bg-black/20 rounded-xl p-4 flex justify-center">
+                                <div id="image-output" class="shadow-2xl">
+                                    <!-- A imagem será injetada aqui -->
+                                </div>
+                            </div>
+                            <div class="flex gap-3">
+                                <button type="button" id="save-image-btn" class="flex-1 py-2 px-4 rounded-lg bg-white/10 hover:bg-white/20 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2 border border-white/5">
+                                    <span class="material-symbols-outlined text-base">download</span>
+                                    Baixar Imagem (PNG)
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- CONTAINER EMAIL (Para Abas 2, 4) -->
+                        <div id="email-container" class="hidden flex-col gap-4">
+                            <div class="p-4 rounded-lg bg-white/5 border border-white/10">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="text-xs font-bold text-brand-blue uppercase">Assunto do Email</span>
+                                    <button type="button" class="text-xs text-slate-400 hover:text-white flex items-center gap-1 copy-btn" data-target="email-subject">
+                                        <span class="material-symbols-outlined text-sm">content_copy</span> Copiar
+                                    </button>
+                                </div>
+                                <input id="email-subject" type="text" class="w-full bg-transparent text-white font-medium focus:outline-none" readonly>
+                            </div>
+                            
+                            <div class="p-4 rounded-lg bg-white/5 border border-white/10 flex-1">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="text-xs font-bold text-brand-blue uppercase">Corpo do Email</span>
+                                    <button type="button" class="text-xs text-slate-400 hover:text-white flex items-center gap-1 copy-btn" data-target="email-body">
+                                        <span class="material-symbols-outlined text-sm">content_copy</span> Copiar
+                                    </button>
+                                </div>
+                                <textarea id="email-body" rows="12" class="w-full bg-transparent text-slate-300 text-sm focus:outline-none resize-none font-sans leading-relaxed" readonly></textarea>
+                            </div>
+                        </div>
+
+                        <hr class="border-white/10 my-2">
+
+                        <!-- CONTAINER MENSAGEM WHATSAPP -->
+                        <div id="whatsapp-container">
+                            <div class="flex justify-between items-end mb-2">
+                                <label id="text-label" class="text-xs font-bold text-slate-400 uppercase">Mensagem de Apoio (WhatsApp)</label>
+                                <button type="button" class="text-xs text-brand-blue hover:text-white transition-colors flex items-center gap-1 copy-btn" data-target="text-message">
+                                    <span class="material-symbols-outlined text-sm">content_copy</span> Copiar Texto
+                                </button>
+                            </div>
+                            <textarea id="text-message" rows="6" class="w-full p-4 rounded-lg bg-brand-darker border border-white/10 text-slate-300 text-sm focus:outline-none resize-none font-sans" readonly></textarea>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Toast -->
+    <div id="toast" class="fixed bottom-8 right-8 bg-white text-brand-darker px-6 py-3 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-50 font-bold flex items-center gap-3 font-display border border-slate-200 pointer-events-none">
+        <span class="material-symbols-outlined text-brand-green">check_circle</span>
+        <span id="toast-msg">Ação realizada!</span>
+    </div>
+
+    <!-- SCRIPT CORRIGIDO -->
+    <script>
+        // --- ASSETS ---
+        const logoUrl = "https://i.imgur.com/EocATNU.png";
+        const gwsLogoUrl = "https://upload.wikimedia.org/wikipedia/commons/thumb/5/5f/Google_Workspace_Logo.svg/2560px-Google_Workspace_Logo.svg.png";
+        const bgImageUrl = "https://i.imgur.com/Qs1fRD0.png";
+
+        // --- DOM ---
+        const form = document.getElementById('lead-form');
+        const imageOutput = document.getElementById('image-output');
+        const resultPlaceholder = document.getElementById('result-placeholder');
+        const resultContent = document.getElementById('result-content');
+        const saveImageBtn = document.getElementById('save-image-btn');
+        const toast = document.getElementById('toast');
+        const formError = document.getElementById('form-error');
+        
+        const imageContainer = document.getElementById('image-container');
+        const emailContainer = document.getElementById('email-container');
+        const whatsappContainer = document.getElementById('whatsapp-container');
+        
+        const emailSubjectOut = document.getElementById('email-subject');
+        const emailBodyOut = document.getElementById('email-body');
+        const textMessageOut = document.getElementById('text-message');
+        const materialTypeIndicator = document.getElementById('material-type-indicator');
+        const previewLabel = document.getElementById('preview-label');
+
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        let activePhase = '1';
+
+        // --- FUNÇÕES DE UTILIDADE ---
+        const showToast = (msg) => {
+            const toastMsg = document.getElementById('toast-msg');
+            toastMsg.textContent = msg;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        };
+
+        // --- LÓGICA DE ÍCONES (EXPANDIDA E SEGURA) ---
+        const getIconSVG = (iconName, color = '#00BEFF') => {
+            const paths = {
+                'bolt': '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>',
+                'users': '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>',
+                'shield': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>',
+                'analytics': '<line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line>',
+                'activity': '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>',
+                'calendar': '<rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line>',
+                'trending': '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline>',
+                'trending-up': '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline>',
+                'cpu': '<rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><rect x="9" y="9" width="6" height="6"></rect>',
+                'dollar': '<line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>',
+                'dollar-sign': '<line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>',
+                'rocket': '<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.3.05-3.18-.65-.87-2.07-1.33-3.18-.05z"></path><path d="m12 15-3-3a9 9 0 0 1 3-12 9 9 0 0 1 12 3l-3 3"></path>',
+                'gem': '<polygon points="6 3 18 3 22 9 12 22 2 9"></polygon>',
+                'clock': '<circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>',
+                'msg': '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>',
+                'message-square': '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>',
+                'file': '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>',
+                'file-text': '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline>',
+                'briefcase': '<rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>',
+                'star': '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>',
+                'map': '<polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"></polygon><line x1="8" y1="2" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="22"></line>',
+                'search': '<circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>',
+                'lock': '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',
+                'box': '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line>',
+                'zap': '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>',
+                'bar-chart-2': '<line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line>',
+                'bar-chart': '<line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line>',
+                'fast-forward': '<polygon points="13 19 22 12 13 5 13 19"></polygon><polygon points="2 19 11 12 2 5 2 19"></polygon>'
+            };
+
+            let path = paths['bolt'];
+            if (iconName && paths[iconName]) path = paths[iconName];
+            
+            return `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
+        };
+
+        // --- DADOS (ESTRUTURADOS) ---
+        const contentDataPhase1 = {
+            justica: { 
+                title: "Como a IA pode acelerar a Justiça?", 
+                benefits: [ { icon: 'zap', text: 'Agilidade Processual', description: 'Reduza o tempo de tramitação e análise de processos.' }, { icon: 'bar-chart-2', text: 'Análise de Dados', description: 'Extraia insights valiosos de grandes volumes de documentos.' }, { icon: 'shield', text: 'Segurança Jurídica', description: 'Aumente a consistência e a precisão das decisões.' } ], 
+                message: (l, c, s) => `Olá ${l}, tudo bem?\n\nEstive pensando em como a ${c} pode ganhar ainda mais agilidade operacional.\n\nImagine reduzir o tempo de tramitação de processos e analisar grandes volumes de dados em segundos com Inteligência Artificial.\n\nPreparei esse material exclusivo para você. Podemos conversar 15 min sobre como aplicar isso na prática?\n\nAbraços,\n${s}` 
+            },
+            saude: { 
+                title: "Uma jornada do paciente mais inteligente.", 
+                benefits: [ { icon: 'users', text: 'Otimização da Jornada', description: 'Automatize agendamentos, cadastros e a comunicação.' }, { icon: 'activity', text: 'Análise Preditiva', description: 'Antecipe picos de demanda e personalize o atendimento.' }, { icon: 'calendar', text: 'Redução de Ausências', description: 'Diminua o no-show com lembretes inteligentes.' } ], 
+                message: (l, c, s) => `Olá ${l}, tudo bem?\n\nEstive analisando como a experiência do paciente impacta diretamente nos resultados das instituições de saúde.\n\nNa ${c}, otimizar essa jornada e reduzir o "no-show" são prioridades? Nossa IA ajuda exatamente nisso, antecipando demandas e automatizando a comunicação.\n\nQue tal 15 minutos para eu te mostrar como funciona?\n\nAbraços,\n${s}` 
+            },
+            governo: { 
+                title: "INOVAÇÃO A SERVIÇO DO CIDADÃO.", 
+                benefits: [ { icon: 'users', text: 'Cidadão no Centro', description: 'Ofereça serviços públicos digitais, acessíveis e que funcionam.' }, { icon: 'fast-forward', text: 'Processos Ágeis', description: 'Modernize fluxos de trabalho e reduza a burocracia.' }, { icon: 'trending-up', text: 'Gestão Eficiente', description: 'Economize recursos públicos e otimize o tempo dos agentes.' } ], 
+                message: (l, c, s) => `Olá ${l}, tudo bem?\n\nSabemos que o cidadão moderno espera serviços públicos ágeis e digitais. Na ${c}, reduzir a burocracia e modernizar fluxos de trabalho é uma prioridade hoje?\n\nNossa IA ajuda a colocar o cidadão no centro, economizando recursos públicos. Gostaria de agendar 15 minutos para te mostrar como?\n\nAbraços,\n${s}` 
+            },
+            legal: { 
+                title: "Advogado ou Digitador?", 
+                benefits: [ { icon: 'bolt', text: 'Transcrição Ágil', description: 'Transcreva audiências e depoimentos 20x mais rápido.' }, { icon: 'search', text: 'Busca Inteligente', description: 'Encontre precedentes e jurisprudência em minutos.' }, { icon: 'file-text', text: 'Automação de Peças', description: 'Gere peças em poucos cliques com seus parâmetros.' } ], 
+                message: (l, c, s) => `Olá ${l}!\n\nVocê sabia que 50% do tempo do advogado é gasto com tarefas que não são direito? Na ${c}, mude essa estatística com a ajuda da IA.\n\nCom nossos aceleradores, você transcreve audiências, encontra jurisprudência e gera peças em minutos.\n\nDeixe a IA operar. Você advoga.\n\nVamos agendar 15min para eu te mostrar isso na prática?\n\nAbraços,\n${s}` 
+            },
+            gws: { 
+                title: "SUA EQUIPE EM MÁXIMA PRODUTIVIDADE.", 
+                benefits: [ { icon: 'gem', text: 'Gemini Integrado', description: 'Use o poder da IA generativa em Docs, Sheets, Gmail e mais.' }, { icon: 'briefcase', text: 'Colaboração Centralizada', description: 'Conecte suas equipes em uma única plataforma segura.' }, { icon: 'bar-chart', text: 'Aumento de Eficiência', description: 'Alcance o potencial máximo eliminando silos de trabalho.' } ], 
+                message: (l, c, s) => `Olá ${l}, tudo bem?\n\nEstive pensando em como a ${c} pode atingir seu potencial máximo de produtividade.\n\nIntegrar IA generativa diretamente no fluxo de trabalho (Docs, Gmail, etc.) é o caminho mais rápido para eliminar silos e ganhar eficiência.\n\nPreparei esse material para você. Topa uma conversa rápida de 15 min para explorarmos isso?\n\nAbraços,\n${s}` 
+            },
+            insurance: { 
+                title: "UMA NOVA ERA PARA O MERCADO DE SEGUROS.", 
+                benefits: [ { icon: 'bolt', text: 'Agilidade na Cotação', description: 'Gere cotações complexas em segundos, não em dias.' }, { icon: 'users', text: 'Experiência do Cliente', description: 'Personalize ofertas e automatize o atendimento de ponta a ponta.' }, { icon: 'trending-up', text: 'Análise de Risco', description: 'Aumente a precisão na subscrição e na detecção de fraudes.' } ], 
+                message: (l, c, s) => `Olá ${l}, tudo bem?\n\nO mercado de seguros exige cada vez mais agilidade. Na ${c}, reduzir o ciclo de cotação e melhorar a detecção de riscos são focos atuais?\n\nNossa IA permite gerar cotações em segundos e personalizar ofertas em escala. Que tal 15 minutos para eu te mostrar como isso funciona na prática?\n\nAbraços,\n${s}` 
+            },
+            retail: { 
+                title: "VENDAS INTELIGENTES E CLIENTE NO CENTRO.", 
+                benefits: [ 
+                    { icon: 'star', text: 'Assistente de Compras', description: 'Recomendações personalizadas para aumentar o ticket médio.' }, 
+                    { icon: 'message-square', text: 'Atendimento 24/7', description: 'Responda dúvidas e resolva problemas instantaneamente.' }, 
+                    { icon: 'users', text: 'Fidelidade Real', description: 'Crie campanhas e ofertas que o seu cliente realmente deseja.' } 
+                ], 
+                message: (l, c, s) => `Olá ${l}, tudo bem?\n\nNo varejo de hoje, personalização é a chave para fidelizar. Na ${c}, oferecer uma experiência de compra única e ágil é prioridade?\n\nNossos assistentes de IA ajudam a recomendar os produtos certos e atender 24/7. Vamos conversar por 15min?\n\nAbraços,\n${s}` 
+            },
+
+            outros: { 
+                title: "TRANSFORMANDO DADOS EM EFICIÊNCIA.", 
+                benefits: [ 
+                    { icon: 'cpu', text: 'Automação Inteligente', description: 'Elimine tarefas manuais e repetitivas da sua equipe.' }, 
+                    { icon: 'dollar-sign', text: 'Redução de Custos', description: 'Otimize a operação de ponta a ponta e diminua despesas.' }, 
+                    { icon: 'rocket', text: 'Salto de Produtividade', description: 'Libere seu time para focar em atividades estratégicas.' } 
+                ], 
+                message: (l, c, s) => `Olá ${l}!\n\nFoi ótimo encontrar você no Google Cloud Summit!\n\nUsar IA para automatizar tarefas libera sua equipe para focar em crescimento. É impacto direto na ${c}.\n\nQue tal agendarmos 15 minutos para mapearmos juntos o principal gargalo da sua operação?\n\nAbraços,\n${s}` 
+            },
+            banking: { title: "IA no Banking", benefits: [ { icon: 'shield', text: 'Detecção de Fraude', description: 'Segurança em tempo real.' }, { icon: 'users', text: 'Hiperpersonalização', description: 'Ofertas sob medida.' }, { icon: 'trending-up', text: 'Eficiência Operacional', description: 'Automação de processos.' } ], message: (l, c, s) => `Olá ${l}!\n\nFoi ótimo te encontrar no Google Cloud Summit.\n\nSei que segurança e personalização são vitais no Banking. A IA pode transformar a experiência do cliente da ${c}.\n\nTopa 15min para falarmos sobre isso?\n\nAbraços,\n${s}` },
+            media: { title: "IA para Mídia", benefits: [ { icon: 'star', text: 'Criação de Conteúdo', description: 'Assistência generativa.' }, { icon: 'users', text: 'Análise de Audiência', description: 'Dados em insights.' }, { icon: 'file-text', text: 'Arquivamento Inteligente', description: 'Busca semântica.' } ], message: (l, c, s) => `Olá ${l}!\n\nFoi um prazer te ver no Summit.\n\nEmpresas de mídia estão usando IA para criar e analisar conteúdo como nunca antes. Vejo muito potencial na ${c}.\n\nVamos falar por 15min?\n\nAbraços,\n${s}` },
+            gcp: { title: "Modernização Cloud", benefits: [ { icon: 'cpu', text: 'Infraestrutura Ágil', description: 'Escalabilidade total.' }, { icon: 'shield', text: 'Segurança Nativa', description: 'Proteção de dados.' }, { icon: 'bar-chart', text: 'Data Analytics', description: 'Decisões baseadas em dados.' } ], message: (l, c, s) => `Olá ${l}!\n\nFoi ótimo te encontrar no Google Cloud Summit.\n\nModernizar a infraestrutura com GCP é a base para inovar com IA. Podemos acelerar isso na ${c}.\n\nTopa 15min para uma conversa técnica?\n\nAbraços,\n${s}` }
+        };
+
+        const contentDataPhase2 = {
+            justica: { 
+                subject: "Celeridade judicial: dá para avançar muito mais rápido com IA.", 
+                body: (l, c, s) => `Olá, ${l}.\n\nO último relatório do CNJ apontou 84 milhões de processos em tramitação na justiça brasileira. É um estoque que levaria mais de 2 anos e 6 meses para ser zerado sem nenhuma nova entrada.\n\nEu sou ${s} da Xertica.ai, empresa de tecnologia presente em toda a América Latina, e nós ajudamos a justiça brasileira a ser mais ágil e equitativa por meio da Inteligência Artificial.\n\nNo MPRS, por exemplo, nossa IA para análise de audiências e depoimentos já economizou mais de 11.000 horas de trabalho em apenas 6 meses.\n\nMeu objetivo é entender seus desafios atuais para, juntos, co-criarmos uma solução que use nossa tecnologia para tornar a justiça mais célere e acessível.\n\nQue tal agendarmos uma conversa de 15 minutos?\n\nAtenciosamente,\n${s}` 
+            },
+            saude: { 
+                subject: "Pronto para otimizar a jornada do paciente com IA?", 
+                body: (l, c, s) => `Olá, ${l}!\n\nVocê sabia que a taxa de não comparecimento em consultas e exames no Brasil chega a 30%? É um enorme gargalo de eficiência e recursos.\n\nEu sou ${s} da Xertica.ai. Nós usamos IA para resolver exatamente esse tipo de desafio.\n\nNa Hemominas, por exemplo, nosso assistente virtual automatizou o cadastro de doadores e agendamento de doações, o que ajudou a aumentar os níveis do banco de sangue, otimizando todo o processo.\n\nMeu objetivo é entender seus desafios para, juntos, co-criarmos uma solução que otimize a jornada do paciente na sua instituição.\n\nQue tal agendarmos 15 minutos na próxima semana para conversarmos?\n\nAtenciosamente,\n${s}` 
+            },
+            governo: { 
+                subject: "80% da demanda é digital: sua gestão está pronta?", 
+                body: (l, c, s) => `Olá, ${l}.\n\nA última pesquisa TIC Governo (do Cetic.br) revelou que mais de 80% dos brasileiros já buscam serviços públicos pela internet. Atender essa demanda é o grande desafio da gestão moderna.\n\nEu sou ${s} da Xertica.ai. Nós usamos Inteligência Artificial para automatizar fluxos de trabalho e ajudar a gestão pública a entregar a velocidade que o cidadão exige.\n\nNa SEMAD, por exemplo, modernizamos o processo de licenciamento ambiental e reduzimos o tempo de tramitação de licenças em 83% (passou de 30 para 5 dias), além de economizar 40% das horas gastas pelos agentes.\n\nMeu objetivo é simples: entender seu maior desafio de processo e, juntos, co-criarmos uma solução com impacto similar.\n\nVamos agendar 15 minutos para explorar como?` 
+            },
+            legal: { 
+                subject: "Advogue mais, opere menos: IA para a sua rotina jurídica", 
+                body: (l, c, s) => `Olá ${l},\n\nSegundo a OAB, advogados chegam a gastar 50% do tempo com tarefas que não são direito. Na ${c}, você pode reverter essa estatística.\n\nA tecnologia de IA da Xertica já inicia 60% pronta desde o primeiro dia, entregando agilidade imediata para:\n\n- Transcrever audiências 20x mais rápido com análise de sentimento.\n- Encontrar jurisprudência e precedentes no CNJ em instantes.\n- Gerar peças jurídicas 90% mais rápido usando seus próprios modelos.\n\nFaz sentido agendarmos 10 minutos para ver como sua equipe pode focar na estratégia e deixar o braçal para a IA?\n\nAtenciosamente,\n${s}` 
+            },
+            gws: { 
+                subject: "Aumente a produtividade da sua equipe em até 20%", 
+                body: (l, c, s) => `Olá, ${l}.\n\nMuitas equipes perdem um tempo precioso alternando entre diferentes apps para colaborar, certo?\n\nÉ por isso que um dado da Forrester chama tanto a atenção: empresas que centralizam tudo em uma única plataforma, como o Google Workspace, veem um aumento de até 20% na produtividade da equipe.\n\nEu sou ${s} da Xertica.ai, principal parceiro Google da América Latina, e estamos vendo essa transformação de perto com nossos clientes.\n\nO Google Workspace já é uma poderosa ferramenta de colaboração e produtividade, e agora conta com o Gemini integrado em todo o seu ecossistema. Imagine gerar textos no Docs, analisar dados no Sheets e resumir e-mails no Gmail com apenas um comando.\n\nVamos agendar 15 minutos para conversarmos sobre como sua equipe pode alcançar esse nível de eficiência?\n\nAtenciosamente,\n${s}` 
+            },
+            insurance: { 
+                subject: "Fraudes em Seguros: Detecção em tempo real e menos perdas", 
+                body: (l, c, s) => `Olá ${l},\n\nMuitas seguradoras ainda dependem de avaliações subjetivas ou tardias para identificar fraudes, o que impacta diretamente a margem da operação.\n\nNa Xertica, usamos IA para mudar esse cenário. Nossa tecnologia já inicia 60% pronta desde o primeiro dia, permitindo entregar um MVP ágil capaz de:\n\n- Detectar fraudes e inconsistências em tempo real com alertas automáticos.\n- Avaliar riscos com base em variáveis territoriais e demográficas.\n- Reduzir pagamentos indevidos através de uma triagem inteligente.\n\nFaz sentido agendarmos 10 minutos para eu mostrar como antecipar riscos na ${c}?\n\nAtenciosamente,\n${s}` 
+            },
+            retail: { 
+                subject: "Aumente suas vendas com assistentes virtuais que entendem seu cliente", 
+                body: (l, c, s) => `Olá ${l},\n\nVocê já parou para pensar quantos clientes desistem da compra por dúvidas não respondidas na hora ou falta de personalização?\n\nNa Xertica, criamos assistentes de compras baseados em IA que mudam esse jogo na ${c}:\n\n- Recomendam produtos com base no histórico e preferências do cliente em tempo real.\n- Respondem dúvidas de forma natural e humanizada, 24/7.\n- Reduzem o abandono de carrinho guiando o cliente até o checkout.\n\nTopa 10 minutos para ver como isso aumentaria sua conversão?\n\nAtenciosamente,\n${s}` 
+            },
+
+            outros: { 
+                subject: "45% das atividades podem ser automatizadas", 
+                body: (l, c, s) => `Olá, ${l}.\n\nUm estudo da McKinsey aponta que até 45% das atividades de trabalho atuais poderiam ser automatizadas. Isso significa que quase metade do tempo de uma equipe pode estar sendo consumido por tarefas repetitivas.\n\nEu sou ${s} da Xertica.ai. Nós usamos Inteligência Artificial para automatizar esses processos, reduzir custos operacionais e liberar as pessoas para focarem no que realmente gera valor.\n\nComprovamos esse impacto em diversos cenários: com nossas soluções de IA, já ajudamos organizações, do setor público ao privado, a economizar mais de 11.000 horas de trabalho em menos de 6 meses e a reduzir o tempo de tramitação de processos de 30 para 5 dias (-83%).\n\nMeu objetivo é entender quais processos manuais mais impactam sua operação hoje e, juntos, co-criarmos uma solução que traga um salto de eficiência para sua empresa.\n\nQue tal agendarmos 15 minutos na próxima semana para explorarmos isso?\n\nAtenciosamente,\n${s}` 
+            },
+            banking: { subject: "Inovação no Banking", body: (l, c) => `Olá ${l},\n\n[Placeholder Email 2 Banking].\n\nAbraços,` },
+            media: { subject: "Mídia Tech", body: (l, c) => `Olá ${l},\n\n[Placeholder Email 2 Mídia].\n\nAbraços,` },
+            gcp: { subject: "Escalabilidade Cloud", body: (l, c) => `Olá ${l},\n\n[Placeholder Email 2 GCP].\n\nAbraços,` }
+        };
+
+        const contentDataPhase3 = {
+             justica: { 
+                 title: "DOIS DADOS SOBRE A EFICIÊNCIA NA JUSTIÇA:", 
+                 stats: [ { icon: 'clock', statistic: "2 ANOS E 6 MESES", description: "seria o tempo para zerar o estoque de processos no Brasil.\nFonte: CNJ" }, { icon: 'file-text', statistic: "30% DO TEMPO", description: "é o que juristas gastam buscando informações em documentos.\nFonte: Deloitte" } ], 
+                 message: (l, c, s) => `Olá ${l}. Estava analisando dados do CNJ sobre o estoque de processos (mais de 2 anos para zerar!) e lembrei da nossa conversa.\n\nCom IA, é possível reduzir drasticamente o tempo gasto em pesquisa e triagem. Que tal 15min para eu te mostrar como isso funciona na prática?\n\nAbraços,\n${s}` 
+             },
+             saude: { 
+                 title: "DOIS DADOS SOBRE A GESTÃO NA SAÚDE:", 
+                 stats: [ { icon: 'dollar', statistic: "ATÉ 25%", description: "de redução nos custos operacionais com a automação de tarefas.\nFonte: McKinsey" }, { icon: 'users', statistic: "68% DOS PACIENTES", description: "preferem provedores que oferecem uma melhor experiência digital.\nFonte: Accenture" } ], 
+                 message: (l, c, s) => `Olá ${l}. Estava lendo dados da McKinsey e Accenture sobre gestão na saúde: automação pode reduzir 25% dos custos e 68% dos pacientes buscam melhor experiência digital.\n\nComo a ${c} está lidando com isso? Topa 15min para falarmos?\n\nAbraços,\n${s}` 
+             },
+             governo: { 
+                 title: "DOIS DADOS SOBRE A AGILIDADE NO SETOR PÚBLICO:", 
+                 stats: [ { icon: 'message-square', statistic: "ATÉ 80%", description: "das solicitações de cidadãos podem ser resolvidas por assistentes virtuais.\nFonte: Gartner" }, { icon: 'fast-forward', statistic: "ATÉ 70%", description: "de redução no tempo de espera para serviços como emissão de licenças.\nFonte: Banco Mundial" } ], 
+                 message: (l, c, s) => `Olá ${l}. Dados do Gartner e Banco Mundial mostram que IA pode resolver 80% das demandas e reduzir 70% do tempo de espera no setor público.\n\nImagina esse impacto na ${c}? Vamos agendar 15min para conversarmos sobre como implementar isso?\n\nAbraços,\n${s}` 
+             },
+             legal: { 
+                 title: "DE 3 HORAS PARA 30 MINUTOS.", 
+                 subtitle: "Veja como o Ministério Público do RS economizou +11.500 horas de trabalho operacional.",
+                 benefits: [
+                     { title: "Análise de Sentimentos", desc: "Análise de vídeos com identificação de sentimentos.", icon: "activity" },
+                     { title: "Transcrição Automática", desc: "Transcrição e minutagem automática.", icon: "bolt" },
+                     { title: "Elaboração Ágil", desc: "Elaboração ágil de alegações finais.", icon: "file-text" }
+                 ],
+                 message: (l, c, s) => `Olá ${l}. Vi esse case do MPRS onde a IA economizou 11.500h de trabalho operacional. O mais impressionante é a capacidade de gerar minutas e peças jurídicas complexas em segundos, mantendo o padrão técnico.\n\nQue tal 15min para eu te mostrar como acelerar a produção jurídica na ${c}?\n\nAbraços,\n${s}` 
+             },
+             gws: { 
+                 title: "DOIS DADOS SOBRE A PRODUTIVIDADE MODERNA:", 
+                 stats: [ { icon: 'clock', statistic: "25% DO TEMPO", description: "gasto em reuniões pode ser reduzido com colaboração assíncrona e IA.\nFonte: Atlassian" }, { icon: 'gem', statistic: "ATÉ 45%", description: "de aumento na produtividade para escrever com assistentes de IA como o Gemini.\nFonte: Google" } ], 
+                 message: (l, c, s) => `Olá ${l}. Menos reuniões e escrita mais rápida com IA. Dados da Atlassian e Google mostram o impacto direto na produtividade.\n\nImagina liberar 25% do tempo da equipe da ${c}? Vamos conversar sobre como implementar o Gemini no Workspace?\n\nAbraços,\n${s}` 
+             },
+             insurance: { 
+                 title: "DOIS DADOS SOBRE O SETOR DE SEGUROS:", 
+                 stats: [ 
+                     { icon: 'dollar', statistic: "ATÉ 30%", description: "de redução nos custos de sinistros com o uso de IA para detecção de fraudes.\nFonte: McKinsey" }, 
+                     { icon: 'bolt', statistic: "90% MAIS RÁPIDO", description: "pode ser o processo de subscrição e emissão de apólices com automação.\nFonte: IBM" } 
+                 ], 
+                 message: (l, c, s) => `Olá ${l}. Dados da McKinsey e IBM mostram o impacto da IA em seguros: 30% menos custos com sinistros e processos 90% mais rápidos.\n\nComo a ${c} está se posicionando? Topa 15min para falarmos sobre eficiência operacional?\n\nAbraços,\n${s}` 
+             },
+             retail: { 
+                 title: "O IMPACTO DA IA NA EXPERIÊNCIA DO CLIENTE:", 
+                 stats: [ 
+                     { icon: 'trending-up', statistic: "+30% VENDAS", description: "aumento na taxa de conversão com recomendações personalizadas por IA.\nFonte: Boston Consulting Group" }, 
+                     { icon: 'users', statistic: "80% MELHOR", description: "na satisfação do cliente (CSAT) com atendimento ágil e resolutivo.\nFonte: Salesforce" } 
+                 ], 
+                 message: (l, c, s) => `Olá ${l}. Personalização vende. Dados mostram que IA pode aumentar em 30% a conversão e elevar a satisfação do cliente.\n\nQuer levar essa experiência para os clientes da ${c}? Vamos conversar por 15min?\n\nAbraços,\n${s}` 
+             },
+
+             outros: {
+                 title: "DOIS DADOS SOBRE PERFORMANCE E CRESCIMENTO:",
+                 stats: [
+                     { icon: 'cpu', statistic: "ATÉ 40%", description: "do tempo da equipe pode ser liberado com a automação de tarefas repetitivas.\nFonte: Fórum Econômico Mundial" },
+                     { icon: 'trending-up', statistic: "50% MAIOR", description: "é a taxa de crescimento de receita em empresas que lideram na adoção de IA.\nFonte: Harvard Business Review" }
+                 ],
+                 message: (l, c, s) => `Olá ${l}. Estava analisando dados sobre o impacto da IA: até 40% do tempo liberado e 50% maior crescimento de receita para quem lidera a adoção.\n\nComo a ${c} está se posicionando? Vamos conversar sobre como alcançar esses números?\n\nAbraços,\n${s}`
+             },
+             banking: { title: "Dados Banking:", stats: [ { icon: 'shield', statistic: "-40%", description: "fraudes detectadas." }, { icon: 'users', statistic: "+20%", description: "retenção de clientes." } ], message: (l, c, s) => `Olá ${l}. Dados do setor mostram impacto direto de IA na segurança e retenção.\n\nVamos falar sobre como aplicar isso na ${c}?\n\n${s}` },
+             media: { title: "Dados Mídia:", stats: [ { icon: 'star', statistic: "5x", description: "criação de conteúdo." }, { icon: 'users', statistic: "+40%", description: "engajamento." } ], message: (l, c, s) => `Olá ${l}. A velocidade de criação define líderes de mídia hoje.\n\nQue tal falarmos sobre a ${c}?\n\n${s}` },
+             gcp: { title: "Dados Cloud:", stats: [ { icon: 'cpu', statistic: "99.9%", description: "uptime garantido." }, { icon: 'dollar-sign', statistic: "-30%", description: "TCO de infra." } ], message: (l, c, s) => `Olá ${l}. A eficiência da nuvem é base para inovação.\n\nVamos revisar a infra da ${c}?\n\n${s}` }
+        };
+
+        const contentDataPhase4 = {
+            justica: { 
+                subject: "O Judiciário está sobrecarregado - vamos conversar como a IA pode descongestionar?", 
+                body: (l, c, s) => `Olá, ${l},\n\nO CNJ mostrou que a Justiça registrou um crescimento de 9,4% no número de processos, isso é mais de 35 milhões de novas ações.\n\nMas a produtividade cresceu só 6,9%, gerando um déficit de 2,5%, equivalente a 875 mil processos.\n\nA Xertica.ai ajuda órgãos como o ${c} a ganhar celeridade com aceleradores de IA que automatizam etapas críticas da justiça, triagem, análise documental, sumarização e minutações, reduzindo drasticamente o tempo de execução, sem abrir mão da governança e da ética.\n\nPodemos explorar como isso se aplica à sua realidade? Me sugira um horário da sua agenda para conversarmos!\n\nAtenciosamente,\n${s}`
+            },
+            saude: { 
+                subject: "IA na Saúde: Agilidade operacional e previsão de riscos", 
+                body: (l, c, s) => `Olá ${l},\n\nReduza a carga administrativa e antecipe riscos na ${c} com os Aceleradores de IA da Xertica.\n\nNossa tecnologia já inicia 60% pronta desde o primeiro dia, permitindo entregar um MVP funcional com muita agilidade. Com isso, você consegue:\n\n- Resumir e organizar registros médicos em segundos.\n- Personalizar a comunicação e o monitoramento do paciente.\n- Antecipar surtos epidemiológicos e visualizar riscos por território.\n\nFaz sentido agendarmos uma conversa rápida de 10 minutos para detalhar como isso se aplica à sua operação?\n\nAtenciosamente,\n${s}` 
+            },
+            governo: { 
+                subject: "IA no Governo: Gestão preditiva e recuperação de receita", 
+                body: (l, c, s) => `Olá ${l},\n\nTransforme a gestão pública fragmentada e reativa em uma operação eficiente na ${c} com os Aceleradores de IA da Xertica.\n\nNossa tecnologia para Governo já inicia 60% pronta desde o primeiro dia, permitindo entregar um MVP funcional com muita agilidade. Com isso, é possível:\n\n- Automatizar a triagem de solicitações do cidadão por urgência e sentimento.\n- Otimizar a segurança e o planejamento urbano com mapas de risco preditivos.\n- Identificar sonegação fiscal territorial através do cruzamento inteligente de dados.\n\nFaz sentido agendarmos uma conversa rápida de 10 minutos para detalhar como aplicar essa inteligência à sua gestão?\n\nAtenciosamente,\n${s}` 
+            },
+            legal: { 
+                subject: "Otimização Jurídica: O case de 11.500 horas economizadas", 
+                body: (l, c, s) => `Olá ${l},\n\nO volume de processos e a complexidade dos casos costumam ser os maiores gargalos de um jurídico moderno.\n\nNo Ministério Público do RS, ajudamos a economizar mais de 11.500 horas operacionais com nossa solução de IA personalizada, que já chega 60% pronta para implementação.\n\nConseguimos reduzir a análise de vídeos de audiências de 3 horas para apenas 30 minutos, além de automatizar a pesquisa de precedentes e a criação de minutas.\n\nPodemos conversar rapidamente sobre como trazer essa eficiência para a ${c}?\n\nAtenciosamente,\n${s}` 
+            },
+            gws: { 
+                subject: "Sua estratégia de IA: Inovação sem risco de dados", 
+                body: (l, c, s) => `Olá ${l},\n\nCom o aumento de 44% nos ataques cibernéticos no último ano, muitos líderes de TI hesitam em adotar IA generativa. Porém, ignorar a tecnologia cria um risco maior: 63% dos funcionários já utilizam ferramentas de IA sem licença ou controle semanalmente, expondo dados corporativos.\n\nO Google Workspace com Gemini elimina esse dilema, oferecendo uma plataforma de colaboração secure-by-design que permite inovar com segurança total:\n\n- Privacidade Garantida: Seus dados nunca são usados para treinar os modelos fundamentais do Google sem sua permissão.\n- Soberania Digital: Criptografia do lado do cliente (CSE) garante que nem mesmo o Google tenha acesso aos seus dados mais sensíveis.\n- Resultados Comprovados: Organizações que usam Workspace têm 54% menos sinistros de segurança de e-mail do que aquelas que usam Microsoft Exchange.\n\nVocê teria 10 minutos para discutirmos como blindar sua organização contra ameaças modernas enquanto habilita a produtividade da IA?\n\nAtenciosamente,\n${s}` 
+            },
+            insurance: { 
+                subject: "Redução de sinistralidade e pagamentos indevidos com IA", 
+                body: (l, c, s) => `Olá ${l},\n\nProcessos manuais de validação de documentos tornam o pagamento de sinistros lento e suscetível a erros.\n\nCom os Aceleradores de IA da Xertica, você não começa do zero. Nossa solução chega 60% pronta para automatizar sua esteira operacional:\n\n- Classificação automática de reivindicações por urgência e complexidade.\n- Validação de documentos e rastreabilidade automatizada.\n- Redução drástica no tempo de reprocessamento e revisão.\n\nTopa uma conversa rápida na próxima semana para explorarmos essa eficiência?\n\nAtenciosamente,\n${s}` 
+            },
+            retail: { 
+                subject: "SAC que vende: Transforme atendimento em receita", 
+                body: (l, c, s) => `Olá ${l},\n\nE se o seu atendimento ao cliente não fosse apenas um centro de custo, mas um canal de vendas ativo?\n\nCom os Aceleradores de IA da Xertica, transformamos a interação com o cliente na ${c}:\n\n- Assistentes Virtuais que entendem a intenção de compra e recomendam produtos.\n- Resolução automática de dúvidas frequentes 24/7.\n- Identificação de oportunidades de upsell durante o suporte.\n\nNossa solução chega 60% pronta para implementar. Faz sentido agendarmos 10 minutos para eu te mostrar como transformar SAC em receita?\n\nAtenciosamente,\n${s}` 
+            },
+
+            outros: { 
+                subject: "Inovação com IA: Acelere sua operação sem começar do zero", 
+                body: (l, c, s) => `Olá ${l},\n\nMuitas empresas sabem que precisam adotar Inteligência Artificial, mas esbarram em projetos longos, caros e complexos.\n\nNa Xertica, resolvemos isso com nossos Aceleradores de IA. Diferente do desenvolvimento tradicional, nossa tecnologia já inicia 60% pronta desde o primeiro dia.\n\nIsso nos permite entregar um MVP funcional com extrema agilidade, adaptado ao seu negócio para:\n\n- Automatizar processos manuais e repetitivos que consomem horas da equipe.\n- Transformar dados em decisões, analisando grandes volumes de informações em segundos.\n- Melhorar a experiência do cliente com atendimento personalizado e preditivo.\n\nFaz sentido agendarmos uma conversa de 10 minutos para entender qual gargalo operacional podemos resolver primeiro?\n\nAtenciosamente,\n${s}` 
+            },
+            banking: { subject: "Inovação no Banking", body: (l, c) => `Olá ${l},\n\n[Placeholder Email 2 Banking].\n\nAbraços,` },
+            media: { subject: "Mídia Tech", body: (l, c) => `Olá ${l},\n\n[Placeholder Email 2 Mídia].\n\nAbraços,` },
+            gcp: { subject: "Escalabilidade Cloud", body: (l, c) => `Olá ${l},\n\n[Placeholder Email 2 GCP].\n\nAbraços,` }
+        };
+
+        const contentDataPhase5 = {
+            justica: { 
+                title: "NA JUSTIÇA, A PRODUTIVIDADE NÃO ACOMPANHA O AUMENTO DA DEMANDA", 
+                dataPoints: [
+                    { value: "9,4%", label: "de crescimento em relação ao ano anterior resultaram no registro de 35 milhões de novos processos em 2023, o maior número da série histórica de quase 20 anos." },
+                    { value: "6,9%", label: "foi a média de aumento da produtividade da justiça. O que indica que a produtividade tem crescido em um ritmo mais lento do que o aumento da demanda." },
+                    { value: "2,5%", label: "é o déficit entre o aumento da demanda e o crescimento da produtividade, o que resulta em um aumento do congestionamento dos processos." },
+                    { value: "875K", label: "é o número de processos que representam o gap de 2,5% entre o aumento da demanda e o crescimento da produtividade." }
+                ],
+                message: (l, c, s) => `Olá ${l}. Com o aumento de 9,4% na demanda processual e a produtividade crescendo a 6,9%, o déficit na justiça só aumenta.\n\nEsse gap de 875 mil processos exige novas soluções. A IA é o caminho para equilibrar essa conta na ${c}.\n\nVamos agendar uma conversa?\n\n${s}` 
+            },
+            saude: { 
+                title: "MAIS EFICIÊNCIA, MENOS BUROCRACIA NA SAÚDE", 
+                subtitle: "Aceleradores de IA que chegam 60% prontos para sua operação.",
+                benefits: [
+                    { title: "Resumo de Prontuários", desc: "Economize tempo clínico.", icon: "file-text" },
+                    { title: "Monitoramento Inteligente", desc: "Melhore a adesão.", icon: "activity" },
+                    { title: "Mapas de Calor", desc: "Preveja riscos epidemiológicos.", icon: "map" } 
+                ],
+                message: (l, c, s) => `Olá ${l}!\n\nMenos burocracia e mais tempo para o paciente na ${c}. É isso que nossos aceleradores de IA proporcionam (já chegam 60% prontos!).\n\nDesde resumo de prontuários até mapas de calor epidemiológicos. Vamos conversar para você conhecer?\n\n${s}`
+            },
+            governo: { 
+                title: "GESTÃO PÚBLICA PREDITIVA COM IA", 
+                subtitle: "Tecnologia 60% pronta desde o primeiro dia. MVP entregue com máxima agilidade.",
+                benefits: [
+                    { title: "Atendimento", desc: "Triagem automática de demandas do cidadão.", icon: "message-square" },
+                    { title: "Segurança", desc: "Mapas de risco e prevenção de incidentes.", icon: "shield" },
+                    { title: "Fiscal", desc: "Detecção inteligente de sonegação territorial.", icon: "bar-chart" } 
+                ],
+                message: (l, c, s) => `Olá ${l}!\n\nTransformar a gestão pública não precisa demorar. Nossos aceleradores de IA já chegam 60% prontos para modernizar o Atendimento, a Segurança e a área Fiscal da ${c}.\n\nVamos conversar sobre como entregar um MVP ágil para sua gestão?\n\n${s}` 
+            },
+            legal: { 
+                title: "CHEGA DE UM JURÍDICO REATIVO.", 
+                subtitle: "Transforme horas de pesquisa e redação em estratégia pura com a Xertica AI.",
+                benefits: [
+                    { title: "Pesquisa", desc: "De horas navegando para jurisprudência precisa em instantes.", icon: "search" },
+                    { title: "Redação", desc: "De começar do zero para peças geradas em segundos.", icon: "file-text" },
+                    { title: "Segurança", desc: "Seus dados em ambiente controlado e ético.", icon: "shield" } 
+                ],
+                message: (l, c, s) => `Olá ${l}, tudo bem?\n\nImagine transformar horas de pesquisa manual em estratégia pura na ${c}. A Xertica AI faz isso com segurança e rapidez.\n\nModernize sua jornada jurídica hoje. Topa agendar 15min para ver funcionando?\n\n${s}` 
+            },
+            gws: { 
+                title: "SEGURANÇA E IA NÃO SÃO OPOSTOS.", 
+                subtitle: "Com o Google Workspace, você tem os dois. Adote a IA Generativa com a arquitetura secure-by-design do Google.",
+                benefits: [
+                    { title: "Menos Incidentes", desc: "3x menos incidentes de segurança comparado ao Microsoft 365.", icon: "shield" },
+                    { title: "Privacidade", desc: "Seus dados são seus: O Gemini não treina modelos sem permissão.", icon: "lock" }, 
+                    { title: "Defesa Proativa", desc: "Bloqueio de 99,9% de spam, phishing e malware.", icon: "shield" } 
+                ],
+                message: (l, c, s) => `Olá ${l}!\n\nInovar com IA sem comprometer a segurança é possível. O Google Workspace com Gemini oferece defesa proativa e privacidade garantida.\n\nLeve sua segurança para a era da IA na ${c}. Vamos conversar?\n\n${s}` 
+            },
+            insurance: { 
+                title: "SUA OPERAÇÃO É REATIVA OU PREDITIVA?", 
+                subtitle: "Transforme processos manuais e lentos em fluxos inteligentes. Nossa IA entrega agilidade imediata para:",
+                tagline: "IA Transparente e Ética para Seguros.", 
+                benefits: [
+                    { title: "Classificar Sinistros", desc: "Classificação automática por complexidade.", icon: "file-text" },
+                    { title: "Validar Documentos", desc: "Identifique possíveis fraudes automaticamente.", icon: "shield" },
+                    { title: "Antecipar Riscos", desc: "Riscos populacionais e territoriais.", icon: "map" } 
+                ],
+                message: (l, c, s) => `Olá ${l}.\n\nSua operação de sinistros é reativa ou preditiva? Com a Xertica, você valida documentos e antecipa fraudes antes que elas impactem o resultado da ${c}.\n\nNossa IA é transparente e ética. Vamos agendar 15min para eu te mostrar como funciona?\n\n${s}` 
+            },
+            retail: { 
+                title: "EXPERIÊNCIA DE COMPRA SEM ATRITOS.", 
+                subtitle: "Tecnologia pronta para engajar e converter. Coloque o cliente no centro com IA.",
+                benefits: [
+                    { title: "Personalização 1:1", desc: "Ofertas que seu cliente realmente quer ver.", icon: "star" },
+                    { title: "Agilidade no SAC", desc: "Respostas instantâneas e resolutivas 24/7.", icon: "message-square" },
+                    { title: "Conversão Real", desc: "Transforme interações em vendas no momento certo.", icon: "trending-up" } 
+                ],
+                message: (l, c, s) => `Olá ${l}!\n\nO cliente de hoje quer rapidez e personalização. Nossos aceleradores de IA ajudam a ${c} a entregar exatamente isso: ofertas certas e atendimento ágil.\n\nVamos conversar sobre como aumentar suas vendas com IA?\n\n${s}` 
+            },
+
+            outros: { 
+                title: "Aumente sua eficiência com IA.",
+                subtitle: "sem começar do zero.",
+                tagline: "Descubra como acelerar seu negócio com a Xertica.",
+                benefits: [
+                    { title: "Agilidade", desc: "Implementação rápida de MVPs funcionais.", icon: "rocket" },
+                    { title: "Inteligência", desc: "Análise de dados e previsão de cenários.", icon: "bar-chart" },
+                    { title: "Eficiência", desc: "Automação de tarefas e redução de custos.", icon: "cpu" }
+                ],
+                message: (l, c, s) => `Olá ${l}.\n\nMuitas empresas esbarram em projetos de IA longos e caros. Na Xertica, resolvemos isso com aceleradores que já iniciam 60% prontos.\n\nIsso nos permite entregar um MVP funcional com extrema agilidade para a ${c}, automatizando processos e transformando dados em decisão.\n\nFaz sentido agendarmos 10 minutos para entender qual gargalo operacional podemos resolver primeiro?\n\n${s}` 
+            },
+            banking: { title: "Oportunidade Banking", highlight: "Segurança", benefits: ["Anti-Fraude IA", "Atendimento 24/7", "Personalização", "Open Finance"], message: (l, c, s) => `Olá ${l}, [Placeholder WhatsApp Fase 5 Banking].\n\n${s}` },
+            media: { title: "Oportunidade Mídia", highlight: "Conteúdo", benefits: ["GenAI Vídeo/Texto", "Personalização", "Monetização", "Arquivos"], message: (l, c, s) => `Olá ${l}, [Placeholder WhatsApp Fase 5 Mídia].\n\n${s}` },
+            gcp: { title: "Oportunidade Cloud", highlight: "Inovação", benefits: ["Modernização Apps", "Data Lakehouse", "IA/ML Ops", "Segurança"], message: (l, c, s) => `Olá ${l}, [Placeholder WhatsApp Fase 5 GCP].\n\n${s}` }
+        };
+
+        // --- GESTÃO DE ABAS ---
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault(); 
+                tabBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                activePhase = btn.dataset.phase;
+                previewLabel.textContent = `Comunicação ${activePhase}`;
+                
+                if (['2', '4'].includes(activePhase)) {
+                    materialTypeIndicator.innerHTML = '<span class="inline-block px-3 py-1 rounded-full bg-brand-pink/10 border border-brand-pink/30 text-brand-pink text-xs font-bold uppercase tracking-wider">✉️ Email (Texto)</span>';
+                    imageContainer.classList.add('hidden');
+                    emailContainer.classList.remove('hidden');
+                    emailContainer.classList.add('flex');
+                    document.getElementById('text-label').textContent = "Mensagem de Apoio (LinkedIn/WhatsApp)";
+                    whatsappContainer.classList.add('hidden');
+                } else {
+                    materialTypeIndicator.innerHTML = '<span class="inline-block px-3 py-1 rounded-full bg-brand-blue/10 border border-brand-blue/30 text-brand-blue text-xs font-bold uppercase tracking-wider">📱 Imagem + WhatsApp</span>';
+                    imageContainer.classList.remove('hidden');
+                    emailContainer.classList.add('hidden');
+                    emailContainer.classList.remove('flex');
+                    document.getElementById('text-label').textContent = "Mensagem para WhatsApp";
+                    whatsappContainer.classList.remove('hidden');
+                }
+                resultPlaceholder.classList.remove('hidden');
+                resultContent.classList.add('hidden');
+                resultContent.classList.remove('flex');
+            });
+        });
+
+        // --- GERADORES DE HTML ---
+        const generatePhase1HTML = (data, leadName, companyName, sdrName) => {
+            const firstName = leadName.split(' ')[0].toUpperCase();
+            const isGWS = data.title.includes("GWS") || data.title.includes("Workspace") || data.title.includes("MAXIMA PRODUTIVIDADE");
+            
+            return `
+            <div id="capture" class="relative bg-[#0F172A] flex overflow-hidden font-sans shadow-xl" style="width: 800px; height: 450px; background-image: url('${bgImageUrl}'); background-size: cover; background-position: center;">
+                <div class="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-[#0F172A]/80 via-[#0F172A]/40 to-[#0F172A]/80"></div>
+                <div class="absolute inset-4 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-6 flex z-10">
+                    <div class="relative w-1/3 h-full flex flex-col justify-between pr-4 border-r border-white/10">
+                        <img src="${logoUrl}" crossorigin="anonymous" class="w-24 opacity-90">
+                        <div>
+                            <div class="h-1 w-10 bg-gradient-to-r from-[#00BEFF] to-[#C0FF7D] mb-3 rounded-full"></div>
+                            <h2 class="text-xl font-bold text-white leading-tight font-display">${data.title}</h2>
+                            <p class="text-[#00BEFF] text-sm mt-1 opacity-90 font-medium">para ${companyName}</p>
+                        </div>
+                        <div class="flex items-center gap-2 opacity-40">
+                            <div class="w-1.5 h-1.5 rounded-full bg-[#00BEFF]"></div>
+                            <div class="w-1.5 h-1.5 rounded-full bg-[#C0FF7D]"></div>
+                            <div class="w-1.5 h-1.5 rounded-full bg-[#FF89FF]"></div>
+                        </div>
+                    </div>
+                    <div class="relative w-2/3 h-full pl-6 flex flex-col">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 class="text-xl font-bold text-white font-display tracking-wide">OLÁ, ${firstName}!</h3>
+                                <p class="text-slate-300 text-xs mt-1 font-light">Especialmente para você.</p>
+                            </div>
+                            ${isGWS ? `<img src="${gwsLogoUrl}" crossorigin="anonymous" class="h-5 opacity-80 filter brightness-150">` : ''}
+                        </div>
+                        <div class="flex-1 flex flex-col justify-center gap-3">
+                            ${data.benefits.map(b => `
+                                <div class="flex items-start gap-3 p-2 rounded-xl border border-white/5 bg-white/5">
+                                    <div class="p-1.5 bg-gradient-to-br from-brand-blue/20 to-brand-green/20 rounded-lg text-[#00BEFF] border border-[#00BEFF]/20">
+                                        ${getIconSVG(b.icon)}
+                                    </div>
+                                    <div>
+                                        <p class="font-bold text-white text-xs leading-tight font-display tracking-wide">${b.text}</p>
+                                        <p class="text-slate-400 text-[10px] leading-tight mt-0.5 font-light">${b.description}</p>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="mt-4 flex items-center justify-end gap-2 border-t border-white/10 pt-3">
+                            <div class="text-right">
+                                <p class="text-[10px] text-brand-blue uppercase font-bold tracking-wider">SDR Especialista</p>
+                                <p class="text-xs font-bold text-white">${sdrName}</p>
+                            </div>
+                            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-[#00BEFF] to-[#C0FF7D] flex items-center justify-center text-[#0F172A] font-bold text-sm shadow-lg">
+                                ${sdrName[0]}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            `;
+        };
+
+        const generatePhase3HTML = (data, leadName, companyName, sdrName) => {
+            const firstName = leadName.split(' ')[0].toUpperCase();
+            const isBenefitsLayout = data.benefits && data.benefits.length > 0;
+            
+            if (isBenefitsLayout) {
+                 return `
+                <div id="capture" class="relative bg-[#0F172A] flex flex-col overflow-hidden font-sans shadow-xl" style="width: 800px; height: 450px; background-image: url('${bgImageUrl}'); background-size: cover; background-position: center;">
+                    <div class="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-[#0F172A]/90 via-[#0F172A]/60 to-[#0F172A]/90 z-0"></div>
+                    <div class="p-6 flex justify-between items-start border-b border-white/10 relative z-10 bg-black/20 backdrop-blur-md">
+                        <div>
+                             <h3 class="text-3xl font-bold text-[#00BEFF] font-display tracking-wide leading-tight mb-1">
+                                ${data.title}
+                            </h3>
+                            <p class="text-sm text-white font-medium leading-tight max-w-xl opacity-90">
+                                ${data.subtitle || `Insights para a ${companyName}`}
+                            </p>
+                        </div>
+                        <img src="${logoUrl}" crossorigin="anonymous" class="h-6 opacity-90 mt-1">
+                    </div>
+                    <div class="flex-1 p-6 grid grid-cols-3 gap-4 relative z-10">
+                         ${data.benefits.map((item) => `
+                            <div class="glass-card p-4 flex flex-col justify-center relative overflow-hidden group border border-white/10 bg-white/5">
+                                <div class="mb-2 p-2 rounded-lg bg-brand-blue/10 w-fit text-[#00BEFF]">
+                                    ${getIconSVG(item.icon, '#00BEFF')}
+                                </div>
+                                <p class="text-sm font-bold text-white mb-1 font-display leading-tight">${item.title}</p>
+                                <p class="text-slate-300 text-[11px] leading-snug font-light">${item.desc}</p>
+                            </div>
+                          `).join('')}
+                    </div>
+                    <div class="p-4 border-t border-white/10 flex justify-between items-center bg-black/40 relative z-20 backdrop-blur-md">
+                        <p class="text-slate-300 text-xs font-light">Esses dados confirmam o potencial de otimização.</p>
+                        <div class="flex items-center gap-2">
+                             <p class="text-brand-blue text-xs font-bold uppercase tracking-wider">Fale com ${sdrName}</p>
+                             <div class="w-6 h-6 rounded-full bg-gradient-to-br from-[#00BEFF] to-[#C0FF7D] flex items-center justify-center text-[#0F172A] font-bold text-xs">
+                                ${sdrName[0]}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }
+
+            return `
+            <div id="capture" class="relative bg-[#0F172A] flex flex-col overflow-hidden font-sans shadow-xl" style="width: 800px; height: 450px; background-image: url('${bgImageUrl}'); background-size: cover; background-position: center;">
+                <div class="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-[#0F172A]/90 via-[#0F172A]/60 to-[#0F172A]/90 z-0"></div>
+                <div class="p-6 flex justify-between items-start border-b border-white/10 relative z-10 bg-black/20 backdrop-blur-md">
+                    <div>
+                         <h3 class="text-3xl font-bold text-[#00BEFF] font-display tracking-wide leading-tight mb-1">
+                            OLÁ, ${firstName}!
+                        </h3>
+                        <p class="text-lg text-white font-medium leading-tight">
+                            Insights de mercado para a <span class="text-[#C0FF7D] font-bold">${companyName}</span>
+                        </p>
+                    </div>
+                    <img src="${logoUrl}" crossorigin="anonymous" class="h-6 opacity-90 mt-1">
+                </div>
+                <div class="flex-1 p-6 grid grid-cols-2 gap-4 relative z-10">
+                     ${data.stats.map((stat, index) => `
+                        <div class="glass-card p-5 flex flex-col justify-center relative overflow-hidden group border border-white/10 bg-white/5">
+                            <div class="absolute -top-2 -right-2 p-4 opacity-5 text-white transform scale-150 group-hover:scale-175 transition-transform duration-500">
+                                ${getIconSVG(stat.icon, 'white')}
+                            </div>
+                            <p class="text-5xl font-bold ${index === 0 ? 'text-[#00BEFF]' : 'text-[#C0FF7D]'} mb-2 font-display">${stat.statistic}</p>
+                            <p class="text-slate-200 text-sm leading-snug font-light whitespace-pre-line">${stat.description}</p>
+                        </div>
+                      `).join('')}
+                </div>
+                <div class="p-4 border-t border-white/10 flex justify-between items-center bg-black/40 relative z-20 backdrop-blur-md">
+                    <p class="text-slate-300 text-xs font-light">Esses dados confirmam o potencial de otimização.</p>
+                    <div class="flex items-center gap-2">
+                         <p class="text-brand-blue text-xs font-bold uppercase tracking-wider">Fale com ${sdrName}</p>
+                         <div class="w-6 h-6 rounded-full bg-gradient-to-br from-[#00BEFF] to-[#C0FF7D] flex items-center justify-center text-[#0F172A] font-bold text-xs">
+                            ${sdrName[0]}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            `;
+        };
+
+        const generatePhase5HTML = (data, leadName, companyName, sdrName) => {
+            const firstName = leadName.split(' ')[0].toUpperCase();
+            
+            if (data.dataPoints) {
+                return `
+                <div id="capture" class="relative bg-[#0F172A] flex flex-col overflow-hidden font-sans shadow-xl" style="width: 800px; height: 450px; background-image: url('${bgImageUrl}'); background-size: cover; background-position: center;">
+                    <div class="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-[#0F172A]/80 via-[#0F172A]/40 to-[#0F172A]/80 z-0"></div>
+                    <div class="relative z-10 flex flex-col h-full p-8">
+                        <div class="flex justify-between items-start mb-8 relative">
+                            <div>
+                                <h1 class="text-5xl font-bold text-white font-display tracking-tight mb-1">
+                                    OLÁ, <span class="text-[#00BEFF]">${firstName}</span>!
+                                </h1>
+                                <p class="text-xl text-slate-300 font-medium tracking-wide">
+                                    Análise exclusiva para a <span class="text-[#C0FF7D] font-bold">${companyName}</span>
+                                </p>
+                            </div>
+                            <img src="${logoUrl}" crossorigin="anonymous" class="h-8 opacity-90 absolute top-0 right-0">
+                        </div>
+                        <div class="mb-6">
+                             <h2 class="text-lg font-bold text-white font-display leading-tight max-w-3xl border-l-4 border-[#00BEFF] pl-4 py-1">
+                                ${data.title}
+                            </h2>
+                        </div>
+                        <div class="flex-1 grid grid-cols-4 gap-6 items-start">
+                            ${data.dataPoints.map((point, index) => `
+                                <div class="flex flex-col h-full border-l border-white/10 pl-4 py-1 relative group">
+                                    <div class="absolute left-0 top-0 h-full w-1 bg-gradient-to-b from-[#00BEFF] to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                    <p class="text-5xl font-bold font-display mb-3 ${index % 2 === 0 ? 'text-[#FF89FF]' : 'text-[#00BEFF]'}">${point.value}</p>
+                                    <p class="text-slate-300 text-[11px] leading-relaxed font-light text-justify">
+                                        ${point.label}
+                                    </p>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="mt-6 pt-4 border-t border-white/10 flex justify-between items-center">
+                            <p class="text-slate-400 text-xs font-light">Dados baseados no relatório Justiça em Números do CNJ.</p>
+                            <div class="flex items-center gap-2">
+                                <div class="w-7 h-7 rounded-full bg-gradient-to-br from-[#00BEFF] to-[#C0FF7D] flex items-center justify-center text-[#0F172A] font-bold text-xs shadow-sm">
+                                    ${sdrName[0]}
+                                </div>
+                                <div>
+                                    <p class="text-[10px] text-[#00BEFF] uppercase font-bold tracking-wider leading-none">Seu contato</p>
+                                    <p class="text-white text-sm font-bold leading-none">${sdrName}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }
+
+            return `
+            <div id="capture" class="relative bg-[#0F172A] flex flex-col justify-center items-center overflow-hidden font-sans shadow-xl" style="width: 800px; height: 450px; background-image: url('${bgImageUrl}'); background-size: cover; background-position: center;">
+                <div class="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-[#0F172A]/80 via-[#0F172A]/40 to-[#0F172A]/80 z-0"></div>
+                <div class="relative z-10 w-[90%] max-w-2xl bg-white/5 backdrop-blur-xl border border-white/20 rounded-3xl p-8 flex flex-col items-center text-center shadow-2xl">
+                    <img src="${logoUrl}" crossorigin="anonymous" class="h-6 opacity-80 mb-6">
+                    <h2 class="text-4xl font-bold text-white font-display mb-2">
+                        OLÁ, <span class="text-[#00BEFF]">${firstName}</span>!
+                    </h2>
+                    <p class="text-xl text-slate-300 font-medium tracking-wide mb-6">
+                        Soluções de IA para a <span class="text-[#C0FF7D] font-bold">${companyName}</span>
+                    </p>
+                    <h3 class="text-2xl font-bold text-white font-display mb-2 max-w-xl leading-tight">
+                        ${data.title}
+                    </h3>
+                    ${data.subtitle ? `<p class="text-slate-400 text-sm mb-6 max-w-lg font-light">${data.subtitle}</p>` : ''}
+                    <div class="grid ${data.benefits.length === 3 ? 'grid-cols-3' : 'grid-cols-2'} gap-4 w-full mb-8">
+                        ${data.benefits.map((b, i) => {
+                            if (typeof b === 'object') {
+                                return `
+                                <div class="flex flex-col items-center text-center gap-2 p-3 rounded-lg bg-black/20 border border-white/5">
+                                    <div class="text-[#00BEFF] mb-1">${getIconSVG(b.icon || 'star')}</div>
+                                    <div>
+                                        <span class="block text-white text-xs font-bold leading-tight mb-1">${b.title}</span>
+                                        <span class="block text-slate-400 text-[10px] leading-tight font-light">${b.desc}</span>
+                                    </div>
+                                </div>
+                                `;
+                            } else {
+                                return `
+                                <div class="flex items-center gap-3 p-3 rounded-lg bg-black/20 border border-white/5 text-left">
+                                    <div class="text-[#00BEFF]">${getIconSVG(i === 0 ? 'rocket' : i === 1 ? 'shield' : i === 2 ? 'zap' : 'star')}</div>
+                                    <span class="text-white text-sm font-bold">${b}</span>
+                                </div>
+                                `;
+                            }
+                        }).join('')}
+                    </div>
+                    <div class="w-full flex justify-center items-center gap-4">
+                        <div class="flex items-center gap-3 py-2 px-6 rounded-full bg-gradient-to-r from-[#00BEFF]/10 to-[#C0FF7D]/10 border border-[#00BEFF]/30">
+                            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-[#00BEFF] to-[#C0FF7D] flex items-center justify-center text-[#0F172A] font-bold text-sm">
+                                ${sdrName[0]}
+                            </div>
+                            <div class="text-left">
+                                <p class="text-[10px] text-brand-blue uppercase font-bold tracking-wider">Fale com o especialista</p>
+                                <p class="text-xs font-bold text-white">${sdrName}</p>
+                            </div>
+                        </div>
+                        ${data.tagline ? `<div class="hidden md:block h-8 w-px bg-white/20"></div><p class="hidden md:block text-slate-400 text-[10px] font-light tracking-widest uppercase">${data.tagline}</p>` : ''}
+                    </div>
+                </div>
+            </div>
+            `;
+        };
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            try {
+                const leadName = document.getElementById('lead-name').value;
+                const companyName = document.getElementById('company-name').value;
+                const sector = document.getElementById('sector').value;
+                const sdrName = document.querySelector('input[name="sdr-name"]:checked').value;
+
+                if (!leadName || !companyName || !sector) {
+                    formError.classList.remove('hidden');
+                    return;
+                }
+                formError.classList.add('hidden');
+
+                let data;
+                
+                if (activePhase === '1') {
+                    data = contentDataPhase1[sector];
+                    imageOutput.innerHTML = generatePhase1HTML(data, leadName, companyName, sdrName);
+                    textMessageOut.value = data.message(leadName, companyName, sdrName);
+                } 
+                else if (activePhase === '2') {
+                    data = contentDataPhase2[sector];
+                    emailSubjectOut.value = data.subject;
+                    emailBodyOut.value = data.body(leadName, companyName, sdrName);
+                    textMessageOut.value = `Oi ${leadName}, acabei de te enviar um email sobre ${data.subject}. Dê uma olhada quando puder!`;
+                } 
+                else if (activePhase === '3') {
+                    data = contentDataPhase3[sector];
+                    imageOutput.innerHTML = generatePhase3HTML(data, leadName, companyName, sdrName);
+                    textMessageOut.value = data.message(leadName, companyName, sdrName);
+                } 
+                else if (activePhase === '4') {
+                    data = contentDataPhase4[sector];
+                    emailSubjectOut.value = data.subject;
+                    emailBodyOut.value = data.body(leadName, companyName, sdrName);
+                    textMessageOut.value = `Oi ${leadName}, enviei mais alguns detalhes sobre nossa solução. Abraços, ${sdrName}.`;
+                } 
+                else if (activePhase === '5') {
+                    data = contentDataPhase5[sector];
+                    imageOutput.innerHTML = generatePhase5HTML(data, leadName, companyName, sdrName);
+                    textMessageOut.value = data.message(leadName, companyName, sdrName);
+                }
+
+                resultPlaceholder.classList.add('hidden');
+                resultContent.classList.remove('hidden');
+                resultContent.classList.add('flex');
+                
+            } catch (error) {
+                console.error("Erro ao gerar material:", error);
+                alert("Ocorreu um erro ao gerar o material. Verifique o console.");
+            }
+        });
+
+        saveImageBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const element = document.getElementById('capture');
+            if (element) {
+                const originalText = saveImageBtn.innerHTML;
+                saveImageBtn.innerHTML = '<span class="material-symbols-outlined animate-spin">refresh</span> Gerando...';
+                
+                // Nota: html2canvas pode falhar se as imagens externas (Imgur) não tiverem headers CORS corretos ou se estiver em um iframe muito restritivo.
+                html2canvas(element, { scale: 2, backgroundColor: null, useCORS: true, allowTaint: true }).then(canvas => {
+                    const link = document.createElement('a');
+                    const companyFileName = document.getElementById('company-name').value.replace(/\s+/g, '-').toLowerCase();
+                    const fileName = `xertica-com${activePhase}-${companyFileName}.png`;
+                    link.download = fileName;
+                    link.href = canvas.toDataURL();
+                    link.click();
+                    saveImageBtn.innerHTML = originalText;
+                    showToast('Imagem salva com sucesso!');
+                }).catch(err => {
+                    console.error(err);
+                    saveImageBtn.innerHTML = originalText;
+                    alert("Erro ao salvar imagem. Verifique se o navegador não está bloqueando downloads ou scripts de terceiros.");
+                });
+            }
+        });
+
+        document.querySelectorAll('.copy-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const targetId = btn.dataset.target;
+                const targetEl = document.getElementById(targetId);
+                targetEl.select();
+                document.execCommand('copy');
+                showToast('Conteúdo copiado!');
+            });
+        });
+    </script>
+</body>
+</html>
