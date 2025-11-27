@@ -181,6 +181,26 @@
                     </div>
 
                     <form id="lead-form" class="space-y-4">
+                        
+                        <!-- NOVO: Seletor de Modo (Prospecção vs Reengajamento) -->
+                        <div>
+                            <label class="block text-xs font-bold text-brand-blue uppercase mb-2 ml-1">Objetivo do Contato</label>
+                            <div class="grid grid-cols-2 gap-3 p-1 bg-brand-dark/50 rounded-lg border border-white/5">
+                                <label class="cursor-pointer relative">
+                                    <input type="radio" name="contact-mode" value="prospecting" class="peer sr-only" checked>
+                                    <div class="p-2 rounded text-center text-xs font-bold text-slate-400 peer-checked:bg-brand-blue/20 peer-checked:text-brand-blue transition-all">
+                                        🚀 Prospecção
+                                    </div>
+                                </label>
+                                <label class="cursor-pointer relative">
+                                    <input type="radio" name="contact-mode" value="reengagement" class="peer sr-only">
+                                    <div class="p-2 rounded text-center text-xs font-bold text-slate-400 peer-checked:bg-brand-pink/20 peer-checked:text-brand-pink transition-all">
+                                        🔄 Reengajamento
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
                         <div>
                             <label class="block text-xs font-bold text-brand-blue uppercase mb-1 ml-1">Nome do Lead</label>
                             <input type="text" id="lead-name" class="w-full p-3 rounded-lg input-dark" placeholder="Ex: Ana Silva" required>
@@ -408,36 +428,68 @@
         };
 
         // --- DADOS (ESTRUTURADOS) ---
+        // Agora suportam o parâmetro 'mode' (prospecting | reengagement)
+        
         const contentDataPhase1 = {
             justica: { 
                 title: "Como a IA pode acelerar a Justiça?", 
                 benefits: [ { icon: 'zap', text: 'Agilidade Processual', description: 'Reduza o tempo de tramitação e análise de processos.' }, { icon: 'bar-chart-2', text: 'Análise de Dados', description: 'Extraia insights valiosos de grandes volumes de documentos.' }, { icon: 'shield', text: 'Segurança Jurídica', description: 'Aumente a consistência e a precisão das decisões.' } ], 
-                message: (l, c, s) => `Olá ${l}, tudo bem?\n\nEstive pensando em como a ${c} pode ganhar ainda mais agilidade operacional.\n\nImagine reduzir o tempo de tramitação de processos e analisar grandes volumes de dados em segundos com Inteligência Artificial.\n\nPreparei esse material exclusivo para você. Podemos conversar 15 min sobre como aplicar isso na prática?\n\nAbraços,\n${s}` 
+                message: (l, c, s, m) => {
+                    const intro = m === 'reengagement' 
+                        ? `Olá ${l}, tudo bem? Faz um tempo que não nos falamos sobre inovação na justiça, mas queria retomar esse ponto.`
+                        : `Olá ${l}, tudo bem?\n\nEstive pensando em como a ${c} pode ganhar ainda mais agilidade operacional.`;
+                    return `${intro}\n\nImagine reduzir o tempo de tramitação de processos e analisar grandes volumes de dados em segundos com Inteligência Artificial.\n\nPreparei esse material exclusivo para você. Podemos conversar 15 min sobre como aplicar isso na prática?\n\nAbraços,\n${s}`;
+                }
             },
             saude: { 
                 title: "Uma jornada do paciente mais inteligente.", 
                 benefits: [ { icon: 'users', text: 'Otimização da Jornada', description: 'Automatize agendamentos, cadastros e a comunicação.' }, { icon: 'activity', text: 'Análise Preditiva', description: 'Antecipe picos de demanda e personalize o atendimento.' }, { icon: 'calendar', text: 'Redução de Ausências', description: 'Diminua o no-show com lembretes inteligentes.' } ], 
-                message: (l, c, s) => `Olá ${l}, tudo bem?\n\nEstive analisando como a experiência do paciente impacta diretamente nos resultados das instituições de saúde.\n\nNa ${c}, otimizar essa jornada e reduzir o "no-show" são prioridades? Nossa IA ajuda exatamente nisso, antecipando demandas e automatizando a comunicação.\n\nQue tal 15 minutos para eu te mostrar como funciona?\n\nAbraços,\n${s}` 
+                message: (l, c, s, m) => {
+                    const intro = m === 'reengagement' 
+                        ? `Olá ${l}, tudo bem? Retomando nosso contato sobre a experiência do paciente na ${c}.`
+                        : `Olá ${l}, tudo bem?\n\nEstive analisando como a experiência do paciente impacta diretamente nos resultados das instituições de saúde.`;
+                    return `${intro}\n\nOtimizar essa jornada e reduzir o "no-show" continuam sendo prioridades? Nossa IA ajuda exatamente nisso, antecipando demandas e automatizando a comunicação.\n\nQue tal 15 minutos para eu te mostrar como funciona?\n\nAbraços,\n${s}`;
+                }
             },
             governo: { 
                 title: "INOVAÇÃO A SERVIÇO DO CIDADÃO.", 
                 benefits: [ { icon: 'users', text: 'Cidadão no Centro', description: 'Ofereça serviços públicos digitais, acessíveis e que funcionam.' }, { icon: 'fast-forward', text: 'Processos Ágeis', description: 'Modernize fluxos de trabalho e reduza a burocracia.' }, { icon: 'trending-up', text: 'Gestão Eficiente', description: 'Economize recursos públicos e otimize o tempo dos agentes.' } ], 
-                message: (l, c, s) => `Olá ${l}, tudo bem?\n\nSabemos que o cidadão moderno espera serviços públicos ágeis e digitais. Na ${c}, reduzir a burocracia e modernizar fluxos de trabalho é uma prioridade hoje?\n\nNossa IA ajuda a colocar o cidadão no centro, economizando recursos públicos. Gostaria de agendar 15 minutos para te mostrar como?\n\nAbraços,\n${s}` 
+                message: (l, c, s, m) => {
+                    const intro = m === 'reengagement' 
+                        ? `Olá ${l}, tudo bem? Gostaria de retomar nossa conversa sobre a digitalização de serviços públicos.`
+                        : `Olá ${l}, tudo bem?\n\nSabemos que o cidadão moderno espera serviços públicos ágeis e digitais.`;
+                    return `${intro}\n\nNa ${c}, reduzir a burocracia e modernizar fluxos de trabalho ainda é uma prioridade? Nossa IA ajuda a colocar o cidadão no centro, economizando recursos públicos.\n\nGostaria de agendar 15 minutos para te mostrar como?\n\nAbraços,\n${s}`;
+                }
             },
             legal: { 
                 title: "Advogado ou Digitador?", 
                 benefits: [ { icon: 'bolt', text: 'Transcrição Ágil', description: 'Transcreva audiências e depoimentos 20x mais rápido.' }, { icon: 'search', text: 'Busca Inteligente', description: 'Encontre precedentes e jurisprudência em minutos.' }, { icon: 'file-text', text: 'Automação de Peças', description: 'Gere peças em poucos cliques com seus parâmetros.' } ], 
-                message: (l, c, s) => `Olá ${l}!\n\nVocê sabia que 50% do tempo do advogado é gasto com tarefas que não são direito? Na ${c}, mude essa estatística com a ajuda da IA.\n\nCom nossos aceleradores, você transcreve audiências, encontra jurisprudência e gera peças em minutos.\n\nDeixe a IA operar. Você advoga.\n\nVamos agendar 15min para eu te mostrar isso na prática?\n\nAbraços,\n${s}` 
+                message: (l, c, s, m) => {
+                    const intro = m === 'reengagement' 
+                        ? `Olá ${l}! Faz tempo que não falamos sobre a eficiência do seu jurídico. Gostaria de retomar o tema.`
+                        : `Olá ${l}!\n\nVocê sabia que 50% do tempo do advogado é gasto com tarefas que não são direito?`;
+                    return `${intro}\n\nNa ${c}, mude essa estatística com a ajuda da IA. Com nossos aceleradores, você transcreve audiências, encontra jurisprudência e gera peças em minutos.\n\nDeixe a IA operar. Você advoga.\n\nVamos agendar 15min para eu te mostrar isso na prática?\n\nAbraços,\n${s}`;
+                }
             },
             gws: { 
                 title: "SUA EQUIPE EM MÁXIMA PRODUTIVIDADE.", 
                 benefits: [ { icon: 'gem', text: 'Gemini Integrado', description: 'Use o poder da IA generativa em Docs, Sheets, Gmail e mais.' }, { icon: 'briefcase', text: 'Colaboração Centralizada', description: 'Conecte suas equipes em uma única plataforma segura.' }, { icon: 'bar-chart', text: 'Aumento de Eficiência', description: 'Alcance o potencial máximo eliminando silos de trabalho.' } ], 
-                message: (l, c, s) => `Olá ${l}, tudo bem?\n\nEstive pensando em como a ${c} pode atingir seu potencial máximo de produtividade.\n\nIntegrar IA generativa diretamente no fluxo de trabalho (Docs, Gmail, etc.) é o caminho mais rápido para eliminar silos e ganhar eficiência.\n\nPreparei esse material para você. Topa uma conversa rápida de 15 min para explorarmos isso?\n\nAbraços,\n${s}` 
+                message: (l, c, s, m) => {
+                    const intro = m === 'reengagement' 
+                        ? `Olá ${l}, tudo bem? Perdemos o contato sobre a modernização com Google Workspace, mas queria te mostrar algo novo.`
+                        : `Olá ${l}, tudo bem?\n\nEstive pensando em como a ${c} pode atingir seu potencial máximo de produtividade.`;
+                    return `${intro}\n\nIntegrar IA generativa diretamente no fluxo de trabalho (Docs, Gmail, etc.) é o caminho mais rápido para eliminar silos e ganhar eficiência.\n\nPreparei esse material para você. Topa uma conversa rápida de 15 min para explorarmos isso?\n\nAbraços,\n${s}`;
+                }
             },
             insurance: { 
                 title: "UMA NOVA ERA PARA O MERCADO DE SEGUROS.", 
                 benefits: [ { icon: 'bolt', text: 'Agilidade na Cotação', description: 'Gere cotações complexas em segundos, não em dias.' }, { icon: 'users', text: 'Experiência do Cliente', description: 'Personalize ofertas e automatize o atendimento de ponta a ponta.' }, { icon: 'trending-up', text: 'Análise de Risco', description: 'Aumente a precisão na subscrição e na detecção de fraudes.' } ], 
-                message: (l, c, s) => `Olá ${l}, tudo bem?\n\nO mercado de seguros exige cada vez mais agilidade. Na ${c}, reduzir o ciclo de cotação e melhorar a detecção de riscos são focos atuais?\n\nNossa IA permite gerar cotações em segundos e personalizar ofertas em escala. Que tal 15 minutos para eu te mostrar como isso funciona na prática?\n\nAbraços,\n${s}` 
+                message: (l, c, s, m) => {
+                    const intro = m === 'reengagement' 
+                        ? `Olá ${l}, tudo bem? Gostaria de retomar o contato sobre a agilidade nas cotações da ${c}.`
+                        : `Olá ${l}, tudo bem?\n\nO mercado de seguros exige cada vez mais agilidade.`;
+                    return `${intro}\n\nReduzir o ciclo de cotação e melhorar a detecção de riscos continua no radar? Nossa IA permite gerar cotações em segundos e personalizar ofertas em escala.\n\nQue tal 15 minutos para eu te mostrar como isso funciona na prática?\n\nAbraços,\n${s}`;
+                }
             },
             retail: { 
                 title: "VENDAS INTELIGENTES E CLIENTE NO CENTRO.", 
@@ -446,7 +498,12 @@
                     { icon: 'message-square', text: 'Atendimento 24/7', description: 'Responda dúvidas e resolva problemas instantaneamente.' }, 
                     { icon: 'users', text: 'Fidelidade Real', description: 'Crie campanhas e ofertas que o seu cliente realmente deseja.' } 
                 ], 
-                message: (l, c, s) => `Olá ${l}, tudo bem?\n\nNo varejo de hoje, personalização é a chave para fidelizar. Na ${c}, oferecer uma experiência de compra única e ágil é prioridade?\n\nNossos assistentes de IA ajudam a recomendar os produtos certos e atender 24/7. Vamos conversar por 15min?\n\nAbraços,\n${s}` 
+                message: (l, c, s, m) => {
+                    const intro = m === 'reengagement' 
+                        ? `Olá ${l}, tudo bem? Gostaria de retomar nossa conversa sobre personalização no varejo.`
+                        : `Olá ${l}, tudo bem?\n\nNo varejo de hoje, personalização é a chave para fidelizar.`;
+                    return `${intro}\n\nNa ${c}, oferecer uma experiência de compra única e ágil é prioridade? Nossos assistentes de IA ajudam a recomendar os produtos certos e atender 24/7.\n\nVamos conversar por 15min?\n\nAbraços,\n${s}`;
+                }
             },
 
             outros: { 
@@ -456,10 +513,13 @@
                     { icon: 'dollar-sign', text: 'Redução de Custos', description: 'Otimize a operação de ponta a ponta e diminua despesas.' }, 
                     { icon: 'rocket', text: 'Salto de Produtividade', description: 'Libere seu time para focar em atividades estratégicas.' } 
                 ], 
-                message: (l, c, s) => `Olá ${l}!\n\nFoi ótimo encontrar você no Google Cloud Summit!\n\nUsar IA para automatizar tarefas libera sua equipe para focar em crescimento. É impacto direto na ${c}.\n\nQue tal agendarmos 15 minutos para mapearmos juntos o principal gargalo da sua operação?\n\nAbraços,\n${s}` 
+                message: (l, c, s, m) => {
+                    const intro = m === 'reengagement' 
+                        ? `Olá ${l}, tudo bem? Faz um tempo que não nos falamos sobre soluções de IA para a ${c}.`
+                        : `Olá ${l}!\n\nFoi ótimo encontrar você no Google Cloud Summit!`;
+                    return `${intro}\n\nUsar IA para automatizar tarefas libera sua equipe para focar em crescimento. É impacto direto.\n\nQue tal agendarmos 15 minutos para retomarmos esse papo sobre os gargalos da operação?\n\nAbraços,\n${s}`;
+                }
             },
-            banking: { title: "IA no Banking", benefits: [ { icon: 'shield', text: 'Detecção de Fraude', description: 'Segurança em tempo real.' }, { icon: 'users', text: 'Hiperpersonalização', description: 'Ofertas sob medida.' }, { icon: 'trending-up', text: 'Eficiência Operacional', description: 'Automação de processos.' } ], message: (l, c, s) => `Olá ${l}!\n\nFoi ótimo te encontrar no Google Cloud Summit.\n\nSei que segurança e personalização são vitais no Banking. A IA pode transformar a experiência do cliente da ${c}.\n\nTopa 15min para falarmos sobre isso?\n\nAbraços,\n${s}` },
-            media: { title: "IA para Mídia", benefits: [ { icon: 'star', text: 'Criação de Conteúdo', description: 'Assistência generativa.' }, { icon: 'users', text: 'Análise de Audiência', description: 'Dados em insights.' }, { icon: 'file-text', text: 'Arquivamento Inteligente', description: 'Busca semântica.' } ], message: (l, c, s) => `Olá ${l}!\n\nFoi um prazer te ver no Summit.\n\nEmpresas de mídia estão usando IA para criar e analisar conteúdo como nunca antes. Vejo muito potencial na ${c}.\n\nVamos falar por 15min?\n\nAbraços,\n${s}` },
             gcp: { 
                 title: "O FUTURO É AGÊNTICO.", 
                 benefits: [ 
@@ -467,49 +527,86 @@
                     { icon: 'briefcase', text: 'Stack Completo', description: 'De agentes de atendimento a agentes de código.' }, 
                     { icon: 'rocket', text: 'Liderança', description: 'Transforme seu negócio com o Google Cloud.' } 
                 ], 
-                message: (l, c, s) => `👋 Olá ${l}!\nVocê sabia que o futuro da IA não é apenas conversar com um chatbot, mas ter Agentes que trabalham por você? 🤖💼\nNo Google Cloud, estamos liderando a era da IA Agêntica. Imagine sistemas que combinam inteligência avançada com ação real para transformar seu negócio.\n\nDe agentes de atendimento a agentes de código, temos o stack completo para você começar. 🚀` 
+                message: (l, c, s, m) => {
+                    const intro = m === 'reengagement' 
+                        ? `👋 Olá ${l}, tudo bem? Perdemos o contato sobre a migração para o Google Cloud, mas as novidades são grandes.`
+                        : `👋 Olá ${l}!\nVocê sabia que o futuro da IA não é apenas conversar com um chatbot, mas ter Agentes que trabalham por você? 🤖💼`;
+                    return `${intro}\n\nNo Google Cloud, estamos liderando a era da IA Agêntica. Imagine sistemas que combinam inteligência avançada com ação real para transformar seu negócio.\n\nDe agentes de atendimento a agentes de código, temos o stack completo para você começar. 🚀`;
+                }
             }
         };
 
         const contentDataPhase2 = {
             justica: { 
                 subject: "Celeridade judicial: dá para avançar muito mais rápido com IA.", 
-                body: (l, c, s) => `Olá, ${l}.\n\nO último relatório do CNJ apontou 84 milhões de processos em tramitação na justiça brasileira. É um estoque que levaria mais de 2 anos e 6 meses para ser zerado sem nenhuma nova entrada.\n\nEu sou ${s} da Xertica.ai, empresa de tecnologia presente em toda a América Latina, e nós ajudamos a justiça brasileira a ser mais ágil e equitativa por meio da Inteligência Artificial.\n\nNo MPRS, por exemplo, nossa IA para análise de audiências e depoimentos já economizou mais de 11.000 horas de trabalho em apenas 6 meses.\n\nMeu objetivo é entender seus desafios atuais para, juntos, co-criarmos uma solução que use nossa tecnologia para tornar a justiça mais célere e acessível.\n\nQue tal agendarmos uma conversa de 15 minutos?\n\nAtenciosamente,\n${s}` 
+                body: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá, ${l}. Gostaria de retomar nosso contato sobre inovação no judiciário.` : `Olá, ${l}.`;
+                    const cta = m === 'reengagement' ? "Podemos retomar a conversa sobre como aplicar isso?" : "Que tal agendarmos uma conversa de 15 minutos?";
+                    return `${intro}\n\nO último relatório do CNJ apontou 84 milhões de processos em tramitação na justiça brasileira. É um estoque que levaria mais de 2 anos e 6 meses para ser zerado sem nenhuma nova entrada.\n\nEu sou ${s} da Xertica.ai, empresa de tecnologia presente em toda a América Latina, e nós ajudamos a justiça brasileira a ser mais ágil e equitativa por meio da Inteligência Artificial.\n\nNo MPRS, por exemplo, nossa IA para análise de audiências e depoimentos já economizou mais de 11.000 horas de trabalho em apenas 6 meses.\n\nMeu objetivo é entender seus desafios atuais para, juntos, co-criarmos uma solução que use nossa tecnologia para tornar a justiça mais célere e acessível.\n\n${cta}\n\nAtenciosamente,\n${s}`;
+                }
             },
             saude: { 
                 subject: "Pronto para otimizar a jornada do paciente com IA?", 
-                body: (l, c, s) => `Olá, ${l}!\n\nVocê sabia que a taxa de não comparecimento em consultas e exames no Brasil chega a 30%? É um enorme gargalo de eficiência e recursos.\n\nEu sou ${s} da Xertica.ai. Nós usamos IA para resolver exatamente esse tipo de desafio.\n\nNa Hemominas, por exemplo, nosso assistente virtual automatizou o cadastro de doadores e agendamento de doações, o que ajudou a aumentar os níveis do banco de sangue, otimizando todo o processo.\n\nMeu objetivo é entender seus desafios para, juntos, co-criarmos uma solução que otimize a jornada do paciente na sua instituição.\n\nQue tal agendarmos 15 minutos na próxima semana para conversarmos?\n\nAtenciosamente,\n${s}` 
+                body: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá, ${l}. Faz tempo que não falamos sobre a eficiência da ${c}.` : `Olá, ${l}!`;
+                    const cta = m === 'reengagement' ? "Ainda faz sentido discutirmos isso?" : "Que tal agendarmos 15 minutos na próxima semana para conversarmos?";
+                    return `${intro}\n\nVocê sabia que a taxa de não comparecimento em consultas e exames no Brasil chega a 30%? É um enorme gargalo de eficiência e recursos.\n\nEu sou ${s} da Xertica.ai. Nós usamos IA para resolver exatamente esse tipo de desafio.\n\nNa Hemominas, por exemplo, nosso assistente virtual automatizou o cadastro de doadores e agendamento de doações, o que ajudou a aumentar os níveis do banco de sangue, otimizando todo o processo.\n\nMeu objetivo é entender seus desafios para, juntos, co-criarmos uma solução que otimize a jornada do paciente na sua instituição.\n\n${cta}\n\nAtenciosamente,\n${s}`;
+                }
             },
             governo: { 
                 subject: "80% da demanda é digital: sua gestão está pronta?", 
-                body: (l, c, s) => `Olá, ${l}.\n\nA última pesquisa TIC Governo (do Cetic.br) revelou que mais de 80% dos brasileiros já buscam serviços públicos pela internet. Atender essa demanda é o grande desafio da gestão moderna.\n\nEu sou ${s} da Xertica.ai. Nós usamos Inteligência Artificial para automatizar fluxos de trabalho e ajudar a gestão pública a entregar a velocidade que o cidadão exige.\n\nNa SEMAD, por exemplo, modernizamos o processo de licenciamento ambiental e reduzimos o tempo de tramitação de licenças em 83% (passou de 30 para 5 dias), além de economizar 40% das horas gastas pelos agentes.\n\nMeu objetivo é simples: entender seu maior desafio de processo e, juntos, co-criarmos uma solução com impacto similar.\n\nVamos agendar 15 minutos para explorar como?` 
+                body: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá, ${l}. Gostaria de retomar o tema da digitalização na ${c}.` : `Olá, ${l}.`;
+                    const cta = m === 'reengagement' ? "Podemos revalidar se isso ainda é prioridade?" : "Vamos agendar 15 minutos para explorar como?";
+                    return `${intro}\n\nA última pesquisa TIC Governo (do Cetic.br) revelou que mais de 80% dos brasileiros já buscam serviços públicos pela internet. Atender essa demanda é o grande desafio da gestão moderna.\n\nEu sou ${s} da Xertica.ai. Nós usamos Inteligência Artificial para automatizar fluxos de trabalho e ajudar a gestão pública a entregar a velocidade que o cidadão exige.\n\nNa SEMAD, por exemplo, modernizamos o processo de licenciamento ambiental e reduzimos o tempo de tramitação de licenças em 83% (passou de 30 para 5 dias), além de economizar 40% das horas gastas pelos agentes.\n\nMeu objetivo é simples: entender seu maior desafio de processo e, juntos, co-criarmos uma solução com impacto similar.\n\n${cta}`;
+                }
             },
             legal: { 
                 subject: "Advogue mais, opere menos: IA para a sua rotina jurídica", 
-                body: (l, c, s) => `Olá ${l},\n\nSegundo a OAB, advogados chegam a gastar 50% do tempo com tarefas que não são direito. Na ${c}, você pode reverter essa estatística.\n\nA tecnologia de IA da Xertica já inicia 60% pronta desde o primeiro dia, entregando agilidade imediata para:\n\n- Transcrever audiências 20x mais rápido com análise de sentimento.\n- Encontrar jurisprudência e precedentes no CNJ em instantes.\n- Gerar peças jurídicas 90% mais rápido usando seus próprios modelos.\n\nFaz sentido agendarmos 10 minutos para ver como sua equipe pode focar na estratégia e deixar o braçal para a IA?\n\nAtenciosamente,\n${s}` 
+                body: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}, tudo bem? Retomando o contato sobre automação jurídica.` : `Olá ${l},`;
+                    const cta = m === 'reengagement' ? "Podemos retomar o papo sobre eficiência?" : "Faz sentido agendarmos 10 minutos para ver como sua equipe pode focar na estratégia e deixar o braçal para a IA?";
+                    return `${intro}\n\nSegundo a OAB, advogados chegam a gastar 50% do tempo com tarefas que não são relacionadas ao direito. Na ${c}, você pode reverter essa estatística.\n\nA tecnologia de IA da Xertica já inicia 60% pronta desde o primeiro dia, entregando agilidade imediata para:\n\n- Transcrever audiências 20x mais rápido com análise de sentimento.\n- Encontrar jurisprudência e precedentes no CNJ em instantes.\n- Gerar peças jurídicas 90% mais rápido usando seus próprios modelos.\n\n${cta}\n\nAtenciosamente,\n${s}`;
+                }
             },
             gws: { 
                 subject: "Aumente a produtividade da sua equipe em até 20%", 
-                body: (l, c, s) => `Olá, ${l}.\n\nMuitas equipes perdem um tempo precioso alternando entre diferentes apps para colaborar, certo?\n\nÉ por isso que um dado da Forrester chama tanto a atenção: empresas que centralizam tudo em uma única plataforma, como o Google Workspace, veem um aumento de até 20% na produtividade da equipe.\n\nEu sou ${s} da Xertica.ai, principal parceiro Google da América Latina, e estamos vendo essa transformação de perto com nossos clientes.\n\nO Google Workspace já é uma poderosa ferramenta de colaboração e produtividade, e agora conta com o Gemini integrado em todo o seu ecossistema. Imagine gerar textos no Docs, analisar dados no Sheets e resumir e-mails no Gmail com apenas um comando.\n\nVamos agendar 15 minutos para conversarmos sobre como sua equipe pode alcançar esse nível de eficiência?\n\nAtenciosamente,\n${s}` 
+                body: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá, ${l}. Faz tempo que não falamos sobre o Google Workspace na ${c}.` : `Olá, ${l}.`;
+                    const cta = m === 'reengagement' ? "Gostaria de saber se a aquisição/upgrade do GWS ainda está nos planos." : "Vamos agendar 15 minutos para conversarmos sobre como sua equipe pode alcançar esse nível de eficiência?";
+                    return `${intro}\n\nMuitas equipes perdem um tempo precioso alternando entre diferentes apps para colaborar, certo?\n\nÉ por isso que um dado da Forrester chama tanto a atenção: empresas que centralizam tudo em uma única plataforma, como o Google Workspace, veem um aumento de até 20% na produtividade da equipe.\n\nEu sou ${s} da Xertica.ai, principal parceiro Google da América Latina, e estamos vendo essa transformação de perto com nossos clientes.\n\nO Google Workspace já é uma poderosa ferramenta de colaboração e produtividade, e agora conta com o Gemini integrado em todo o seu ecossistema. Imagine gerar textos no Docs, analisar dados no Sheets e resumir e-mails no Gmail com apenas um comando.\n\n${cta}\n\nAtenciosamente,\n${s}`;
+                }
             },
             insurance: { 
                 subject: "Fraudes em Seguros: Detecção em tempo real e menos perdas", 
-                body: (l, c, s) => `Olá ${l},\n\nMuitas seguradoras ainda dependem de avaliações subjetivas ou tardias para identificar fraudes, o que impacta diretamente a margem da operação.\n\nNa Xertica, usamos IA para mudar esse cenário. Nossa tecnologia já inicia 60% pronta desde o primeiro dia, permitindo entregar um MVP ágil capaz de:\n\n- Detectar fraudes e inconsistências em tempo real com alertas automáticos.\n- Avaliar riscos com base em variáveis territoriais e demográficas.\n- Reduzir pagamentos indevidos através de uma triagem inteligente.\n\nFaz sentido agendarmos 10 minutos para eu mostrar como antecipar riscos na ${c}?\n\nAtenciosamente,\n${s}` 
+                body: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}, tudo bem? Retomando nosso contato sobre prevenção de fraudes.` : `Olá ${l},`;
+                    return `${intro}\n\nMuitas seguradoras ainda dependem de avaliações subjetivas ou tardias para identificar fraudes, o que impacta diretamente a margem da operação.\n\nNa Xertica, usamos IA para mudar esse cenário. Nossa tecnologia já inicia 60% pronta desde o primeiro dia, permitindo entregar um MVP ágil capaz de:\n\n- Detectar fraudes e inconsistências em tempo real com alertas automáticos.\n- Avaliar riscos com base em variáveis territoriais e demográficas.\n- Reduzir pagamentos indevidos através de uma triagem inteligente.\n\nFaz sentido agendarmos 10 minutos para eu mostrar como antecipar riscos na ${c}?\n\nAtenciosamente,\n${s}`;
+                }
             },
             retail: { 
                 subject: "Aumente suas vendas com assistentes virtuais que entendem seu cliente", 
-                body: (l, c, s) => `Olá ${l},\n\nVocê já parou para pensar quantos clientes desistem da compra por dúvidas não respondidas na hora ou falta de personalização?\n\nNa Xertica, criamos assistentes de compras baseados em IA que mudam esse jogo na ${c}:\n\n- Recomendam produtos com base no histórico e preferências do cliente em tempo real.\n- Respondem dúvidas de forma natural e humanizada, 24/7.\n- Reduzem o abandono de carrinho guiando o cliente até o checkout.\n\nTopa 10 minutos para ver como isso aumentaria sua conversão?\n\nAtenciosamente,\n${s}` 
+                body: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}. Faz tempo que não falamos. A personalização no varejo ainda é um desafio na ${c}?` : `Olá ${l},`;
+                    return `${intro}\n\nVocê já parou para pensar quantos clientes desistem da compra por dúvidas não respondidas na hora ou falta de personalização?\n\nNa Xertica, criamos assistentes de compras baseados em IA que mudam esse jogo na ${c}:\n\n- Recomendam produtos com base no histórico e preferências do cliente em tempo real.\n- Respondem dúvidas de forma natural e humanizada, 24/7.\n- Reduzem o abandono de carrinho guiando o cliente até o checkout.\n\nTopa 10 minutos para ver como isso aumentaria sua conversão?\n\nAtenciosamente,\n${s}`;
+                }
             },
 
             outros: { 
                 subject: "45% das atividades podem ser automatizadas", 
-                body: (l, c, s) => `Olá, ${l}.\n\nUm estudo da McKinsey aponta que até 45% das atividades de trabalho atuais poderiam ser automatizadas. Isso significa que quase metade do tempo de uma equipe pode estar sendo consumido por tarefas repetitivas.\n\nEu sou ${s} da Xertica.ai. Nós usamos Inteligência Artificial para automatizar esses processos, reduzir custos operacionais e liberar as pessoas para focarem no que realmente gera valor.\n\nComprovamos esse impacto em diversos cenários: com nossas soluções de IA, já ajudamos organizações, do setor público ao privado, a economizar mais de 11.000 horas de trabalho em menos de 6 meses e a reduzir o tempo de tramitação de processos de 30 para 5 dias (-83%).\n\nMeu objetivo é entender quais processos manuais mais impactam sua operação hoje e, juntos, co-criarmos uma solução que traga um salto de eficiência para sua empresa.\n\nQue tal agendarmos 15 minutos na próxima semana para explorarmos isso?\n\nAtenciosamente,\n${s}` 
+                body: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá, ${l}. Perdemos o contato sobre a solução de IA, mas queria te mostrar esse dado.` : `Olá, ${l}.`;
+                    const cta = m === 'reengagement' ? "Podemos retomar o contato sobre a solução de IA para a " + c + "?" : "Que tal agendarmos 15 minutos na próxima semana para explorarmos isso?";
+                    return `${intro}\n\nUm estudo da McKinsey aponta que até 45% das atividades de trabalho atuais poderiam ser automatizadas. Isso significa que quase metade do tempo de uma equipe pode estar sendo consumido por tarefas repetitivas.\n\nEu sou ${s} da Xertica.ai. Nós usamos Inteligência Artificial para automatizar esses processos, reduzir custos operacionais e liberar as pessoas para focarem no que realmente gera valor.\n\nComprovamos esse impacto em diversos cenários: com nossas soluções de IA, já ajudamos organizações, do setor público ao privado, a economizar mais de 11.000 horas de trabalho em menos de 6 meses e a reduzir o tempo de tramitação de processos de 30 para 5 dias (-83%).\n\nMeu objetivo é entender quais processos manuais mais impactam sua operação hoje e, juntos, co-criarmos uma solução que traga um salto de eficiência para sua empresa.\n\n${cta}\n\nAtenciosamente,\n${s}`;
+                }
             },
-            banking: { subject: "Inovação no Banking", body: (l, c) => `Olá ${l},\n\n[Placeholder Email 2 Banking].\n\nAbraços,` },
-            media: { subject: "IA na Mídia", body: (l, c) => `Olá ${l},\n\n[Placeholder Mídia: Conteúdo e Audiência].\n\nAtenciosamente,` },
             gcp: { 
                 subject: "O futuro do seu negócio: Colaboradores + Agentes de IA", 
-                body: (l, c, s) => `Olá ${l},\n\nEstamos entrando na era da "IA Agêntica", onde o futuro do trabalho é uma parceria estratégica entre seus colaboradores e agentes inteligentes capazes de agir em seu nome.\n\nNo Google Cloud, não estamos apenas falando sobre modelos de linguagem, mas sobre um stack completo "Agent-ready". Nossa plataforma permite que sua empresa combine a inteligência dos modelos Gemini com ferramentas reais para:\n\n- Customer Agents: Transformar a experiência e interação com o cliente.\n- Data Agents: Extrair insights ricos de dados estruturados e não estruturados.\n- Creative Agents: Criar narrativas e conteúdo com o Imagen 3 e Veo.\n\nGrandes empresas como a Kraft Heinz já reduziram o tempo de lançamento de novos produtos de 8 semanas para apenas 8 horas usando soluções do Google Cloud.\n\nVocê teria 15 minutos na próxima terça-feira para discutirmos como sua organização pode se tornar "Agent-ready"?\n\nAbraços,\n${s}` 
+                body: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}, tudo bem? Gostaria de retomar o contato sobre a migração para o GCP.` : `Olá ${l},`;
+                    const cta = m === 'reengagement' ? "Ainda faz sentido discutirmos a modernização da infraestrutura?" : "Você teria 15 minutos na próxima terça-feira para discutirmos como sua organização pode se tornar 'Agent-ready'?";
+                    return `${intro}\n\nEstamos entrando na era da "IA Agêntica", onde o futuro do trabalho é uma parceria estratégica entre seus colaboradores e agentes inteligentes capazes de agir em seu nome.\n\nNo Google Cloud, não estamos apenas falando sobre modelos de linguagem, mas sobre um stack completo "Agent-ready". Nossa plataforma permite que sua empresa combine a inteligência dos modelos Gemini com ferramentas reais para:\n\n- Customer Agents: Transformar a experiência e interação com o cliente.\n- Data Agents: Extrair insights ricos de dados estruturados e não estruturados.\n- Creative Agents: Criar narrativas e conteúdo com o Imagen 3 e Veo.\n\nGrandes empresas como a Kraft Heinz já reduziram o tempo de lançamento de novos produtos de 8 semanas para apenas 8 horas usando soluções do Google Cloud.\n\n${cta}\n\nAbraços,\n${s}`;
+                }
             }
         };
 
@@ -517,17 +614,26 @@
              justica: { 
                  title: "DOIS DADOS SOBRE A EFICIÊNCIA NA JUSTIÇA:", 
                  stats: [ { icon: 'clock', statistic: "2 ANOS E 6 MESES", description: "seria o tempo para zerar o estoque de processos no Brasil.\nFonte: CNJ" }, { icon: 'file-text', statistic: "30% DO TEMPO", description: "é o que juristas gastam buscando informações em documentos.\nFonte: Deloitte" } ], 
-                 message: (l, c, s) => `Olá ${l}. Estava analisando dados do CNJ sobre o estoque de processos (mais de 2 anos para zerar!) e lembrei da nossa conversa.\n\nCom IA, é possível reduzir drasticamente o tempo gasto em pesquisa e triagem. Que tal 15min para eu te mostrar como isso funciona na prática?\n\nAbraços,\n${s}` 
+                 message: (l, c, s, m) => {
+                     const intro = m === 'reengagement' ? `Olá ${l}. Retomando nosso papo: estava revendo dados do CNJ sobre o estoque de processos.` : `Olá ${l}. Estava analisando dados do CNJ sobre o estoque de processos e lembrei da nossa conversa.`;
+                     return `${intro}\n\nCom IA, é possível reduzir drasticamente o tempo gasto em pesquisa e triagem. Que tal 15min para eu te mostrar como isso funciona na prática?\n\nAbraços,\n${s}`;
+                 }
              },
              saude: { 
                  title: "DOIS DADOS SOBRE A GESTÃO NA SAÚDE:", 
                  stats: [ { icon: 'dollar', statistic: "ATÉ 25%", description: "de redução nos custos operacionais com a automação de tarefas.\nFonte: McKinsey" }, { icon: 'users', statistic: "68% DOS PACIENTES", description: "preferem provedores que oferecem uma melhor experiência digital.\nFonte: Accenture" } ], 
-                 message: (l, c, s) => `Olá ${l}. Estava lendo dados da McKinsey e Accenture sobre gestão na saúde: automação pode reduzir 25% dos custos e 68% dos pacientes buscam melhor experiência digital.\n\nComo a ${c} está lidando com isso? Topa 15min para falarmos?\n\nAbraços,\n${s}` 
+                 message: (l, c, s, m) => {
+                     const intro = m === 'reengagement' ? `Olá ${l}. Faz tempo que não falamos. Revi dados da McKinsey e lembrei dos desafios da ${c}.` : `Olá ${l}. Estava lendo dados da McKinsey e Accenture sobre gestão na saúde.`;
+                     return `${intro} Automação pode reduzir 25% dos custos e 68% dos pacientes buscam melhor experiência digital.\n\nComo a ${c} está lidando com isso? Topa 15min para falarmos?\n\nAbraços,\n${s}`;
+                 }
              },
              governo: { 
                  title: "DOIS DADOS SOBRE A AGILIDADE NO SETOR PÚBLICO:", 
                  stats: [ { icon: 'message-square', statistic: "ATÉ 80%", description: "das solicitações de cidadãos podem ser resolvidas por assistentes virtuais.\nFonte: Gartner" }, { icon: 'fast-forward', statistic: "ATÉ 70%", description: "de redução no tempo de espera para serviços como emissão de licenças.\nFonte: Banco Mundial" } ], 
-                 message: (l, c, s) => `Olá ${l}. Dados do Gartner e Banco Mundial mostram que IA pode resolver 80% das demandas e reduzir 70% do tempo de espera no setor público.\n\nImagina esse impacto na ${c}? Vamos agendar 15min para conversarmos sobre como implementar isso?\n\nAbraços,\n${s}` 
+                 message: (l, c, s, m) => {
+                     const intro = m === 'reengagement' ? `Olá ${l}. Retomando o contato: dados do Gartner mostram que IA resolve 80% das demandas.` : `Olá ${l}. Dados do Gartner e Banco Mundial mostram que IA pode resolver 80% das demandas.`;
+                     return `${intro}\n\nImagina esse impacto na ${c}? Vamos agendar 15min para conversarmos sobre como implementar isso?\n\nAbraços,\n${s}`;
+                 }
              },
              legal: { 
                  title: "DE 3 HORAS PARA 30 MINUTOS.", 
@@ -537,12 +643,18 @@
                      { title: "Transcrição Automática", desc: "Transcrição e minutagem automática.", icon: "bolt" },
                      { title: "Elaboração Ágil", desc: "Elaboração ágil de alegações finais.", icon: "file-text" }
                  ],
-                 message: (l, c, s) => `Olá ${l}. Vi esse case do MPRS onde a IA economizou 11.500h de trabalho operacional. O mais impressionante é a capacidade de gerar minutas e peças jurídicas complexas em segundos, mantendo o padrão técnico.\n\nQue tal 15min para eu te mostrar como acelerar a produção jurídica na ${c}?\n\nAbraços,\n${s}` 
+                 message: (l, c, s, m) => {
+                     const intro = m === 'reengagement' ? `Olá ${l}. Ainda sobre eficiência jurídica: vi esse case do MPRS e lembrei da ${c}.` : `Olá ${l}. Vi esse case do MPRS onde a IA economizou 11.500h de trabalho operacional.`;
+                     return `${intro}\n\nO mais impressionante é a capacidade de gerar minutas e peças jurídicas complexas em segundos, mantendo o padrão técnico.\n\nQue tal 15min para eu te mostrar como acelerar a produção jurídica na ${c}?\n\nAbraços,\n${s}`;
+                 }
              },
              gws: { 
                  title: "DOIS DADOS SOBRE A PRODUTIVIDADE MODERNA:", 
                  stats: [ { icon: 'clock', statistic: "25% DO TEMPO", description: "gasto em reuniões pode ser reduzido com colaboração assíncrona e IA.\nFonte: Atlassian" }, { icon: 'gem', statistic: "ATÉ 45%", description: "de aumento na produtividade para escrever com assistentes de IA como o Gemini.\nFonte: Google" } ], 
-                 message: (l, c, s) => `Olá ${l}. Menos reuniões e escrita mais rápida com IA. Dados da Atlassian e Google mostram o impacto direto na produtividade.\n\nImagina liberar 25% do tempo da equipe da ${c}? Vamos conversar sobre como implementar o Gemini no Workspace?\n\nAbraços,\n${s}` 
+                 message: (l, c, s, m) => {
+                     const intro = m === 'reengagement' ? `Olá ${l}. Retomando sobre GWS: dados mostram que IA libera 25% do tempo da equipe.` : `Olá ${l}. Menos reuniões e escrita mais rápida com IA. Dados da Atlassian e Google mostram o impacto.`;
+                     return `${intro}\n\nImagina liberar 25% do tempo da equipe da ${c}? Vamos conversar sobre como implementar o Gemini no Workspace?\n\nAbraços,\n${s}`;
+                 }
              },
              insurance: { 
                  title: "DOIS DADOS SOBRE O SETOR DE SEGUROS:", 
@@ -550,7 +662,10 @@
                      { icon: 'dollar', statistic: "ATÉ 30%", description: "de redução nos custos de sinistros com o uso de IA para detecção de fraudes.\nFonte: McKinsey" }, 
                      { icon: 'bolt', statistic: "90% MAIS RÁPIDO", description: "pode ser o processo de subscrição e emissão de apólices com automação.\nFonte: IBM" } 
                  ], 
-                 message: (l, c, s) => `Olá ${l}. Dados da McKinsey e IBM mostram o impacto da IA em seguros: 30% menos custos com sinistros e processos 90% mais rápidos.\n\nComo a ${c} está se posicionando? Topa 15min para falarmos sobre eficiência operacional?\n\nAbraços,\n${s}` 
+                 message: (l, c, s, m) => {
+                     const intro = m === 'reengagement' ? `Olá ${l}. Faz tempo que não falamos. Revi estes dados sobre IA em seguros e lembrei de você.` : `Olá ${l}. Dados da McKinsey e IBM mostram o impacto da IA em seguros.`;
+                     return `${intro}\n\n30% menos custos com sinistros e processos 90% mais rápidos. Como a ${c} está se posicionando? Topa 15min para falarmos sobre eficiência operacional?\n\nAbraços,\n${s}`;
+                 }
              },
              retail: { 
                  title: "O IMPACTO DA IA NA EXPERIÊNCIA DO CLIENTE:", 
@@ -558,7 +673,10 @@
                      { icon: 'trending-up', statistic: "+30% VENDAS", description: "aumento na taxa de conversão com recomendações personalizadas por IA.\nFonte: Boston Consulting Group" }, 
                      { icon: 'users', statistic: "80% MELHOR", description: "na satisfação do cliente (CSAT) com atendimento ágil e resolutivo.\nFonte: Salesforce" } 
                  ], 
-                 message: (l, c, s) => `Olá ${l}. Personalização vende. Dados mostram que IA pode aumentar em 30% a conversão e elevar a satisfação do cliente.\n\nQuer levar essa experiência para os clientes da ${c}? Vamos conversar por 15min?\n\nAbraços,\n${s}` 
+                 message: (l, c, s, m) => {
+                     const intro = m === 'reengagement' ? `Olá ${l}. Retomando sobre varejo: Personalização vende.` : `Olá ${l}. Personalização vende.`;
+                     return `${intro} Dados mostram que IA pode aumentar em 30% a conversão e elevar a satisfação do cliente.\n\nQuer levar essa experiência para os clientes da ${c}? Vamos conversar por 15min?\n\nAbraços,\n${s}`;
+                 }
              },
 
              outros: {
@@ -567,59 +685,91 @@
                      { icon: 'cpu', statistic: "ATÉ 40%", description: "do tempo da equipe pode ser liberado com a automação de tarefas repetitivas.\nFonte: Fórum Econômico Mundial" },
                      { icon: 'trending-up', statistic: "50% MAIOR", description: "é a taxa de crescimento de receita em empresas que lideram na adoção de IA.\nFonte: Harvard Business Review" }
                  ],
-                 message: (l, c, s) => `Olá ${l}. Estava analisando dados sobre o impacto da IA: até 40% do tempo liberado e 50% maior crescimento de receita para quem lidera a adoção.\n\nComo a ${c} está se posicionando? Vamos conversar sobre como alcançar esses números?\n\nAbraços,\n${s}`
+                 message: (l, c, s, m) => {
+                     const intro = m === 'reengagement' ? `Olá ${l}. Faz tempo que conversamos. Estava analisando dados sobre o impacto da IA:` : `Olá ${l}. Estava analisando dados sobre o impacto da IA:`;
+                     return `${intro} até 40% do tempo liberado e 50% maior crescimento de receita para quem lidera a adoção.\n\nComo a ${c} está se posicionando? Vamos conversar sobre como alcançar esses números?\n\nAbraços,\n${s}`;
+                 }
              },
-             banking: { title: "Dados Banking:", stats: [ { icon: 'shield', statistic: "-40%", description: "fraudes detectadas." }, { icon: 'users', statistic: "+20%", description: "retenção de clientes." } ], message: (l, c, s) => `Olá ${l}. Dados do setor mostram impacto direto de IA na segurança e retenção.\n\nVamos falar sobre como aplicar isso na ${c}?\n\n${s}` },
-             media: { title: "Dados Mídia:", stats: [ { icon: 'star', statistic: "5x", description: "criação de conteúdo." }, { icon: 'users', statistic: "+40%", description: "engajamento." } ], message: (l, c, s) => `Olá ${l}. A velocidade de criação define líderes de mídia hoje.\n\nQue tal falarmos sobre a ${c}?\n\n${s}` },
              gcp: { 
                  title: "MAIS CÓDIGO, MENOS ROTINA.", 
                  stats: [ 
                      { icon: 'fast-forward', statistic: "+20%", description: "de aumento na velocidade em tarefas comuns com Gemini Code Assist." }, 
                      { icon: 'cpu', statistic: "+150", description: "modelos disponíveis no Vertex AI (Gemini, Llama, Mistral) em um só lugar." } 
                  ], 
-                 message: (l, c, s) => `Fala, ${l}! 👨‍💻👩‍💻\nPrecisa acelerar o desenvolvimento aí na ${c}?\nCom o Gemini Code Assist do Google Cloud, desenvolvedores estão vendo um aumento de 20% na velocidade em tarefas comuns. É mais tempo para inovar e menos tempo em tarefas repetitivas.\n\nAlém disso, o Vertex AI oferece acesso a mais de 150 modelos (incluindo Gemini, Llama, Mistral) em um só lugar.\n\nBora marcar um demo rápido?` 
+                 message: (l, c, s, m) => {
+                     const intro = m === 'reengagement' ? `Fala, ${l}! 👨‍💻👩‍💻 Ainda precisando acelerar o desenvolvimento na ${c}?` : `Fala, ${l}! 👨‍💻👩‍💻\nPrecisa acelerar o desenvolvimento aí na ${c}?`;
+                     return `${intro}\nCom o Gemini Code Assist do Google Cloud, desenvolvedores estão vendo um aumento de 20% na velocidade em tarefas comuns. É mais tempo para inovar.\n\nBora marcar um demo rápido?\n\n${s}`;
+                 }
              }
         };
 
         const contentDataPhase4 = {
             justica: { 
                 subject: "O Judiciário está sobrecarregado - vamos conversar como a IA pode descongestionar?", 
-                body: (l, c, s) => `Olá, ${l},\n\nO CNJ mostrou que a Justiça registrou um crescimento de 9,4% no número de processos, isso é mais de 35 milhões de novas ações.\n\nMas a produtividade cresceu só 6,9%, gerando um déficit de 2,5%, equivalente a 875 mil processos.\n\nA Xertica.ai ajuda órgãos como o ${c} a ganhar celeridade com aceleradores de IA que automatizam etapas críticas da justiça, triagem, análise documental, sumarização e minutações, reduzindo drasticamente o tempo de execução, sem abrir mão da governança e da ética.\n\nPodemos explorar como isso se aplica à sua realidade? Me sugira um horário da sua agenda para conversarmos!\n\nAtenciosamente,\n${s}`
+                body: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá, ${l}, tudo bem? Gostaria de retomar o tema da celeridade na justiça.` : `Olá, ${l},`;
+                    return `${intro}\n\nO CNJ mostrou que a Justiça registrou um crescimento de 9,4% no número de processos, isso é mais de 35 milhões de novas ações.\n\nMas a produtividade cresceu só 6,9%, gerando um déficit de 2,5%, equivalente a 875 mil processos.\n\nA Xertica.ai ajuda órgãos como o ${c} a ganhar celeridade com aceleradores de IA que automatizam etapas críticas da justiça, triagem, análise documental, sumarização e minutações, reduzindo drasticamente o tempo de execução, sem abrir mão da governança e da ética.\n\nPodemos explorar como isso se aplica à sua realidade? Me sugira um horário da sua agenda para conversarmos!\n\nAtenciosamente,\n${s}`;
+                }
             },
             saude: { 
                 subject: "IA na Saúde: Agilidade operacional e previsão de riscos", 
-                body: (l, c, s) => `Olá ${l},\n\nReduza a carga administrativa e antecipe riscos na ${c} com os Aceleradores de IA da Xertica.\n\nNossa tecnologia já inicia 60% pronta desde o primeiro dia, permitindo entregar um MVP funcional com muita agilidade. Com isso, você consegue:\n\n- Resumir e organizar registros médicos em segundos.\n- Personalizar a comunicação e o monitoramento do paciente.\n- Antecipar surtos epidemiológicos e visualizar riscos por território.\n\nFaz sentido agendarmos uma conversa rápida de 10 minutos para detalhar como isso se aplica à sua operação?\n\nAtenciosamente,\n${s}` 
+                body: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}, tudo bem? Retomando o contato sobre IA na saúde.` : `Olá ${l},`;
+                    const cta = m === 'reengagement' ? "Podemos retomar a pauta?" : "Faz sentido agendarmos uma conversa rápida de 10 minutos para detalhar como isso se aplica à sua operação?";
+                    return `${intro}\n\nReduza a carga administrativa e antecipe riscos na ${c} com os Aceleradores de IA da Xertica.\n\nNossa tecnologia já inicia 60% pronta desde o primeiro dia, permitindo entregar um MVP funcional com muita agilidade. Com isso, você consegue:\n\n- Resumir e organizar registros médicos em segundos.\n- Personalizar a comunicação e o monitoramento do paciente.\n- Antecipar surtos epidemiológicos e visualizar riscos por território.\n\n${cta}\n\nAtenciosamente,\n${s}`;
+                }
             },
             governo: { 
                 subject: "IA no Governo: Gestão preditiva e recuperação de receita", 
-                body: (l, c, s) => `Olá ${l},\n\nTransforme a gestão pública fragmentada e reativa em uma operação eficiente na ${c} com os Aceleradores de IA da Xertica.\n\nNossa tecnologia para Governo já inicia 60% pronta desde o primeiro dia, permitindo entregar um MVP funcional com muita agilidade. Com isso, é possível:\n\n- Automatizar a triagem de solicitações do cidadão por urgência e sentimento.\n- Otimizar a segurança e o planejamento urbano com mapas de risco preditivos.\n- Identificar sonegação fiscal territorial através do cruzamento inteligente de dados.\n\nFaz sentido agendarmos uma conversa rápida de 10 minutos para detalhar como aplicar essa inteligência à sua gestão?\n\nAtenciosamente,\n${s}` 
+                body: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}, tudo bem? Faz um tempo que não falamos sobre gestão preditiva.` : `Olá ${l},`;
+                    return `${intro}\n\nTransforme a gestão pública fragmentada e reativa em uma operação eficiente na ${c} com os Aceleradores de IA da Xertica.\n\nNossa tecnologia para Governo já inicia 60% pronta desde o primeiro dia, permitindo entregar um MVP funcional com muita agilidade. Com isso, é possível:\n\n- Automatizar a triagem de solicitações do cidadão por urgência e sentimento.\n- Otimizar a segurança e o planejamento urbano com mapas de risco preditivos.\n- Identificar sonegação fiscal territorial através do cruzamento inteligente de dados.\n\nFaz sentido agendarmos uma conversa rápida de 10 minutos para detalhar como aplicar essa inteligência à sua gestão?\n\nAtenciosamente,\n${s}`;
+                }
             },
             legal: { 
                 subject: "Otimização Jurídica: O case de 11.500 horas economizadas", 
-                body: (l, c, s) => `Olá ${l},\n\nO volume de processos e a complexidade dos casos costumam ser os maiores gargalos de um jurídico moderno.\n\nNo Ministério Público do RS, ajudamos a economizar mais de 11.500 horas operacionais com nossa solução de IA personalizada, que já chega 60% pronta para implementação.\n\nConseguimos reduzir a análise de vídeos de audiências de 3 horas para apenas 30 minutos, além de automatizar a pesquisa de precedentes e a criação de minutas.\n\nPodemos conversar rapidamente sobre como trazer essa eficiência para a ${c}?\n\nAtenciosamente,\n${s}` 
+                body: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}. Retomando nosso papo sobre os gargalos do jurídico.` : `Olá ${l},`;
+                    return `${intro}\n\nO volume de processos e a complexidade dos casos costumam ser os maiores gargalos de um jurídico moderno.\n\nNo Ministério Público do RS, ajudamos a economizar mais de 11.500 horas operacionais com nossa solução de IA personalizada, que já chega 60% pronta para implementação.\n\nConseguimos reduzir a análise de vídeos de audiências de 3 horas para apenas 30 minutos, além de automatizar a pesquisa de precedentes e a criação de minutas.\n\nPodemos conversar rapidamente sobre como trazer essa eficiência para a ${c}?\n\nAtenciosamente,\n${s}`;
+                }
             },
             gws: { 
                 subject: "Sua estratégia de IA: Inovação sem risco de dados", 
-                body: (l, c, s) => `Olá ${l},\n\nCom o aumento de 44% nos ataques cibernéticos no último ano, muitos líderes de TI hesitam em adotar IA generativa. Porém, ignorar a tecnologia cria um risco maior: 63% dos funcionários já utilizam ferramentas de IA sem licença ou controle semanalmente, expondo dados corporativos.\n\nO Google Workspace com Gemini elimina esse dilema, oferecendo uma plataforma de colaboração secure-by-design que permite inovar com segurança total:\n\n- Privacidade Garantida: Seus dados nunca são usados para treinar os modelos fundamentais do Google sem sua permissão.\n- Soberania Digital: Criptografia do lado do cliente (CSE) garante que nem mesmo o Google tenha acesso aos seus dados mais sensíveis.\n- Resultados Comprovados: Organizações que usam Workspace têm 54% menos sinistros de segurança de e-mail do que aquelas que usam Microsoft Exchange.\n\nVocê teria 10 minutos para discutirmos como blindar sua organização contra ameaças modernas enquanto habilita a produtividade da IA?\n\nAtenciosamente,\n${s}` 
+                body: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}, tudo bem? Gostaria de retomar a conversa sobre segurança e IA.` : `Olá ${l},`;
+                    return `${intro}\n\nCom o aumento de 44% nos ataques cibernéticos no último ano, muitos líderes de TI hesitam em adotar IA generativa. Porém, ignorar a tecnologia cria um risco maior: 63% dos funcionários já utilizam ferramentas de IA sem licença ou controle semanalmente, expondo dados corporativos.\n\nO Google Workspace com Gemini elimina esse dilema, oferecendo uma plataforma de colaboração secure-by-design que permite inovar com segurança total:\n\n- Privacidade Garantida: Seus dados nunca são usados para treinar os modelos fundamentais do Google sem sua permissão.\n- Soberania Digital: Criptografia do lado do cliente (CSE) garante que nem mesmo o Google tenha acesso aos seus dados mais sensíveis.\n- Resultados Comprovados: Organizações que usam Workspace têm 54% menos sinistros de segurança de e-mail do que aquelas que usam Microsoft Exchange.\n\nVocê teria 10 minutos para discutirmos como blindar sua organização contra ameaças modernas enquanto habilita a produtividade da IA?\n\nAtenciosamente,\n${s}`;
+                }
             },
             insurance: { 
                 subject: "Redução de sinistralidade e pagamentos indevidos com IA", 
-                body: (l, c, s) => `Olá ${l},\n\nProcessos manuais de validação de documentos tornam o pagamento de sinistros lento e suscetível a erros.\n\nCom os Aceleradores de IA da Xertica, você não começa do zero. Nossa solução chega 60% pronta para automatizar sua esteira operacional:\n\n- Classificação automática de reivindicações por urgência e complexidade.\n- Validação de documentos e rastreabilidade automatizada.\n- Redução drástica no tempo de reprocessamento e revisão.\n\nTopa uma conversa rápida na próxima semana para explorarmos essa eficiência?\n\nAtenciosamente,\n${s}` 
+                body: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}. Ainda faz sentido falarmos sobre redução de sinistralidade?` : `Olá ${l},`;
+                    return `${intro}\n\nProcessos manuais de validação de documentos tornam o pagamento de sinistros lento e suscetível a erros.\n\nCom os Aceleradores de IA da Xertica, você não começa do zero. Nossa solução chega 60% pronta para automatizar sua esteira operacional:\n\n- Classificação automática de reivindicações por urgência e complexidade.\n- Validação de documentos e rastreabilidade automatizada.\n- Redução drástica no tempo de reprocessamento e revisão.\n\nTopa uma conversa rápida na próxima semana para explorarmos essa eficiência?\n\nAtenciosamente,\n${s}`;
+                }
             },
             retail: { 
                 subject: "SAC que vende: Transforme atendimento em receita", 
-                body: (l, c, s) => `Olá ${l},\n\nE se o seu atendimento ao cliente não fosse apenas um centro de custo, mas um canal de vendas ativo?\n\nCom os Aceleradores de IA da Xertica, transformamos a interação com o cliente na ${c}:\n\n- Assistentes Virtuais que entendem a intenção de compra e recomendam produtos.\n- Resolução automática de dúvidas frequentes 24/7.\n- Identificação de oportunidades de upsell durante o suporte.\n\nNossa solução chega 60% pronta para implementar. Faz sentido agendarmos 10 minutos para eu te mostrar como transformar SAC em receita?\n\nAtenciosamente,\n${s}` 
+                body: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}. Retomando sobre atendimento e vendas:` : `Olá ${l},`;
+                    return `${intro}\n\nE se o seu atendimento ao cliente não fosse apenas um centro de custo, mas um canal de vendas ativo?\n\nCom os Aceleradores de IA da Xertica, transformamos a interação com o cliente na ${c}:\n\n- Assistentes Virtuais que entendem a intenção de compra e recomendam produtos.\n- Resolução automática de dúvidas frequentes 24/7.\n- Identificação de oportunidades de upsell durante o suporte.\n\nNossa solução chega 60% pronta para implementar. Faz sentido agendarmos 10 minutos para eu te mostrar como transformar SAC em receita?\n\nAtenciosamente,\n${s}`;
+                }
             },
 
             outros: { 
                 subject: "Inovação com IA: Acelere sua operação sem começar do zero", 
-                body: (l, c, s) => `Olá ${l},\n\nMuitas empresas sabem que precisam adotar Inteligência Artificial, mas esbarram em projetos longos, caros e complexos.\n\nNa Xertica, resolvemos isso com nossos Aceleradores de IA. Diferente do desenvolvimento tradicional, nossa tecnologia já inicia 60% pronta desde o primeiro dia.\n\nIsso nos permite entregar um MVP funcional com extrema agilidade, adaptado ao seu negócio para:\n\n- Automatizar processos manuais e repetitivos que consomem horas da equipe.\n- Transformar dados em decisões, analisando grandes volumes de informações em segundos.\n- Melhorar a experiência do cliente com atendimento personalizado e preditivo.\n\nFaz sentido agendarmos uma conversa de 10 minutos para entender qual gargalo operacional podemos resolver primeiro?\n\nAtenciosamente,\n${s}` 
+                body: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}, tudo bem? Perdemos o contato sobre a solução de IA, mas gostaria de retomar.` : `Olá ${l},`;
+                    const cta = m === 'reengagement' ? "Podemos retomar o contato sobre a solução de IA para a " + c + "?" : "Faz sentido agendarmos uma conversa de 10 minutos para entender qual gargalo operacional podemos resolver primeiro?";
+                    return `${intro}\n\nMuitas empresas sabem que precisam adotar Inteligência Artificial, mas esbarram em projetos longos, caros e complexos.\n\nNa Xertica, resolvemos isso com nossos Aceleradores de IA. Diferente do desenvolvimento tradicional, nossa tecnologia já inicia 60% pronta desde o primeiro dia.\n\nIsso nos permite entregar um MVP funcional com extrema agilidade, adaptado ao seu negócio para:\n\n- Automatizar processos manuais e repetitivos que consomem horas da equipe.\n- Transformar dados em decisões, analisando grandes volumes de informações em segundos.\n- Melhorar a experiência do cliente com atendimento personalizado e preditivo.\n\n${cta}\n\nAtenciosamente,\n${s}`;
+                }
             },
-            banking: { subject: "Inovação no Banking", body: (l, c) => `Olá ${l},\n\n[Placeholder Email 2 Banking].\n\nAbraços,` },
-            media: { subject: "Mídia Tech", body: (l, c) => `Olá ${l},\n\n[Placeholder Email 2 Mídia].\n\nAbraços,` },
             gcp: { 
                 subject: "Reduzindo custos e acelerando a inovação com IA Otimizada", 
-                body: (l, c, s) => `Olá ${l},\n\nMuitas empresas estão experimentando com IA, mas poucas conseguem escalar com eficiência de custo. O Google Cloud resolve isso com uma infraestrutura desenhada especificamente para a era da IA.\n\nCom o AI Hypercomputer e os modelos Gemini Flash 2.0, nossos clientes estão vendo:\n\n- 24x mais inteligência por dólar investido em comparação ao GPT-4.\n- 40% de economia em TCO (Custo Total de Propriedade) com nossa infraestrutura de rede.\n\nA Wayfair, por exemplo, aumentou a produtividade de seus desenvolvedores, permitindo que 60% deles foquem em trabalhos mais significativos.\n\nGostaria de apresentar como o Google Cloud pode trazer esses mesmos ganhos de eficiência para a ${c}.\n\nPodemos agendar uma breve conversa?\n\nAtenciosamente,\n${s}` 
+                body: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}. Retomando nosso contato sobre infraestrutura e IA.` : `Olá ${l},`;
+                    const cta = m === 'reengagement' ? "Podemos agendar uma breve conversa para retomar isso?" : "Podemos agendar uma breve conversa?";
+                    return `${intro}\n\nMuitas empresas estão experimentando com IA, mas poucas conseguem escalar com eficiência de custo. O Google Cloud resolve isso com uma infraestrutura desenhada especificamente para a era da IA.\n\nCom o AI Hypercomputer e os modelos Gemini Flash 2.0, nossos clientes estão vendo:\n\n- 24x mais inteligência por dólar investido em comparação ao GPT-4.\n- 40% de economia em TCO (Custo Total de Propriedade) com nossa infraestrutura de rede.\n\nA Wayfair, por exemplo, aumentou a produtividade de seus desenvolvedores, permitindo que 60% deles foquem em trabalhos mais significativos.\n\nGostaria de apresentar como o Google Cloud pode trazer esses mesmos ganhos de eficiência para a ${c}.\n\n${cta}\n\nAtenciosamente,\n${s}`;
+                }
             }
         };
 
@@ -632,7 +782,10 @@
                     { value: "2,5%", label: "é o déficit entre o aumento da demanda e o crescimento da produtividade, o que resulta em um aumento do congestionamento dos processos." },
                     { value: "875K", label: "é o número de processos que representam o gap de 2,5% entre o aumento da demanda e o crescimento da produtividade." }
                 ],
-                message: (l, c, s) => `Olá ${l}. Com o aumento de 9,4% na demanda processual e a produtividade crescendo a 6,9%, o déficit na justiça só aumenta.\n\nEsse gap de 875 mil processos exige novas soluções. A IA é o caminho para equilibrar essa conta na ${c}.\n\nVamos agendar uma conversa?\n\n${s}` 
+                message: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}. Ainda sobre o déficit na justiça:` : `Olá ${l}. Com o aumento de 9,4% na demanda processual e a produtividade crescendo a 6,9%, o déficit na justiça só aumenta.`;
+                    return `${intro}\n\nEsse gap de 875 mil processos exige novas soluções. A IA é o caminho para equilibrar essa conta na ${c}.\n\nVamos agendar uma conversa?\n\n${s}`;
+                }
             },
             saude: { 
                 title: "MAIS EFICIÊNCIA, MENOS BUROCRACIA NA SAÚDE", 
@@ -642,7 +795,10 @@
                     { title: "Monitoramento Inteligente", desc: "Melhore a adesão.", icon: "activity" },
                     { title: "Mapas de Calor", desc: "Preveja riscos epidemiológicos.", icon: "map" } 
                 ],
-                message: (l, c, s) => `Olá ${l}!\n\nMenos burocracia e mais tempo para o paciente na ${c}. É isso que nossos aceleradores de IA proporcionam (já chegam 60% prontos!).\n\nDesde resumo de prontuários até mapas de calor epidemiológicos. Vamos conversar para você conhecer?\n\n${s}`
+                message: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}! Retomando sobre menos burocracia na ${c}.` : `Olá ${l}!\n\nMenos burocracia e mais tempo para o paciente na ${c}.`;
+                    return `${intro}\n\nÉ isso que nossos aceleradores de IA proporcionam (já chegam 60% prontos!).\n\nDesde resumo de prontuários até mapas de calor epidemiológicos. Vamos conversar para você conhecer?\n\n${s}`;
+                }
             },
             governo: { 
                 title: "GESTÃO PÚBLICA PREDITIVA COM IA", 
@@ -652,7 +808,10 @@
                     { title: "Segurança", desc: "Mapas de risco e prevenção de incidentes.", icon: "shield" },
                     { title: "Fiscal", desc: "Detecção inteligente de sonegação territorial.", icon: "bar-chart" } 
                 ],
-                message: (l, c, s) => `Olá ${l}!\n\nTransformar a gestão pública não precisa demorar. Nossos aceleradores de IA já chegam 60% prontos para modernizar o Atendimento, a Segurança e a área Fiscal da ${c}.\n\nVamos conversar sobre como entregar um MVP ágil para sua gestão?\n\n${s}` 
+                message: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}! Retomando nosso papo sobre gestão pública.` : `Olá ${l}!`;
+                    return `${intro}\n\nTransformar a gestão pública não precisa demorar. Nossos aceleradores de IA já chegam 60% prontos para modernizar o Atendimento, a Segurança e a área Fiscal da ${c}.\n\nVamos conversar sobre como entregar um MVP ágil para sua gestão?\n\n${s}`;
+                }
             },
             legal: { 
                 title: "CHEGA DE UM JURÍDICO REATIVO.", 
@@ -662,7 +821,10 @@
                     { title: "Redação", desc: "De começar do zero para peças geradas em segundos.", icon: "file-text" },
                     { title: "Segurança", desc: "Seus dados em ambiente controlado e ético.", icon: "shield" } 
                 ],
-                message: (l, c, s) => `Olá ${l}, tudo bem?\n\nImagine transformar horas de pesquisa manual em estratégia pura na ${c}. A Xertica AI faz isso com segurança e rapidez.\n\nModernize sua jornada jurídica hoje. Topa agendar 15min para ver funcionando?\n\n${s}` 
+                message: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}, tudo bem? Retomando sobre a modernização jurídica na ${c}.` : `Olá ${l}, tudo bem?`;
+                    return `${intro}\n\nImagine transformar horas de pesquisa manual em estratégia pura. A Xertica AI faz isso com segurança e rapidez.\n\nModernize sua jornada jurídica hoje. Topa agendar 15min para ver funcionando?\n\n${s}`;
+                }
             },
             gws: { 
                 title: "SEGURANÇA E IA NÃO SÃO OPOSTOS.", 
@@ -672,7 +834,10 @@
                     { title: "Privacidade", desc: "Seus dados são seus: O Gemini não treina modelos sem permissão.", icon: "lock" }, 
                     { title: "Defesa Proativa", desc: "Bloqueio de 99,9% de spam, phishing e malware.", icon: "shield" } 
                 ],
-                message: (l, c, s) => `Olá ${l}!\n\nInovar com IA sem comprometer a segurança é possível. O Google Workspace com Gemini oferece defesa proativa e privacidade garantida.\n\nLeve sua segurança para a era da IA na ${c}. Vamos conversar?\n\n${s}` 
+                message: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}! Retomando sobre segurança e IA.` : `Olá ${l}!`;
+                    return `${intro}\n\nInovar com IA sem comprometer a segurança é possível. O Google Workspace com Gemini oferece defesa proativa e privacidade garantida.\n\nLeve sua segurança para a era da IA na ${c}. Vamos conversar?\n\n${s}`;
+                }
             },
             insurance: { 
                 title: "SUA OPERAÇÃO É REATIVA OU PREDITIVA?", 
@@ -683,7 +848,10 @@
                     { title: "Validar Documentos", desc: "Identifique possíveis fraudes automaticamente.", icon: "shield" },
                     { title: "Antecipar Riscos", desc: "Riscos populacionais e territoriais.", icon: "map" } 
                 ],
-                message: (l, c, s) => `Olá ${l}.\n\nSua operação de sinistros é reativa ou preditiva? Com a Xertica, você valida documentos e antecipa fraudes antes que elas impactem o resultado da ${c}.\n\nNossa IA é transparente e ética. Vamos agendar 15min para eu te mostrar como funciona?\n\n${s}` 
+                message: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}. Retomando sobre IA preditiva em seguros:` : `Olá ${l}.`;
+                    return `${intro}\n\nSua operação de sinistros é reativa ou preditiva? Com a Xertica, você valida documentos e antecipa fraudes antes que elas impactem o resultado da ${c}.\n\nNossa IA é transparente e ética. Vamos agendar 15min para eu te mostrar como funciona?\n\n${s}`;
+                }
             },
             retail: { 
                 title: "EXPERIÊNCIA DE COMPRA SEM ATRITOS.", 
@@ -693,7 +861,10 @@
                     { title: "Agilidade no SAC", desc: "Respostas instantâneas e resolutivas 24/7.", icon: "message-square" },
                     { title: "Conversão Real", desc: "Transforme interações em vendas no momento certo.", icon: "trending-up" } 
                 ],
-                message: (l, c, s) => `Olá ${l}!\n\nO cliente de hoje quer rapidez e personalização. Nossos aceleradores de IA ajudam a ${c} a entregar exatamente isso: ofertas certas e atendimento ágil.\n\nVamos conversar sobre como aumentar suas vendas com IA?\n\n${s}` 
+                message: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}! Retomando nosso papo sobre vendas e IA.` : `Olá ${l}!`;
+                    return `${intro}\n\nO cliente de hoje quer rapidez e personalização. Nossos aceleradores de IA ajudam a ${c} a entregar exatamente isso: ofertas certas e atendimento ágil.\n\nVamos conversar sobre como aumentar suas vendas com IA?\n\n${s}`;
+                }
             },
 
             outros: { 
@@ -705,10 +876,11 @@
                     { title: "Inteligência", desc: "Análise de dados e previsão de cenários.", icon: "bar-chart" },
                     { title: "Eficiência", desc: "Automação de tarefas e redução de custos.", icon: "cpu" }
                 ],
-                message: (l, c, s) => `Olá ${l}.\n\nMuitas empresas esbarram em projetos de IA longos e caros. Na Xertica, resolvemos isso com aceleradores que já iniciam 60% prontos.\n\nIsso nos permite entregar um MVP funcional com extrema agilidade para a ${c}, automatizando processos e transformando dados em decisão.\n\nFaz sentido agendarmos 10 minutos para entender qual gargalo operacional podemos resolver primeiro?\n\n${s}` 
+                message: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Olá ${l}. Perdemos o contato sobre a solução de IA, mas queria retomar.` : `Olá ${l}.`;
+                    return `${intro}\n\nMuitas empresas esbarram em projetos de IA longos e caros. Na Xertica, resolvemos isso com aceleradores que já iniciam 60% prontos.\n\nIsso nos permite entregar um MVP funcional com extrema agilidade para a ${c}, automatizando processos e transformando dados em decisão.\n\nFaz sentido agendarmos 10 minutos para entender qual gargalo operacional podemos resolver primeiro?\n\n${s}`;
+                }
             },
-            banking: { title: "Oportunidade Banking", highlight: "Segurança", benefits: ["Anti-Fraude IA", "Atendimento 24/7", "Personalização", "Open Finance"], message: (l, c, s) => `Olá ${l}, [Placeholder WhatsApp Fase 5 Banking].\n\n${s}` },
-            media: { title: "Oportunidade Mídia", highlight: "Conteúdo", benefits: ["GenAI Vídeo/Texto", "Personalização", "Monetização", "Arquivos"], message: (l, c, s) => `Olá ${l}, [Placeholder WhatsApp Fase 5 Mídia].\n\n${s}` },
             gcp: { 
                 title: "DE 8 SEMANAS PARA 8 HORAS.",
                 subtitle: "O impacto da IA do Google Cloud na Kraft Heinz.",
@@ -718,7 +890,10 @@
                     { title: "Valor Real", desc: "McDonald's, Uber e Spotify já usam.", icon: "star" },
                     { title: "Versatilidade", desc: "De marketing personalizado a logística otimizada.", icon: "map" }
                 ],
-                message: (l, c, s) => `Oi ${l}, tudo bem?\nOlha só esse resultado da Kraft Heinz usando Google Cloud AI: 👇\n🍅 Eles reduziram o tempo de lançamento de novos produtos de 8 semanas para 8 horas! \n\nSeja para criar campanhas de marketing personalizadas ou otimizar a logística, entenda como o Google Cloud está gerando valor real para empresas como McDonald's, Uber, Spotify e Ford.` 
+                message: (l, c, s, m) => {
+                    const intro = m === 'reengagement' ? `Oi ${l}, tudo bem? Retomando sobre GCP: olha esse resultado da Kraft Heinz.` : `Oi ${l}, tudo bem?\nOlha só esse resultado da Kraft Heinz usando Google Cloud AI: 👇`;
+                    return `${intro}\n🍅 Eles reduziram o tempo de lançamento de novos produtos de 8 semanas para 8 horas! \n\nSeja para criar campanhas de marketing personalizadas ou otimizar a logística, entenda como o Google Cloud está gerando valor real para empresas como McDonald's, Uber, Spotify e Ford.`;
+                }
             }
         };
 
@@ -754,6 +929,7 @@
         });
 
         // --- GERADORES DE HTML ---
+        // (Sem alterações nos geradores de imagem, apenas o texto muda)
         const generatePhase1HTML = (data, leadName, companyName, sdrName) => {
             const firstName = leadName.split(' ')[0].toUpperCase();
             const isGWS = data.title.includes("GWS") || data.title.includes("Workspace") || data.title.includes("MAXIMA PRODUTIVIDADE");
@@ -1005,6 +1181,7 @@
                 const companyName = document.getElementById('company-name').value;
                 const sector = document.getElementById('sector').value;
                 const sdrName = document.querySelector('input[name="sdr-name"]:checked').value;
+                const contactMode = document.querySelector('input[name="contact-mode"]:checked').value;
 
                 if (!leadName || !companyName || !sector) {
                     formError.classList.remove('hidden');
@@ -1017,29 +1194,31 @@
                 if (activePhase === '1') {
                     data = contentDataPhase1[sector];
                     imageOutput.innerHTML = generatePhase1HTML(data, leadName, companyName, sdrName);
-                    textMessageOut.value = data.message(leadName, companyName, sdrName);
+                    textMessageOut.value = data.message(leadName, companyName, sdrName, contactMode);
                 } 
                 else if (activePhase === '2') {
                     data = contentDataPhase2[sector];
                     emailSubjectOut.value = data.subject;
-                    emailBodyOut.value = data.body(leadName, companyName, sdrName);
-                    textMessageOut.value = `Oi ${leadName}, acabei de te enviar um email sobre ${data.subject}. Dê uma olhada quando puder!`;
+                    emailBodyOut.value = data.body(leadName, companyName, sdrName, contactMode);
+                    textMessageOut.value = contactMode === 'reengagement'
+                        ? `Oi ${leadName}, enviei um email para retomarmos nossa conversa. Dê uma olhada quando puder!`
+                        : `Oi ${leadName}, acabei de te enviar um email sobre ${data.subject}. Dê uma olhada quando puder!`;
                 } 
                 else if (activePhase === '3') {
                     data = contentDataPhase3[sector];
                     imageOutput.innerHTML = generatePhase3HTML(data, leadName, companyName, sdrName);
-                    textMessageOut.value = data.message(leadName, companyName, sdrName);
+                    textMessageOut.value = data.message(leadName, companyName, sdrName, contactMode);
                 } 
                 else if (activePhase === '4') {
                     data = contentDataPhase4[sector];
                     emailSubjectOut.value = data.subject;
-                    emailBodyOut.value = data.body(leadName, companyName, sdrName);
+                    emailBodyOut.value = data.body(leadName, companyName, sdrName, contactMode);
                     textMessageOut.value = `Oi ${leadName}, enviei mais alguns detalhes sobre nossa solução. Abraços, ${sdrName}.`;
                 } 
                 else if (activePhase === '5') {
                     data = contentDataPhase5[sector];
                     imageOutput.innerHTML = generatePhase5HTML(data, leadName, companyName, sdrName);
-                    textMessageOut.value = data.message(leadName, companyName, sdrName);
+                    textMessageOut.value = data.message(leadName, companyName, sdrName, contactMode);
                 }
 
                 resultPlaceholder.classList.add('hidden');
