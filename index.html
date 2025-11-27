@@ -204,11 +204,9 @@
                                     </optgroup>
                                     
                                     <optgroup label="Indústria & Serviços" class="bg-brand-dark">
-                                        <option value="banking">Consumer Banking</option>
                                         <option value="insurance">Insurance</option>
                                         <option value="legal">Legal (Privado)</option>
                                         <option value="retail">Varejo / Retail</option>
-                                        <option value="media">Mídia</option>
                                     </optgroup>
 
                                     <optgroup label="Tecnologia & Geral" class="bg-brand-dark">
@@ -462,7 +460,15 @@
             },
             banking: { title: "IA no Banking", benefits: [ { icon: 'shield', text: 'Detecção de Fraude', description: 'Segurança em tempo real.' }, { icon: 'users', text: 'Hiperpersonalização', description: 'Ofertas sob medida.' }, { icon: 'trending-up', text: 'Eficiência Operacional', description: 'Automação de processos.' } ], message: (l, c, s) => `Olá ${l}!\n\nFoi ótimo te encontrar no Google Cloud Summit.\n\nSei que segurança e personalização são vitais no Banking. A IA pode transformar a experiência do cliente da ${c}.\n\nTopa 15min para falarmos sobre isso?\n\nAbraços,\n${s}` },
             media: { title: "IA para Mídia", benefits: [ { icon: 'star', text: 'Criação de Conteúdo', description: 'Assistência generativa.' }, { icon: 'users', text: 'Análise de Audiência', description: 'Dados em insights.' }, { icon: 'file-text', text: 'Arquivamento Inteligente', description: 'Busca semântica.' } ], message: (l, c, s) => `Olá ${l}!\n\nFoi um prazer te ver no Summit.\n\nEmpresas de mídia estão usando IA para criar e analisar conteúdo como nunca antes. Vejo muito potencial na ${c}.\n\nVamos falar por 15min?\n\nAbraços,\n${s}` },
-            gcp: { title: "Modernização Cloud", benefits: [ { icon: 'cpu', text: 'Infraestrutura Ágil', description: 'Escalabilidade total.' }, { icon: 'shield', text: 'Segurança Nativa', description: 'Proteção de dados.' }, { icon: 'bar-chart', text: 'Data Analytics', description: 'Decisões baseadas em dados.' } ], message: (l, c, s) => `Olá ${l}!\n\nFoi ótimo te encontrar no Google Cloud Summit.\n\nModernizar a infraestrutura com GCP é a base para inovar com IA. Podemos acelerar isso na ${c}.\n\nTopa 15min para uma conversa técnica?\n\nAbraços,\n${s}` }
+            gcp: { 
+                title: "O FUTURO É AGÊNTICO.", 
+                benefits: [ 
+                    { icon: 'cpu', text: 'IA Agêntica', description: 'Sistemas que combinam inteligência avançada com ação real.' }, 
+                    { icon: 'briefcase', text: 'Stack Completo', description: 'De agentes de atendimento a agentes de código.' }, 
+                    { icon: 'rocket', text: 'Liderança', description: 'Transforme seu negócio com o Google Cloud.' } 
+                ], 
+                message: (l, c, s) => `👋 Olá ${l}!\nVocê sabia que o futuro da IA não é apenas conversar com um chatbot, mas ter Agentes que trabalham por você? 🤖💼\nNo Google Cloud, estamos liderando a era da IA Agêntica. Imagine sistemas que combinam inteligência avançada com ação real para transformar seu negócio.\n\nDe agentes de atendimento a agentes de código, temos o stack completo para você começar. 🚀` 
+            }
         };
 
         const contentDataPhase2 = {
@@ -500,8 +506,11 @@
                 body: (l, c, s) => `Olá, ${l}.\n\nUm estudo da McKinsey aponta que até 45% das atividades de trabalho atuais poderiam ser automatizadas. Isso significa que quase metade do tempo de uma equipe pode estar sendo consumido por tarefas repetitivas.\n\nEu sou ${s} da Xertica.ai. Nós usamos Inteligência Artificial para automatizar esses processos, reduzir custos operacionais e liberar as pessoas para focarem no que realmente gera valor.\n\nComprovamos esse impacto em diversos cenários: com nossas soluções de IA, já ajudamos organizações, do setor público ao privado, a economizar mais de 11.000 horas de trabalho em menos de 6 meses e a reduzir o tempo de tramitação de processos de 30 para 5 dias (-83%).\n\nMeu objetivo é entender quais processos manuais mais impactam sua operação hoje e, juntos, co-criarmos uma solução que traga um salto de eficiência para sua empresa.\n\nQue tal agendarmos 15 minutos na próxima semana para explorarmos isso?\n\nAtenciosamente,\n${s}` 
             },
             banking: { subject: "Inovação no Banking", body: (l, c) => `Olá ${l},\n\n[Placeholder Email 2 Banking].\n\nAbraços,` },
-            media: { subject: "Mídia Tech", body: (l, c) => `Olá ${l},\n\n[Placeholder Email 2 Mídia].\n\nAbraços,` },
-            gcp: { subject: "Escalabilidade Cloud", body: (l, c) => `Olá ${l},\n\n[Placeholder Email 2 GCP].\n\nAbraços,` }
+            media: { subject: "IA na Mídia", body: (l, c) => `Olá ${l},\n\n[Placeholder Mídia: Conteúdo e Audiência].\n\nAtenciosamente,` },
+            gcp: { 
+                subject: "O futuro do seu negócio: Colaboradores + Agentes de IA", 
+                body: (l, c, s) => `Olá ${l},\n\nEstamos entrando na era da "IA Agêntica", onde o futuro do trabalho é uma parceria estratégica entre seus colaboradores e agentes inteligentes capazes de agir em seu nome.\n\nNo Google Cloud, não estamos apenas falando sobre modelos de linguagem, mas sobre um stack completo "Agent-ready". Nossa plataforma permite que sua empresa combine a inteligência dos modelos Gemini com ferramentas reais para:\n\n- Customer Agents: Transformar a experiência e interação com o cliente.\n- Data Agents: Extrair insights ricos de dados estruturados e não estruturados.\n- Creative Agents: Criar narrativas e conteúdo com o Imagen 3 e Veo.\n\nGrandes empresas como a Kraft Heinz já reduziram o tempo de lançamento de novos produtos de 8 semanas para apenas 8 horas usando soluções do Google Cloud.\n\nVocê teria 15 minutos na próxima terça-feira para discutirmos como sua organização pode se tornar "Agent-ready"?\n\nAbraços,\n${s}` 
+            }
         };
 
         const contentDataPhase3 = {
@@ -562,7 +571,14 @@
              },
              banking: { title: "Dados Banking:", stats: [ { icon: 'shield', statistic: "-40%", description: "fraudes detectadas." }, { icon: 'users', statistic: "+20%", description: "retenção de clientes." } ], message: (l, c, s) => `Olá ${l}. Dados do setor mostram impacto direto de IA na segurança e retenção.\n\nVamos falar sobre como aplicar isso na ${c}?\n\n${s}` },
              media: { title: "Dados Mídia:", stats: [ { icon: 'star', statistic: "5x", description: "criação de conteúdo." }, { icon: 'users', statistic: "+40%", description: "engajamento." } ], message: (l, c, s) => `Olá ${l}. A velocidade de criação define líderes de mídia hoje.\n\nQue tal falarmos sobre a ${c}?\n\n${s}` },
-             gcp: { title: "Dados Cloud:", stats: [ { icon: 'cpu', statistic: "99.9%", description: "uptime garantido." }, { icon: 'dollar-sign', statistic: "-30%", description: "TCO de infra." } ], message: (l, c, s) => `Olá ${l}. A eficiência da nuvem é base para inovação.\n\nVamos revisar a infra da ${c}?\n\n${s}` }
+             gcp: { 
+                 title: "MAIS CÓDIGO, MENOS ROTINA.", 
+                 stats: [ 
+                     { icon: 'fast-forward', statistic: "+20%", description: "de aumento na velocidade em tarefas comuns com Gemini Code Assist." }, 
+                     { icon: 'cpu', statistic: "+150", description: "modelos disponíveis no Vertex AI (Gemini, Llama, Mistral) em um só lugar." } 
+                 ], 
+                 message: (l, c, s) => `Fala, ${l}! 👨‍💻👩‍💻\nPrecisa acelerar o desenvolvimento aí na ${c}?\nCom o Gemini Code Assist do Google Cloud, desenvolvedores estão vendo um aumento de 20% na velocidade em tarefas comuns. É mais tempo para inovar e menos tempo em tarefas repetitivas.\n\nAlém disso, o Vertex AI oferece acesso a mais de 150 modelos (incluindo Gemini, Llama, Mistral) em um só lugar.\n\nBora marcar um demo rápido?` 
+             }
         };
 
         const contentDataPhase4 = {
@@ -601,7 +617,10 @@
             },
             banking: { subject: "Inovação no Banking", body: (l, c) => `Olá ${l},\n\n[Placeholder Email 2 Banking].\n\nAbraços,` },
             media: { subject: "Mídia Tech", body: (l, c) => `Olá ${l},\n\n[Placeholder Email 2 Mídia].\n\nAbraços,` },
-            gcp: { subject: "Escalabilidade Cloud", body: (l, c) => `Olá ${l},\n\n[Placeholder Email 2 GCP].\n\nAbraços,` }
+            gcp: { 
+                subject: "Reduzindo custos e acelerando a inovação com IA Otimizada", 
+                body: (l, c, s) => `Olá ${l},\n\nMuitas empresas estão experimentando com IA, mas poucas conseguem escalar com eficiência de custo. O Google Cloud resolve isso com uma infraestrutura desenhada especificamente para a era da IA.\n\nCom o AI Hypercomputer e os modelos Gemini Flash 2.0, nossos clientes estão vendo:\n\n- 24x mais inteligência por dólar investido em comparação ao GPT-4.\n- 40% de economia em TCO (Custo Total de Propriedade) com nossa infraestrutura de rede.\n\nA Wayfair, por exemplo, aumentou a produtividade de seus desenvolvedores, permitindo que 60% deles foquem em trabalhos mais significativos.\n\nGostaria de apresentar como o Google Cloud pode trazer esses mesmos ganhos de eficiência para a ${c}.\n\nPodemos agendar uma breve conversa?\n\nAtenciosamente,\n${s}` 
+            }
         };
 
         const contentDataPhase5 = {
@@ -690,7 +709,17 @@
             },
             banking: { title: "Oportunidade Banking", highlight: "Segurança", benefits: ["Anti-Fraude IA", "Atendimento 24/7", "Personalização", "Open Finance"], message: (l, c, s) => `Olá ${l}, [Placeholder WhatsApp Fase 5 Banking].\n\n${s}` },
             media: { title: "Oportunidade Mídia", highlight: "Conteúdo", benefits: ["GenAI Vídeo/Texto", "Personalização", "Monetização", "Arquivos"], message: (l, c, s) => `Olá ${l}, [Placeholder WhatsApp Fase 5 Mídia].\n\n${s}` },
-            gcp: { title: "Oportunidade Cloud", highlight: "Inovação", benefits: ["Modernização Apps", "Data Lakehouse", "IA/ML Ops", "Segurança"], message: (l, c, s) => `Olá ${l}, [Placeholder WhatsApp Fase 5 GCP].\n\n${s}` }
+            gcp: { 
+                title: "DE 8 SEMANAS PARA 8 HORAS.",
+                subtitle: "O impacto da IA do Google Cloud na Kraft Heinz.",
+                tagline: "Resultados reais para líderes de mercado.",
+                benefits: [
+                    { title: "Inovação Rápida", desc: "Redução drástica no ciclo de lançamento de produtos.", icon: "rocket" },
+                    { title: "Valor Real", desc: "McDonald's, Uber e Spotify já usam.", icon: "star" },
+                    { title: "Versatilidade", desc: "De marketing personalizado a logística otimizada.", icon: "map" }
+                ],
+                message: (l, c, s) => `Oi ${l}, tudo bem?\nOlha só esse resultado da Kraft Heinz usando Google Cloud AI: 👇\n🍅 Eles reduziram o tempo de lançamento de novos produtos de 8 semanas para 8 horas! \n\nSeja para criar campanhas de marketing personalizadas ou otimizar a logística, entenda como o Google Cloud está gerando valor real para empresas como McDonald's, Uber, Spotify e Ford.` 
+            }
         };
 
         // --- GESTÃO DE ABAS ---
