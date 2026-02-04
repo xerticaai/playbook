@@ -1,0 +1,98 @@
+{
+  "data": {
+    "pipeline": [
+      {
+        "Run ID": "run_001",
+        "Oportunidade": "Deal Teste Pipeline 1",
+        "Conta": "Empresa ABC Ltda",
+        "Perfil": "Enterprise",
+        "Produtos": "Google Workspace Enterprise",
+        "Vendedor": "João Silva",
+        "Gross": "150000",
+        "Net": "75000",
+        "Fase Atual": "Proposta",
+        "Forecast SF": "COMMIT",
+        "Fiscal Q": "FY26-Q1",
+        "Data Prevista": "15/03/2026",
+        "Ciclo (dias)": "45",
+        "Dias Funil": "30",
+        "Atividades": "12",
+        "Idle (Dias)": "5",
+        "Forecast IA": "COMMIT",
+        "Confiança (%)": "85",
+        "MEDDIC Score": "8/10",
+        "BANT Score": "7/10"
+      },
+      {
+        "Run ID": "run_001",
+        "Oportunidade": "Deal Teste Pipeline 2",
+        "Conta": "Tech Solutions S.A.",
+        "Perfil": "Mid-Market",
+        "Produtos": "Google Cloud Platform",
+        "Vendedor": "Maria Santos",
+        "Gross": "250000",
+        "Net": "125000",
+        "Fase Atual": "Negociação",
+        "Forecast SF": "UPSIDE",
+        "Fiscal Q": "FY26-Q2",
+        "Data Prevista": "20/05/2026",
+        "Ciclo (dias)": "60",
+        "Dias Funil": "45",
+        "Atividades": "18",
+        "Idle (Dias)": "8",
+        "Forecast IA": "UPSIDE",
+        "Confiança (%)": "65",
+        "MEDDIC Score": "6/10",
+        "BANT Score": "7/10"
+      }
+    ],
+    "won": [
+      {
+        "Run ID": "run_001",
+        "Oportunidade": "Deal Ganho 1",
+        "Conta": "Sucesso Corp",
+        "Perfil Cliente": "Enterprise",
+        "Vendedor": "João Silva",
+        "Gross": "100000",
+        "Net": "50000",
+        "Status": "Closed Won",
+        "Fiscal Q": "FY26-Q1",
+        "Data Fechamento": "15/02/2026",
+        "Ciclo (dias)": "30",
+        "Produtos": "Google Workspace",
+        "🎯 Causa Raiz": "Champion forte, ROI claro",
+        "✨ Fatores Sucesso": "Proof of Concept bem executado",
+        "Tipo Resultado": "New Business",
+        "# Atividades": "15",
+        "🏷️ Labels": "Champion Forte, ROI Documentado"
+      }
+    ],
+    "lost": [
+      {
+        "Run ID": "run_001",
+        "Oportunidade": "Deal Perdido 1",
+        "Conta": "Perdeu Inc",
+        "Perfil Cliente": "SMB",
+        "Vendedor": "Maria Santos",
+        "Gross": "50000",
+        "Net": "0",
+        "Status": "Closed Lost",
+        "Fiscal Q": "FY26-Q1",
+        "Data Fechamento": "10/02/2026",
+        "Ciclo (dias)": "25",
+        "Produtos": "Google Workspace",
+        "🎯 Causa Raiz": "Preço",
+        "⚠️ Causas Secundárias": "Falta de budget",
+        "Tipo Resultado": "Competitor Win",
+        "Evitável?": "Sim",
+        "# Atividades": "8",
+        "🏷️ Labels": "Preço Alto, Competitor"
+      }
+    ]
+  },
+  "filters": {
+    "quarter": null,
+    "seller": null,
+    "min_value": 0
+  }
+}
