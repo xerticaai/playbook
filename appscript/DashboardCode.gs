@@ -98,6 +98,18 @@ function callCloudFunction(data, filters) {
     try {
       payloadString = JSON.stringify(payload);
       console.log(`   • Payload serializado: ${(payloadString.length / 1024).toFixed(2)} KB`);
+      
+      // 🔍 DEBUG: Verificar se dados foram preservados na serialização
+      const parsedBack = JSON.parse(payloadString);
+      console.log(`   • Verificação pós-serialização:`);
+      console.log(`     - Pipeline: ${parsedBack.pipeline ? parsedBack.pipeline.length : 'undefined'} deals`);
+      console.log(`     - Won: ${parsedBack.won ? parsedBack.won.length : 'undefined'} deals`);
+      console.log(`     - Lost: ${parsedBack.lost ? parsedBack.lost.length : 'undefined'} deals`);
+      
+      if (parsedBack.pipeline.length === 0 && payload.pipeline.length > 0) {
+        console.error('❌ DADOS PERDIDOS NA SERIALIZAÇÃO! Pipeline tinha ' + payload.pipeline.length + ' deals mas JSON tem 0');
+        return null;
+      }
     } catch (e) {
       console.error('❌ Erro ao serializar payload:', e.message);
       console.error('   • Pipeline deals:', payload.pipeline.length);

@@ -731,9 +731,19 @@ def sales_intelligence_engine(request):
         if request.method != 'POST':
             return ({'error': 'Method not allowed'}, 405, headers)
         
+        # 🔍 DEBUG: Verificar tamanho do request body
+        try:
+            raw_body = request.get_data(as_text=True)
+            body_size_kb = len(raw_body) / 1024
+            logger.info(f"[REQUEST] Body size: {body_size_kb:.2f} KB")
+            logger.info(f"[REQUEST] Body preview (first 500 chars): {raw_body[:500]}")
+        except Exception as e:
+            logger.warning(f"[REQUEST] Erro ao ler raw body: {e}")
+        
         # Parse request
         request_json = request.get_json(silent=True)
         if not request_json:
+            logger.error("[REQUEST] ❌ Falha ao parsear JSON - request_json is None")
             return ({'error': 'No JSON payload'}, 400, headers)
         
         logger.info("Requisição recebida, iniciando processamento...")
