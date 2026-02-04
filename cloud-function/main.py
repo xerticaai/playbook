@@ -749,6 +749,23 @@ def sales_intelligence_engine(request):
         logger.info(f"Dados recebidos: Pipeline={len(pipeline_raw)}, Wins={len(wins_raw)}, Losses={len(losses_raw)}")
         logger.info(f"Filtros: {filters}")
         
+        # 🔍 DEBUG: Verificar conteúdo raw antes de preparar
+        if len(pipeline_raw) > 0:
+            logger.info(f"[DEBUG] Primeira linha pipeline (raw): {list(pipeline_raw[0].keys())[:10]}")
+            logger.info(f"[DEBUG] Tipo primeira linha: {type(pipeline_raw[0])}")
+        else:
+            logger.warning("[DEBUG] ⚠️ pipeline_raw está VAZIO antes de prepare_pipeline_data!")
+            
+        if len(wins_raw) > 0:
+            logger.info(f"[DEBUG] Primeira linha wins (raw): {list(wins_raw[0].keys())[:10]}")
+        else:
+            logger.warning("[DEBUG] ⚠️ wins_raw está VAZIO antes de prepare_closed_data!")
+            
+        if len(losses_raw) > 0:
+            logger.info(f"[DEBUG] Primeira linha losses (raw): {list(losses_raw[0].keys())[:10]}")
+        else:
+            logger.warning("[DEBUG] ⚠️ losses_raw está VAZIO antes de prepare_closed_data!")
+        
         # FASE 1: Preparar dados
         df_pipeline = prepare_pipeline_data(pipeline_raw)
         df_closed = prepare_closed_data(wins_raw, losses_raw)

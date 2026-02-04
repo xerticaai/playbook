@@ -93,10 +93,23 @@ function callCloudFunction(data, filters) {
       console.log(`   • Total colunas pipeline: ${Object.keys(payload.pipeline[0]).length}`);
     }
     
+    // ✅ Tentar serializar payload e capturar erros
+    let payloadString;
+    try {
+      payloadString = JSON.stringify(payload);
+      console.log(`   • Payload serializado: ${(payloadString.length / 1024).toFixed(2)} KB`);
+    } catch (e) {
+      console.error('❌ Erro ao serializar payload:', e.message);
+      console.error('   • Pipeline deals:', payload.pipeline.length);
+      console.error('   • Won deals:', payload.won.length);
+      console.error('   • Lost deals:', payload.lost.length);
+      return null;
+    }
+    
     const options = {
       method: 'post',
       contentType: 'application/json',
-      payload: JSON.stringify(payload),
+      payload: payloadString,
       muteHttpExceptions: true,
       headers: {
         'Authorization': 'Bearer ' + ScriptApp.getIdentityToken()
@@ -134,6 +147,23 @@ function callCloudFunction(data, filters) {
  * IMPORTANTE: As abas de análise usam nomes em PT, mas mantemos os nomes originais
  * @returns {Object} Objeto com arrays pipeline, won, lost
  */
+/**
+ * Sanitiza valor para serialização JSON
+ * Converte Date para ISO string, remove null/undefined
+ */
+function sanitizeValue(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
+  }
+  return value;
+}
+
 function prepareRawDataForCloudFunction() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
@@ -157,8 +187,8 @@ function prepareRawDataForCloudFunction() {
     data.pipeline = pipelineData.slice(1).map(row => {
       const obj = {};
       headers.forEach((header, idx) => {
-        // Manter nomes originais das colunas (Python espera esses nomes)
-        obj[header] = row[idx];
+        // ✅ Sanitizar valores para JSON (Date → ISO string, null → null)
+        obj[header] = sanitizeValue(row[idx]);
       });
       return obj;
     });
@@ -172,7 +202,7 @@ function prepareRawDataForCloudFunction() {
     data.won = wonData.slice(1).map(row => {
       const obj = {};
       headers.forEach((header, idx) => {
-        obj[header] = row[idx];
+        obj[header] = sanitizeValue(row[idx]);
       });
       return obj;
     });
@@ -186,7 +216,7 @@ function prepareRawDataForCloudFunction() {
     data.lost = lostData.slice(1).map(row => {
       const obj = {};
       headers.forEach((header, idx) => {
-        obj[header] = row[idx];
+        obj[header] = sanitizeValue(row[idx]);
       });
       return obj;
     });
