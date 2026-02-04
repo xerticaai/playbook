@@ -83,6 +83,16 @@ function callCloudFunction(data, filters) {
       filters: filters || {}
     };
     
+    // 🔍 DEBUG: Verificar tamanho dos dados antes de enviar
+    console.log(`📊 Payload preparado:`);
+    console.log(`   • Pipeline: ${payload.pipeline.length} deals`);
+    console.log(`   • Won: ${payload.won.length} deals`);
+    console.log(`   • Lost: ${payload.lost.length} deals`);
+    if (payload.pipeline.length > 0) {
+      console.log(`   • Primeira coluna pipeline: ${Object.keys(payload.pipeline[0])[0]}`);
+      console.log(`   • Total colunas pipeline: ${Object.keys(payload.pipeline[0]).length}`);
+    }
+    
     const options = {
       method: 'post',
       contentType: 'application/json',
