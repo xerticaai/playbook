@@ -293,6 +293,13 @@ def prepare_closed_data(wins_data: List[Dict], losses_data: List[Dict]) -> pd.Da
         if col in standardized_df.columns:
             standardized_df[col] = standardized_df[col].apply(clean_money)
     
+    # ✅ Converter colunas numéricas para int/float
+    if 'cycle_days' in standardized_df.columns:
+        standardized_df['cycle_days'] = pd.to_numeric(standardized_df['cycle_days'], errors='coerce').fillna(0).astype(int)
+    
+    if 'activities' in standardized_df.columns:
+        standardized_df['activities'] = pd.to_numeric(standardized_df['activities'], errors='coerce').fillna(0).astype(int)
+    
     # Normalizar texto
     if 'seller_name' in standardized_df.columns:
         standardized_df['seller_name_norm'] = standardized_df['seller_name'].apply(normalize_text)
