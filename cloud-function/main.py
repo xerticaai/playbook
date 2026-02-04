@@ -731,20 +731,28 @@ def sales_intelligence_engine(request):
         if request.method != 'POST':
             return ({'error': 'Method not allowed'}, 405, headers)
         
-        # 🔍 DEBUG: Verificar tamanho do request body
+        # 🔍 DEBUG: Verificar tamanho do request body e parsear JSON
         try:
             raw_body = request.get_data(as_text=True)
             body_size_kb = len(raw_body) / 1024
             logger.info(f"[REQUEST] Body size: {body_size_kb:.2f} KB")
             logger.info(f"[REQUEST] Body preview (first 500 chars): {raw_body[:500]}")
+            
+            # Parse JSON a partir do raw_body (get_data() consome o stream)
+            import json
+            request_json = json.loads(raw_body)
+            logger.info("[REQUEST] ✅ JSON parseado com sucesso")
+        except json.JSONDecodeError as e:
+            logger.error(f"[REQUEST] ❌ Erro ao parsear JSON: {e}")
+            logger.error(f"[REQUEST] Raw body problemático: {raw_body[:1000]}")
+            return ({'error': 'Invalid JSON'}, 400, headers)
         except Exception as e:
-            logger.warning(f"[REQUEST] Erro ao ler raw body: {e}")
+            logger.error(f"[REQUEST] ❌ Erro inesperado ao ler body: {e}")
+            return ({'error': 'Failed to read request body'}, 500, headers)
         
-        # Parse request
-        request_json = request.get_json(silent=True)
         if not request_json:
-            logger.error("[REQUEST] ❌ Falha ao parsear JSON - request_json is None")
-            return ({'error': 'No JSON payload'}, 400, headers)
+            logger.error("[REQUEST] ❌ JSON está vazio após parse")
+            return ({'error': 'Empty JSON payload'}, 400, headers)
         
         logger.info("Requisição recebida, iniciando processamento...")
         
