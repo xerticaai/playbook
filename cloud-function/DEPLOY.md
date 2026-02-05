@@ -5,6 +5,7 @@
 1. **Google Cloud SDK** instalado
 2. **Projeto GCP** configurado
 3. **Permissões** de Cloud Functions Admin
+4. **BigQuery ML Models** treinados (execute os 6 arquivos SQL em `bqml/`)
 
 ## Deploy
 
@@ -14,7 +15,7 @@ gcloud auth login
 gcloud config set project SEU_PROJETO_ID
 ```
 
-### 2. Deploy da Function
+### 2. Deploy da Function Principal (sales-intelligence-engine)
 ```bash
 cd cloud-function
 
@@ -31,9 +32,31 @@ gcloud functions deploy sales-intelligence-engine \
   --max-instances=10
 ```
 
-### 3. Obter URL da Function
+### 3. Deploy da Function ML (ml-intelligence) - NOVO!
 ```bash
+gcloud functions deploy ml-intelligence \
+  --gen2 \
+  --runtime=python311 \
+  --region=us-central1 \
+  --source=. \
+  --entry-point=ml_intelligence \
+  --trigger-http \
+  --allow-unauthenticated \
+  --memory=2GB \
+  --timeout=300s \
+  --max-instances=10
+```
+
+### 4. Obter URLs das Functions
+```bash
+# Endpoint principal
 gcloud functions describe sales-intelligence-engine \
+  --gen2 \
+  --region=us-central1 \
+  --format='value(serviceConfig.uri)'
+
+# Endpoint ML
+gcloud functions describe ml-intelligence \
   --gen2 \
   --region=us-central1 \
   --format='value(serviceConfig.uri)'

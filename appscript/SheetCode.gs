@@ -61,82 +61,10 @@
 // --- FUNÇÕES DE PROCESSAMENTO E OPERAÇÕES DE SHEET ---
 // ================================================================================================
 
-function onOpen() {
-  try {
-    const ui = SpreadsheetApp.getUi();
-    ui.createMenu('🚀 Sales AI (GTM)')
-      // ══════════════════════════════════════════════════════════════
-      // SEÇÃO 1: AUTOMAÇÃO (Auto-Sync + Dashboard)
-      // ══════════════════════════════════════════════════════════════
-      .addSubMenu(ui.createMenu('⚡ Sistema Automático')
-        .addItem('🤖 ▶️ Ativar Tudo (Sync + Dashboard)', 'ativarAutoSync')
-        .addItem('🛑 Desativar Sistema', 'desativarAutoSync')
-        .addItem('📊 Verificar Status Completo', 'verificarStatusAutoSync')
-        .addSeparator()
-        .addItem('🔄 Processar Mudanças Manualmente', 'processarMudancasManual')
-        .addItem('📈 Atualizar Dashboard Manualmente', 'preprocessDashboardData')
-        .addSeparator()
-        .addItem('🔓 Limpar Lock (Manutenção)', 'limparLockAutoSync')
-        .addItem('🧪 Simular Alteração (Debug)', 'simularAlteracaoOportunidade'))
-      
-      // ══════════════════════════════════════════════════════════════
-      // SEÇÃO 2: ANÁLISES MANUAIS (Para processamento sob demanda)
-      // ══════════════════════════════════════════════════════════════
-      .addSeparator()
-      .addSubMenu(ui.createMenu('🎯 Análises Manuais')
-        .addItem('📊 Analisar Pipeline (Open)', 'startPipeline')
-        .addItem('✅ Analisar Ganhas (Won)', 'startWon')
-        .addItem('❌ Analisar Perdidas (Lost)', 'startLost')
-        .addSeparator()
-        .addItem('🔧 Corrigir Change Tracking (Ganhas/Perdidas)', 'corrigirChangeTrackingClosedDeals')
-        .addItem('⏰ Atualizar Timestamps', 'atualizarTimestampsManual')
-        .addItem('📋 Relatório de Qualidade de Dados', 'gerarRelatorioQualidadeDados'))
-      
-      // ══════════════════════════════════════════════════════════════
-      // SEÇÃO 3: WEB DASHBOARD
-      // ══════════════════════════════════════════════════════════════
-      .addSeparator()
-      .addSubMenu(ui.createMenu('🌐 Web Dashboard')
-        .addItem('🔗 Obter URL do Dashboard', 'showWebAppURL')
-        .addItem('🔐 Gerenciar Autenticação', 'manageDashboardAuth')
-        .addSeparator()
-        .addItem('📊 Atualizar Aba de Métricas', 'atualizarAbaDashboardMetrics')
-        .addItem('🗑️ Limpar Cache do Dashboard', 'clearDashboardCache')
-        .addSeparator()
-        .addItem('🐛 Debug: Ver Dados Brutos', 'debugDashboardData')
-        .addItem('📊 Debug: Análise Detalhada do Payload', 'savePayloadDetailedAnalysisMenu'))
-      
-      // ══════════════════════════════════════════════════════════════
-      // SEÇÃO 4: FERRAMENTAS & DIAGNÓSTICO
-      // ══════════════════════════════════════════════════════════════
-      .addSeparator()
-      .addSubMenu(ui.createMenu('🔧 Ferramentas & Diagnóstico')
-        .addItem('💊 Health Check Completo', 'runHealthCheck')
-        .addItem('⚡ Teste Rápido de API', 'runQuickTest')
-        .addSeparator()
-        .addItem('🔍 Diagnóstico: Agregação Gross/Net', 'diagnosticarAgregacaoGrossNet')
-        .addItem('🔍 Varredura Completa: Todas Oportunidades', 'varreduraCompletaAgregacao')
-        .addSeparator()
-        .addItem('🩺 Diagnosticar Flags do Sistema', 'diagnosticarFlags')
-        .addItem('🧹 Limpar Flags Residuais', 'limparFlagsResiduais')
-        .addSeparator()
-        .addItem('� Auditoria: Base vs Análise', 'auditarBaseVsAnalise')
-        .addItem('�🔄 Ativar Auditoria Automática (15 min)', 'configurarAuditoriaAutomatica')
-        .addItem('⏸️ Desativar Auditoria Automática', 'desativarAuditoriaAutomatica')
-        .addItem('🗑️ Limpar Logs Antigos', 'limparLogsManualmente'))
-      
-      // ══════════════════════════════════════════════════════════════
-      // SEÇÃO 5: RESET COMPLETO (Isolado para segurança)
-      // ══════════════════════════════════════════════════════════════
-      .addSeparator()
-      .addItem('🔄 ⚠️ REINICIALIZAÇÃO TOTAL', 'resetPanel')
-      .addToUi();
-    
-    logToSheet_("INFO", "UI", "Menu Enterprise carregado com sucesso.");
-  } catch (e) {
-    console.error("Falha fatal na UI: " + e.message);
-  }
-}
+// ══════════════════════════════════════════════════════════════
+// MENU MOVIDO PARA MenuOpen.gs
+// Centralizado para melhor organização
+// ══════════════════════════════════════════════════════════════
 
 /** Wrappers de disparo vinculados ao menu */
 function startPipeline() { 
@@ -169,54 +97,6 @@ function startLost() {
     logToSheet("ERROR", "Menu", "Erro em startLost: " + e.message);
     SpreadsheetApp.getUi().alert("❌ Erro ao iniciar LOST: " + e.message);
     throw e;
-  }
-}
-
-/**
- * Atualiza a aba 📊 Dashboard_Metrics com métricas pré-calculadas
- * Chamado via menu: Web Dashboard > Atualizar Aba de Métricas
- */
-function atualizarAbaDashboardMetrics() {
-  const ui = SpreadsheetApp.getUi();
-  
-  try {
-    logToSheet("INFO", "Menu", "Atualizando aba Dashboard_Metrics...");
-    
-    // Mostra dialog de progresso
-    ui.showModelessDialog(
-      HtmlService.createHtmlOutput('<p style="font-size: 14px; padding: 20px;">⏳ Calculando métricas e atualizando aba...</p>'),
-      'Processando'
-    );
-    
-    // Chama a função que recalcula tudo (DashboardCode.gs)
-    const result = getDashboardDataFromCache();
-    
-    if (result) {
-      logToSheet("INFO", "Menu", "✅ Aba Dashboard_Metrics atualizada com sucesso");
-      ui.alert(
-        '✅ Sucesso!',
-        'A aba 📊 Dashboard_Metrics foi atualizada com as métricas mais recentes.\n\n' +
-        'Métricas calculadas:\n' +
-        '• Pipeline Total\n' +
-        '• Pipeline FY26\n' +
-        '• Sales Specialist\n' +
-        '• Vendedores Ativos\n' +
-        '• Confiança Média\n' +
-        '• Deals >= 50%\n\n' +
-        'Você pode visualizar os valores na aba 📊 Dashboard_Metrics.',
-        ui.ButtonSet.OK
-      );
-    } else {
-      throw new Error('Função getDashboardDataFromCache() não retornou resultado');
-    }
-    
-  } catch (e) {
-    logToSheet("ERROR", "Menu", "Erro ao atualizar aba Dashboard_Metrics: " + e.message);
-    ui.alert(
-      '❌ Erro',
-      'Ocorreu um erro ao atualizar a aba de métricas:\n\n' + e.message,
-      ui.ButtonSet.OK
-    );
   }
 }
 
@@ -369,17 +249,12 @@ function runHealthCheck() {
     });
   }
   
-  // Verificar AutoSync e Dashboard triggers
+  // Verificar AutoSync trigger
   const syncTrigger = triggers.find(t => t.getHandlerFunction() === 'autoSyncPipelineExecution');
-  const dashTrigger = triggers.find(t => t.getHandlerFunction() === 'preprocessDashboardDataAutomatic');
-  
   const syncStatus = syncTrigger ? "✅ Ativo" : "❌ Inativo";
-  const dashStatus = dashTrigger ? "✅ Ativo" : "❌ Inativo";
   
   report += `AutoSync: ${syncStatus}\n`;
-  report += `Dashboard Auto: ${dashStatus}\n`;
   logToSheet(syncTrigger ? "INFO" : "WARN", "HealthCheck", `AutoSync: ${syncStatus}`);
-  logToSheet(dashTrigger ? "INFO" : "WARN", "HealthCheck", `Dashboard: ${dashStatus}`);
   
   // 5. Verificar estado de execução e lock
   report += "\n🔄 ESTADO DE EXECUÇÃO:\n";
@@ -4325,13 +4200,12 @@ function ativarAutoSync() {
   flushLogs_();
   
   const response = ui.alert(
-    '🤖 Ativar Sistema Auto-Sync + Dashboard',
+    '🤖 Ativar Sistema Auto-Sync',
     'Este sistema monitora automaticamente:\n\n' +
     '✅ Pipeline (Open) - Novas oportunidades e mudanças\n' +
     '✅ Ganhos (Won) - Histórico de vitórias\n' +
     '✅ Perdas (Lost) - Histórico de perdas\n' +
-    '✅ Atividades e Alterações de todas as fontes\n' +
-    '📊 Dashboard Executivo - Cache atualizado automaticamente\n\n' +
+    '✅ Atividades e Alterações de todas as fontes\n\n' +
     '⚡ Frequência: A cada 5 minutos (MODO RÁPIDO)\n' +
     'Processamento: Apenas dados novos (incremental)\n' +
     'Proteção: Lock anti-concorrência\n' +
@@ -4348,56 +4222,44 @@ function ativarAutoSync() {
     // Remove triggers antigos (proteção contra duplicatas)
     const triggers = ScriptApp.getProjectTriggers();
     let removedSync = 0;
-    let removedDashboard = 0;
     
     triggers.forEach(trigger => {
       const funcName = trigger.getHandlerFunction();
       if (funcName === 'autoSyncPipelineExecution') {
         ScriptApp.deleteTrigger(trigger);
         removedSync++;
-      } else if (funcName === 'preprocessDashboardData' || funcName === 'preprocessDashboardDataAutomatic') {
-        ScriptApp.deleteTrigger(trigger);
-        removedDashboard++;
       }
     });
     
-    console.log(`🗑️ Removidos ${removedSync} trigger(s) de sync + ${removedDashboard} trigger(s) de dashboard`);
+    console.log(`🗑️ Removidos ${removedSync} trigger(s) de sync`);
     
-    // Cria triggers: 15 minutos para sync, 5 para dashboard
+    // Cria trigger: 15 minutos para sync
     ScriptApp.newTrigger('autoSyncPipelineExecution')
       .timeBased()
       .everyMinutes(15)
       .create();
     
-    ScriptApp.newTrigger('preprocessDashboardDataAutomatic')
-      .timeBased()
-      .everyMinutes(5)
-      .create();
-    
-    console.log('✅ Triggers criados: Sync a cada 15 min + Dashboard a cada 5 min');
+    console.log('✅ Trigger criado: Sync a cada 15 min');
     
     // Salva configuração
     const props = PropertiesService.getScriptProperties();
     props.setProperty('AUTO_SYNC_ENABLED', 'TRUE');
     props.setProperty('AUTO_SYNC_ACTIVATED_AT', new Date().toISOString());
-    props.setProperty('DASHBOARD_AUTO_UPDATE_ENABLED', 'TRUE');
     
     // Executa primeira sincronização e pré-processamento
     ui.alert(
       '⏳ Primeira Sincronização',
-      'Executando:\n• Verificação de dados\n• Pré-processamento do dashboard\n\nIsso pode levar alguns segundos.',
+      'Executando:\n• Verificação de dados\n\nIsso pode levar alguns segundos.',
       ui.ButtonSet.OK
     );
     
-    // Executa sync e dashboard em paralelo
+    // Executa sync
     autoSyncPipelineExecution();
-    preprocessDashboardData();
     
     ui.alert(
       '✅ Sistema Ativado com Sucesso!',
-      '🤖 Auto-Sync + Dashboard configurados!\n\n' +
+      '🤖 Auto-Sync configurado!\n\n' +
       '⚡ Sincronização: A cada 5 MINUTOS\n' +
-      '📊 Dashboard: Atualizado a cada 5 MINUTOS\n' +
       '🔍 Monitora: Open + Won + Lost + Cache\n' +
       '🔒 Proteção anti-concorrência: ATIVA\n' +
       '⚡ Modo incremental (nunca apaga dados)\n\n' +
@@ -4405,7 +4267,7 @@ function ativarAutoSync() {
       ui.ButtonSet.OK
     );
     
-    logToSheet("INFO", "Sistema", "Auto-Sync + Dashboard ATIVADOS (5min cada)");
+    logToSheet("INFO", "Sistema", "Auto-Sync ATIVADO (5min)");
     flushLogs_(); // Força escrita imediata
     
   } catch (error) {
@@ -4425,7 +4287,7 @@ function ativarAutoSyncPipeline() {
 }
 
 /**
- * DESATIVAR SISTEMA (AUTO-SYNC + DASHBOARD)
+ * DESATIVAR SISTEMA (AUTO-SYNC)
  */
 function desativarAutoSync() {
   const ui = SpreadsheetApp.getUi();
@@ -4434,7 +4296,6 @@ function desativarAutoSync() {
     '🛑 Desativar Sistema Completo',
     'Isso removerá:\n' +
     '• Sincronização automática (Open/Won/Lost)\n' +
-    '• Atualização automática do Dashboard\n' +
     '• Forçará parada de execuções ativas\n' +
     '• Liberará todos os locks\n\n' +
     'Você poderá reprocessar manualmente quando necessário.\n\n' +
@@ -4449,16 +4310,12 @@ function desativarAutoSync() {
   // 1. REMOVER TODOS OS TRIGGERS
   const triggers = ScriptApp.getProjectTriggers();
   let removedSync = 0;
-  let removedDashboard = 0;
   
   triggers.forEach(trigger => {
     const funcName = trigger.getHandlerFunction();
     if (funcName === 'autoSyncPipelineExecution') {
       ScriptApp.deleteTrigger(trigger);
       removedSync++;
-    } else if (funcName === 'preprocessDashboardData' || funcName === 'preprocessDashboardDataAutomatic') {
-      ScriptApp.deleteTrigger(trigger);
-      removedDashboard++;
     }
   });
   
@@ -4481,17 +4338,15 @@ function desativarAutoSync() {
   
   // 3. MARCAR SISTEMA COMO DESATIVADO
   props.setProperty('AUTO_SYNC_ENABLED', 'FALSE');
-  props.setProperty('DASHBOARD_AUTO_UPDATE_ENABLED', 'FALSE');
   props.setProperty('AUTO_SYNC_DEACTIVATED_AT', new Date().toISOString());
   props.setProperty('FORCE_STOP_REQUESTED', 'TRUE'); // Flag para execuções ativas pararem
   
-  const totalRemoved = removedSync + removedDashboard;
+  const totalRemoved = removedSync;
   
   ui.alert(
     '✅ Sistema Desativado',
     (totalRemoved > 0 
-      ? `${removedSync} trigger(s) de sync removido(s)\n` +
-        `${removedDashboard} trigger(s) de dashboard removido(s)\n`
+      ? `${removedSync} trigger(s) de sync removido(s)\n`
       : 'Nenhum trigger estava ativo.\n') +
     (hadLock 
       ? '🔓 Lock ativo foi FORÇADAMENTE liberado.\n' 
@@ -4501,41 +4356,33 @@ function desativarAutoSync() {
     ui.ButtonSet.OK
   );
   
-  logToSheet("INFO", "Sistema", `Desativado: ${removedSync} sync + ${removedDashboard} dashboard | Lock forçado: ${hadLock ? 'SIM' : 'NÃO'}`);
+  logToSheet("INFO", "Sistema", `Desativado: ${removedSync} sync | Lock forçado: ${hadLock ? 'SIM' : 'NÃO'}`);
 }
 
 /**
- * VERIFICAR STATUS DO SISTEMA (AUTO-SYNC + DASHBOARD)
+ * VERIFICAR STATUS DO SISTEMA (AUTO-SYNC)
  */
 function verificarStatusAutoSync() {
   const triggers = ScriptApp.getProjectTriggers();
   const syncTriggers = triggers.filter(t => t.getHandlerFunction() === 'autoSyncPipelineExecution');
-  const dashboardTriggers = triggers.filter(t => 
-    t.getHandlerFunction() === 'preprocessDashboardData' || 
-    t.getHandlerFunction() === 'preprocessDashboardDataAutomatic'
-  );
   const props = PropertiesService.getScriptProperties();
   
   let mensagem = '';
   
-  const totalTriggers = syncTriggers.length + dashboardTriggers.length;
+  const totalTriggers = syncTriggers.length;
   
   if (totalTriggers === 0) {
     mensagem = '❌ SISTEMA INATIVO\n\n' +
                'Não há triggers configurados.\n\n' +
-               '💡 Use "Ativar Sistema" para configurar Auto-Sync + Dashboard.';
+               '💡 Use "Ativar Sistema" para configurar Auto-Sync.';
   } else {
     const lastSync = props.getProperty('AUTO_SYNC_LAST_RUN') || 'Nunca';
     const activatedAt = props.getProperty('AUTO_SYNC_ACTIVATED_AT') || 'Desconhecido';
-    const dashboardEnabled = props.getProperty('DASHBOARD_AUTO_UPDATE_ENABLED') === 'TRUE';
-    
     mensagem = `✅ SISTEMA ATIVO\n\n` +
                `📊 TRIGGERS CONFIGURADOS:\n` +
-               `   • ${syncTriggers.length} Auto-Sync (Open/Won/Lost)\n` +
-               `   • ${dashboardTriggers.length} Dashboard Executivo\n\n` +
+               `   • ${syncTriggers.length} Auto-Sync (Open/Won/Lost)\n\n` +
                `⚡ Frequência: A cada 5 MINUTOS (MODO RÁPIDO)\n` +
-               `🔒 Proteção anti-concorrência: ATIVA\n` +
-               `📊 Dashboard auto-update: ${dashboardEnabled ? 'ATIVO' : 'INATIVO'}\n\n` +
+               `🔒 Proteção anti-concorrência: ATIVA\n\n` +
                `📅 Ativado em: ${new Date(activatedAt).toLocaleString('pt-BR')}\n` +
                `🔄 Última execução: ${lastSync !== 'Nunca' ? new Date(lastSync).toLocaleString('pt-BR') : lastSync}\n`;
   }

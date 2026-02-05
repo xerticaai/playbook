@@ -233,7 +233,7 @@
     </div>
     
     <!-- Botão de Atualizar -->
-    <button class="refresh-btn" onclick="clearDashboardCache()" title="Atualizar Dashboard (Limpa Cache)">
+    <button class="refresh-btn" onclick="refreshDashboard()" title="Atualizar Dashboard">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 28px; height: 28px;">
         <polyline points="23 4 23 10 17 10"/>
         <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
@@ -371,6 +371,17 @@
             <!-- Preenchido dinamicamente -->
           </select>
         </div>
+
+        <!-- Filtro por Ano Fiscal -->
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 12px; color: var(--text-gray); font-weight: 600; display: flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+            ANO:
+          </span>
+          <select id="year-filter" onchange="setYearFilter(this.value)" style="padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(176,184,196,0.3); background: var(--bg-primary); color: var(--text-primary); cursor: pointer; font-weight: 500; font-size: 13px; transition: all 0.3s; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+            <option value="FY26">FY26</option>
+          </select>
+        </div>
       </div>
       
       <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
@@ -429,7 +440,7 @@
           <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="20 6 9 17 4 12"/>
           </svg>
-          <div class="kpi-title">Fechado no Quarter</div>
+          <div class="kpi-title">Deals Fechados</div>
           <div class="kpi-value val-green" id="exec-closed-total">-</div>
           <div class="kpi-subtitle" id="exec-closed-deals" style="font-size: 11px; line-height: 1.3;">- deals ganhos</div>
           <div class="kpi-subtitle" id="exec-closed-net" style="font-size: 11px; margin-top: 5px; padding: 3px 8px; background: rgba(16,185,129,0.12); color: var(--success); border-radius: 4px; display: inline-block; font-weight: 600;">Net: -</div>
@@ -1265,6 +1276,10 @@
   <script>
     // Função de log (wrapper para console.log)
     const log = (...args) => console.log(...args);
+
+    // Endpoints (Firebase -> Cloud Functions)
+    const DASHBOARD_API_URL = 'https://us-central1-operaciones-br.cloudfunctions.net/sales-intelligence-engine';
+    const ML_API_URL = 'https://us-central1-operaciones-br.cloudfunctions.net/ml-intelligence';
     
     // Recupera dados do servidor (não mais injetados pelo template)
     let DATA = {
@@ -1281,58 +1296,150 @@
     
     // Inicialização
     document.addEventListener('DOMContentLoaded', () => {
-      
-      // Busca dados do servidor via Google Apps Script
-      google.script.run
-        .withSuccessHandler(function(jsonString) {
-          try {
-            log('[DASHBOARD] ========== INÍCIO DO CARREGAMENTO ==========');
-            log('[DATA] JSON recebido (tamanho):', jsonString.length, 'bytes');
-            DATA = JSON.parse(jsonString);
-            
-            // Informações de cache
-            const cacheAge = DATA.updatedAt ? Math.floor((new Date() - new Date(DATA.updatedAt)) / 60000) : 0;
-            const cacheStatus = cacheAge < 5 ? '✅ ATUAL' : cacheAge < 10 ? '⚠️ PODE ESTAR DESATUALIZADO' : '❌ DESATUALIZADO';
-            console.log(`📦 Cache: ${cacheStatus} (${cacheAge} minutos, TTL: 5min)`);
-            console.log(`🕐 Última atualização: ${DATA.updatedAt}`);
-            
-            log('[DATA] Estrutura de dados carregada:', {
-              'weeklyAgenda quarters': Object.keys(DATA.weeklyAgenda || {}).length,
-              'fsrScorecard vendedores': (DATA.fsrScorecard || []).length,
-              'l10 keys': Object.keys(DATA.l10 || {}).length,
-              'insights winFactors': (DATA.insights?.topWinFactors || []).length,
-              'insights lossCauses': (DATA.insights?.topLossCauses || []).length,
-              'aiAnalysis keys': Object.keys(DATA.aiAnalysis || {}).length,
-              'wordClouds': DATA.wordClouds ? Object.keys(DATA.wordClouds).map(k => `${k}:${DATA.wordClouds[k].length}`).join(', ') : 'N/A',
-              'quarterLabel': DATA.quarterLabel,
-              'updatedAt': DATA.updatedAt,
-              'cacheAge': `${cacheAge} min`
-            });
-            
-            // Debug detalhado de insights
-            if (DATA.insights) {
-              log('[DEBUG] Insights completo:', DATA.insights);
-              if (DATA.insights.topWinFactors) {
-                log('[DEBUG] Top 3 Win Factors:', DATA.insights.topWinFactors.slice(0, 3));
-              }
-              if (DATA.insights.topLossCauses) {
-                log('[DEBUG] Top 3 Loss Causes:', DATA.insights.topLossCauses.slice(0, 3));
-              }
-            }
-            
-            log('[DATA] Dados completos:', DATA);
-            renderDashboard();
-          } catch(e) {
-            console.error('[ERROR] Erro ao parsear dados:', e);
-            showError('Erro ao carregar dados: ' + e.message);
-          }
-        })
-        .withFailureHandler(function(error) {
-          console.error('❌ Erro ao buscar dados:', error);
-          showError('Erro ao buscar dados do servidor: ' + error.message);
-        })
-        .getDashboardDataFromCache();
+      loadDashboardData();
     });
+
+    async function loadDashboardData() {
+      try {
+        log('[DASHBOARD] ========== INÍCIO DO CARREGAMENTO ==========');
+        const response = await fetch(DASHBOARD_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ source: 'bigquery', filters: {} })
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(`Cloud Function HTTP ${response.status}: ${text}`);
+        }
+
+        const raw = await response.json();
+        DATA = normalizeCloudResponse(raw);
+
+        log('[DATA] Estrutura de dados carregada:', {
+          'weeklyAgenda quarters': Object.keys(DATA.weeklyAgenda || {}).length,
+          'fsrScorecard vendedores': (DATA.fsrScorecard || []).length,
+          'l10 keys': Object.keys(DATA.l10 || {}).length,
+          'insights winFactors': (DATA.insights?.topWinFactors || []).length,
+          'insights lossCauses': (DATA.insights?.topLossCauses || []).length,
+          'aiAnalysis keys': Object.keys(DATA.aiAnalysis || {}).length,
+          'wordClouds': DATA.wordClouds ? Object.keys(DATA.wordClouds).map(k => `${k}:${DATA.wordClouds[k].length}`).join(', ') : 'N/A',
+          'quarterLabel': DATA.quarterLabel,
+          'updatedAt': DATA.updatedAt
+        });
+
+        // Debug detalhado de insights
+        if (DATA.insights) {
+          log('[DEBUG] Insights completo:', DATA.insights);
+          if (DATA.insights.topWinFactors) {
+            log('[DEBUG] Top 3 Win Factors:', DATA.insights.topWinFactors.slice(0, 3));
+          }
+          if (DATA.insights.topLossCauses) {
+            log('[DEBUG] Top 3 Loss Causes:', DATA.insights.topLossCauses.slice(0, 3));
+          }
+        }
+
+        log('[DATA] Dados completos:', DATA);
+        renderDashboard();
+      } catch (e) {
+        console.error('[ERROR] Erro ao carregar dados:', e);
+        showError('Erro ao carregar dados: ' + e.message);
+      }
+    }
+
+    function normalizeCloudResponse(raw) {
+      const nowIso = new Date().toISOString();
+      const cloud = raw && raw.status === 'success' ? raw : null;
+      const executive = cloud?.pipeline_analysis?.executive || {};
+      const lossReasons = cloud?.closed_analysis?.loss_reasons || {};
+      const topLossCauses = Object.keys(lossReasons).map(key => ({
+        cause: key,
+        count: lossReasons[key]
+      }));
+
+      const sellerSummary = cloud?.pipeline_analysis?.sellers || [];
+      const winRateBySeller = cloud?.closed_analysis?.win_rate_by_seller || {};
+      const fsrScorecard = sellerSummary.map(seller => {
+        const win = winRateBySeller[seller.name] || {};
+        const totalWon = win.won || 0;
+        const totalDeals = win.total || seller.total_deals || 0;
+        const totalLost = totalDeals - totalWon;
+        const winRate = win.rate || 0;
+        return {
+          name: seller.name || 'N/A',
+          isActive: true,
+          ipv: 0,
+          ipvBreakdown: { result: 0, efficiency: 0, behavior: 0 },
+          totalDeals: seller.total_deals || totalDeals || 0,
+          totalWon: totalWon,
+          totalLost: totalLost < 0 ? 0 : totalLost,
+          winRate: winRate,
+          revenueGross: win.won_value || 0,
+          revenue: win.won_value || 0,
+          avgGross: seller.avg_deal_size || 0,
+          avgWinCycle: cloud?.closed_analysis?.avg_cycle_won_days || 0,
+          avgLossCycle: cloud?.closed_analysis?.avg_cycle_lost_days || 0,
+          avgActivitiesWin: 0,
+          topWinFactor: 'N/A',
+          topLossCause: 'N/A',
+          totalWonQuarter: 0,
+          totalLostQuarter: 0
+        };
+      });
+
+      const byForecast = cloud?.aggregations?.by_forecast_category || [];
+      let avgConfidence = 0;
+      let confidenceWeight = 0;
+      let above50Gross = 0;
+      let above50Count = 0;
+      let commitGross = 0;
+      let upsideGross = 0;
+      let pipelineGross = 0;
+      byForecast.forEach(cat => {
+        const count = cat.count || 0;
+        const avg = cat.avg_confidence || 0;
+        confidenceWeight += count;
+        avgConfidence += avg * count;
+        if (cat.category === 'COMMIT') commitGross += cat.total_gross || 0;
+        if (cat.category === 'UPSIDE') upsideGross += cat.total_gross || 0;
+        if (cat.category === 'PIPELINE') pipelineGross += cat.total_gross || 0;
+        if (cat.category === 'COMMIT' || cat.category === 'UPSIDE') {
+          above50Gross += cat.total_gross || 0;
+          above50Count += count;
+        }
+      });
+      avgConfidence = confidenceWeight > 0 ? (avgConfidence / confidenceWeight) : 0;
+
+      const totalGross = executive.pipeline_all?.gross || 0;
+      const totalNet = executive.pipeline_all?.net || 0;
+      const netRatio = totalGross > 0 ? (totalNet / totalGross) : 0;
+      const above50Net = above50Gross * netRatio;
+
+      return {
+        l10: {},
+        executive: executive,
+        fsrScorecard: fsrScorecard,
+        fsrMetrics: {},
+        insights: { topWinFactors: [], topLossCauses: topLossCauses },
+        aiAnalysis: {},
+        weeklyAgenda: cloud?.weekly_agenda || {},
+        wordClouds: cloud?.word_clouds || { winTypes: [], winLabels: [], lossTypes: [], lossLabels: [], riskFlags: [], actionLabels: [] },
+        wonAgg: cloud?.won_agg || [],
+        lostAgg: cloud?.lost_agg || [],
+        cloudMetrics: {
+          avgConfidence: avgConfidence,
+          above50Gross: above50Gross,
+          above50Net: above50Net,
+          above50Count: above50Count,
+          commitGross: commitGross,
+          upsideGross: upsideGross,
+          pipelineGross: pipelineGross
+        },
+        cloudAnalysis: cloud || {},
+        updatedAt: cloud?.timestamp || nowIso,
+        quarterLabel: cloud?.closed_analysis?.closed_quarter?.quarter || 'FY26-Q1'
+      };
+    }
     
     function showError(message) {
       document.body.innerHTML = `
@@ -1353,26 +1460,9 @@
       `;
     }
     
-    // Função para limpar cache (chamada pelo botão)
+    // Não há cache no frontend Firebase; apenas recarrega a página.
     function clearDashboardCache() {
-      console.log('🔄 Limpando cache e recarregando...');
-      const btn = document.querySelector('.refresh-btn');
-      if (btn) {
-        btn.style.animation = 'spin 1s linear infinite';
-        btn.disabled = true;
-      }
-      
-      google.script.run
-        .withSuccessHandler(function() {
-          console.log('✅ Cache limpo com sucesso!');
-          setTimeout(() => location.reload(), 500);
-        })
-        .withFailureHandler(function(error) {
-          console.error('❌ Erro ao limpar cache:', error);
-          alert('Erro ao limpar cache. Recarregando página mesmo assim...');
-          setTimeout(() => location.reload(), 500);
-        })
-        .clearCache();
+      refreshDashboard();
     }
 
     // Função para mostrar tempo desde última atualização
@@ -1627,6 +1717,21 @@
           }
         });
         
+        // Fallback para métricas agregadas quando não há deals detalhados
+        const cloudMetrics = DATA.cloudMetrics || {};
+        if (totalDealsProcessed === 0) {
+          if (cloudMetrics.above50Count > 0) {
+            above50Value = cloudMetrics.above50Gross || 0;
+            above50Net = cloudMetrics.above50Net || 0;
+            above50Count = cloudMetrics.above50Count || 0;
+          }
+          if (cloudMetrics.commitGross || cloudMetrics.upsideGross || cloudMetrics.pipelineGross) {
+            commitValue = cloudMetrics.commitGross || 0;
+            upsideValue = cloudMetrics.upsideGross || 0;
+            pipelineValue = cloudMetrics.pipelineGross || 0;
+          }
+        }
+
         // Função global para recalcular saúde do forecast por período
         window.updateForecastHealth = function(period) {
           log('[FORECAST HEALTH] Iniciando atualização para período:', period);
@@ -1709,6 +1814,9 @@
         const avgConfidenceCalc = totalDealsProcessed > 0 ? (totalConfidence / totalDealsProcessed) * 100 : 0;
         // Se métricas estáticas foram carregadas, usa avgConfidence de lá, senão usa calculado
         let avgConfidence = avgConfidenceCalc > 0 ? avgConfidenceCalc : confidenceFromAI;
+        if (avgConfidence === 0 && cloudMetrics.avgConfidence) {
+          avgConfidence = cloudMetrics.avgConfidence;
+        }
         if (window.STATIC_METRICS_LOADED && window.STATIC_METRICS) {
           avgConfidence = parseFloat(window.STATIC_METRICS.avgConfidence);
           log('[HYBRID] Usando confiança média das métricas estáticas:', avgConfidence + '%');
@@ -1720,17 +1828,35 @@
         // Armazena globalmente para evitar reset ao filtrar
         window.avgConfidence = avgConfidence;
         
+        // Quarter atual para cálculos dependentes
+        const currentQuarterLabel = DATA.quarterLabel || safe(DATA, 'cloudAnalysis.closed_analysis.closed_quarter.quarter', 'FY26-Q1');
+
         // Total fechado no quarter (soma dos ganhos dos vendedores ativos - APENAS QUARTER ATUAL)
-        const closedGross = activeReps.reduce((sum, r) => sum + (r.revenueGross || 0), 0);
-        const closedNet = activeReps.reduce((sum, r) => sum + (r.revenue || 0), 0);
-        const closedDeals = activeReps.reduce((sum, r) => sum + (r.totalWonQuarter || 0), 0);
+        let closedGross = activeReps.reduce((sum, r) => sum + (r.revenueGross || 0), 0);
+        let closedNet = activeReps.reduce((sum, r) => sum + (r.revenue || 0), 0);
+        let closedDeals = activeReps.reduce((sum, r) => sum + (r.totalWonQuarter || 0), 0);
+        const closedQuarter = safe(DATA, 'cloudAnalysis.closed_analysis.closed_quarter.closed', null);
+        if (closedDeals === 0 && closedQuarter) {
+          closedGross = closedQuarter.gross || 0;
+          closedNet = closedQuarter.net || 0;
+          closedDeals = closedQuarter.deals_count || 0;
+        }
         log('[CALC] Fechados no Quarter:', formatMoney(closedGross), '(Gross) |', formatMoney(closedNet), '(Net) | (', closedDeals, 'deals )');
         
         // Taxa de conversão do quarter (APENAS QUARTER ATUAL)
-        const totalWins = activeReps.reduce((sum, r) => sum + (r.totalWonQuarter || 0), 0);
-        const totalLosses = activeReps.reduce((sum, r) => sum + (r.totalLostQuarter || 0), 0);
-        const totalDeals = totalWins + totalLosses;
-        const conversionRate = totalDeals > 0 ? Math.round((totalWins / totalDeals) * 100) : 0;
+        let totalWins = activeReps.reduce((sum, r) => sum + (r.totalWonQuarter || 0), 0);
+        let totalLosses = activeReps.reduce((sum, r) => sum + (r.totalLostQuarter || 0), 0);
+        let totalDeals = totalWins + totalLosses;
+        let conversionRate = totalDeals > 0 ? Math.round((totalWins / totalDeals) * 100) : 0;
+        if (totalDeals === 0) {
+          const closedStats = safe(DATA, 'cloudAnalysis.closed_analysis', {});
+          const convStats = safe(DATA, 'cloudAnalysis.conversion_rate', {});
+          const winRate = convStats.win_rate || closedStats.win_rate || 0;
+          conversionRate = Math.round(winRate);
+          totalWins = closedStats.won || 0;
+          totalLosses = closedStats.lost || 0;
+          totalDeals = totalWins + totalLosses;
+        }
         
         // CORREÇÃO: Declara wonAgg e lostAgg a partir do objeto DATA
         const wonAgg = DATA.wonAgg || [];
@@ -3356,12 +3482,7 @@
       // Armazena filtro atual para debug
       window.currentPeriodFilter = period;
       
-      if (!window.pipelineData) {
-        log('[FILTER] ⚠️ pipelineData não disponível');
-        return;
-      }
-      
-      const data = window.pipelineData[period];
+      const data = getPipelineDataForPeriod(period);
       if (!data) {
         log('[FILTER] ⚠️ Dados do período não encontrados:', period);
         return;
@@ -3454,6 +3575,106 @@
       }
       
       log('[FILTER] ========== FILTRO APLICADO COM SUCESSO ==========');
+    }
+
+    function getPipelineDataForPeriod(period) {
+      const fy = window.currentFY || 'FY26';
+      const repFilter = window.currentRepFilter && window.currentRepFilter !== 'all'
+        ? window.currentRepFilter
+        : null;
+
+      const byQuarter = window.pipelineAggByQuarter || [];
+      const bySellerQuarter = window.pipelineAggBySellerQuarter || [];
+      const netRatio = window.pipelineNetRatio || 0;
+
+      const matchQuarter = (quarter) => {
+        if (period === 'all') return true;
+        if (!quarter) return false;
+        if (period === 'total') return quarter.startsWith(fy + '-');
+        if (['q1', 'q2', 'q3', 'q4'].includes(period)) {
+          return quarter === fy + '-' + period.toUpperCase();
+        }
+        return false;
+      };
+
+      if (repFilter) {
+        let gross = 0;
+        let count = 0;
+        bySellerQuarter.forEach(item => {
+          if (item.seller === repFilter && matchQuarter(item.quarter)) {
+            gross += item.total_gross || 0;
+            count += item.count || 0;
+          }
+        });
+
+        return {
+          gross: gross,
+          net: gross * netRatio,
+          count: count
+        };
+      }
+
+      let gross = 0;
+      let net = 0;
+      let count = 0;
+      byQuarter.forEach(item => {
+        if (matchQuarter(item.quarter)) {
+          gross += item.total_gross || 0;
+          net += item.total_net || 0;
+          count += item.count || 0;
+        }
+      });
+
+      return {
+        gross: gross,
+        net: net,
+        count: count
+      };
+    }
+
+    function populateYearFilter() {
+      const select = document.getElementById('year-filter');
+      if (!select) return;
+
+      const byQuarter = safe(DATA, 'cloudAnalysis.aggregations.by_quarter', []);
+      const years = Array.from(new Set(byQuarter
+        .map(item => (item.quarter || '').split('-')[0])
+        .filter(Boolean)
+      ));
+
+      years.sort();
+      if (years.length === 0) {
+        years.push(window.currentFY || 'FY26');
+      }
+
+      select.innerHTML = '';
+      years.forEach(year => {
+        const option = document.createElement('option');
+        option.value = year;
+        option.textContent = year;
+        select.appendChild(option);
+      });
+
+      const defaultYear = years.includes(window.currentFY) ? window.currentFY : years[0];
+      select.value = defaultYear;
+      window.currentFY = defaultYear;
+      updateYearLabels();
+    }
+
+    function updateYearLabels() {
+      const currentFY = window.currentFY || 'FY26';
+      setTextSafe('filter-total-label', 'Todo Pipeline (' + currentFY + ')');
+      setTextSafe('filter-q1-label', currentFY + '-Q1');
+      setTextSafe('filter-q2-label', currentFY + '-Q2');
+      setTextSafe('filter-q3-label', currentFY + '-Q3');
+      setTextSafe('filter-q4-label', currentFY + '-Q4');
+    }
+
+    function setYearFilter(year) {
+      window.currentFY = year;
+      updateYearLabels();
+      const currentPeriod = window.currentPeriodFilter || 'all';
+      filterPipeline(currentPeriod);
     }
 
     // Função para popular dropdown de vendedores ativos
@@ -3617,18 +3838,28 @@
     function loadMLPredictions() {
       log('[ML] Carregando predições...');
       document.getElementById('ml-content-area').innerHTML = '<div class="loading">🤖 Carregando predições ML...</div>';
-      
-      google.script.run
-        .withSuccessHandler(function(response) {
-          ML_DATA = typeof response === 'string' ? JSON.parse(response) : response;
+
+      fetch(ML_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'all', filters: {} })
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            const text = await response.text();
+            throw new Error(`ML HTTP ${response.status}: ${text}`);
+          }
+          return response.json();
+        })
+        .then((data) => {
+          ML_DATA = data;
           log('[ML] ✅ Dados ML carregados');
           switchMLTab('previsao-ciclo');
         })
-        .withFailureHandler(function(error) {
+        .catch((error) => {
           console.error('[ML] ❌ Erro:', error);
           document.getElementById('ml-content-area').innerHTML = '<div class="ai-card"><h2 style="color:var(--danger);">❌ Erro ao carregar ML</h2></div>';
-        })
-        .getMLPredictions();
+        });
     }
 
     function switchMLTab(tabName) {

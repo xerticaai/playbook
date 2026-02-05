@@ -1,7 +1,7 @@
 /**
  * @fileoverview ANALISADOR DE VENDAS & MOTOR DE GOVERNANÇA GTM (VERSÃO 52.0 - DISTRIBUIÇÃO PROPORCIONAL MENSAL)
  * @author Arquiteto de Software Sênior - Especialista em Operações de Vendas
- * 
+ *
  * ================================================================================
  * MANIFESTO ARQUITETURAL
  * ================================================================================
@@ -12,153 +12,28 @@
  * 5. TAXONOMIA FISCAL: Rótulos FY26 automáticos sincronizados com o calendário GTM 2026.
  * 6. MAPEAMENTO DINÂMICO: Todas as abas são lidas via cabeçalho (sem índices fixos).
  * 7. PROTOCOLO DE ANÁLISE FORÇADA: Análise obrigatória de todos os deals para expor riscos de "CRM Vazio".
- * 
+ *
  * ================================================================================
  * ESTRUTURA DO CÓDIGO POR MODO DE ANÁLISE
  * ================================================================================
- * 
+ *
  * 📊 PIPELINE (OPEN) - Oportunidades Abertas:
  *    - Foco: Forecast, Governança, Próximas Ações
- *    - Hard Gates: Estagnação, Deal Desk, Governo, Net Zero
- *    - Análise IA: Categorização (COMMIT/UPSIDE/PIPELINE/OMITIDO)
- *    - Output: 44 colunas incluindo MEDDIC, BANT, Ciclo, Change Tracking, Anomalies, Velocity
- *    - Métrica Chave: "Dias Funil" = HOJE - CREATED DATE
- *    - Métrica Secundária: "Ciclo (dias)" = CLOSE DATE - CREATED DATE
- *    - Change Tracking: Total mudanças, críticas, close date, stage, valor
- *    - Anomalias: Detecta padrões suspeitos (múltiplos editores, mudanças excessivas, volatilidade)
- * 
- * ✅ GANHOS (WON) - Oportunidades Ganhas:
- *    - Foco: Fatores de Sucesso, Replicabilidade
- *    - Análise IA: Causa Raiz, Qualidade Engajamento, Gestão
- *    - Output: 39 colunas incluindo Lições Aprendidas
- *    - Métrica Chave: "Ciclo (dias)" = CLOSE DATE - CREATED DATE
- * 
- * ❌ PERDAS (LOST) - Oportunidades Perdidas:
- *    - Foco: Causas, Evitabilidade, Aprendizados
- *    - Análise IA: Causa Raiz, Sinais Alerta, Momento Crítico
- *    - Output: 39 colunas incluindo Evitável?, Causas Secundárias
- *    - Métrica Chave: "Ciclo (dias)" = CLOSE DATE - CREATED DATE
- * 
- * ================================================================================
- * CAMADAS DA ARQUITETURA
- * ================================================================================
- * 1. UI Layer: Menu do usuário, triggers, health checks
- * 2. Governança e Controle: Tick system, queue management
- * 3. Engine Layer: Processamento batch, hard gates, análise IA
- * 4. Prompt Generators: Construção de prompts específicos por modo
- * 5. Output Builders: Montagem de linhas de output por modo
- * 6. Utilities: Parsers, normalizadores, calculadores
- * 
- * @version 51.1
  */
 
 // ================================================================================================
-// --- CONFIGURAÇÕES GLOBAIS E IDENTIDADE DO PROJETO ---
+// --- CONFIGURAÇÕES GLOBAIS ---
 // ================================================================================================
 
-// URL da Cloud Function (configurar após deploy)
-const CLOUD_FUNCTION_URL = 'https://us-central1-operaciones-br.cloudfunctions.net/sales-intelligence-engine';
-const USE_CLOUD_FUNCTION = true; // ✅ ATIVADO! Usa Cloud Function Python para análises
+// URL da Cloud Function (Deploy 05 Feb 2026)
+const CLOUD_FUNCTION_URL = 'https://sales-intelligence-engine-j7loux7yta-uc.a.run.app';
+const USE_CLOUD_FUNCTION = true;
 
-// ================================================================================================
-// --- INTEGRAÇÃO COM CLOUD FUNCTION ---
-// ================================================================================================
+// ========== CONFIGURAÇÃO BIGQUERY ==========
+const USE_BIGQUERY = true;
+const BIGQUERY_ENABLED = true;
 
-/**
- * Chama a Cloud Function Python para análise pesada de dados
- * @param {Object} data - Dados brutos das abas (pipeline, ganhas, perdidas)
- * @param {Object} filters - Filtros do dashboard (quarter, seller, minValue)
- * @returns {Object} - Análise completa processada pela Cloud Function
- */
-function callCloudFunction(data, filters) {
-  console.log('🚀 Chamando Cloud Function para análise...');
-  
-  try {
-    // ✅ FIX: Cloud Function espera {pipeline, won, lost, filters} direto no root
-    // NÃO {data: {pipeline, won, lost}, filters}
-    const payload = {
-      pipeline: data.pipeline || [],
-      won: data.won || [],
-      lost: data.lost || [],
-      filters: filters || {}
-    };
-    
-    // 🔍 DEBUG: Verificar tamanho dos dados antes de enviar
-    console.log(`📊 Payload preparado:`);
-    console.log(`   • Pipeline: ${payload.pipeline.length} deals`);
-    console.log(`   • Won: ${payload.won.length} deals`);
-    console.log(`   • Lost: ${payload.lost.length} deals`);
-    if (payload.pipeline.length > 0) {
-      console.log(`   • Primeira coluna pipeline: ${Object.keys(payload.pipeline[0])[0]}`);
-      console.log(`   • Total colunas pipeline: ${Object.keys(payload.pipeline[0]).length}`);
-    }
-    
-    // ✅ Tentar serializar payload e capturar erros
-    let payloadString;
-    try {
-      payloadString = JSON.stringify(payload);
-      console.log(`   • Payload serializado: ${(payloadString.length / 1024).toFixed(2)} KB`);
-      
-      // 🔍 DEBUG: Verificar se dados foram preservados na serialização
-      const parsedBack = JSON.parse(payloadString);
-      console.log(`   • Verificação pós-serialização:`);
-      console.log(`     - Pipeline: ${parsedBack.pipeline ? parsedBack.pipeline.length : 'undefined'} deals`);
-      console.log(`     - Won: ${parsedBack.won ? parsedBack.won.length : 'undefined'} deals`);
-      console.log(`     - Lost: ${parsedBack.lost ? parsedBack.lost.length : 'undefined'} deals`);
-      
-      if (parsedBack.pipeline.length === 0 && payload.pipeline.length > 0) {
-        console.error('❌ DADOS PERDIDOS NA SERIALIZAÇÃO! Pipeline tinha ' + payload.pipeline.length + ' deals mas JSON tem 0');
-        return null;
-      }
-    } catch (e) {
-      console.error('❌ Erro ao serializar payload:', e.message);
-      console.error('   • Pipeline deals:', payload.pipeline.length);
-      console.error('   • Won deals:', payload.won.length);
-      console.error('   • Lost deals:', payload.lost.length);
-      return null;
-    }
-    
-    const options = {
-      method: 'post',
-      contentType: 'application/json',
-      payload: payloadString,
-      muteHttpExceptions: true,
-      headers: {
-        'Authorization': 'Bearer ' + ScriptApp.getIdentityToken()
-      }
-    };
-    
-    const response = UrlFetchApp.fetch(CLOUD_FUNCTION_URL, options);
-    const responseCode = response.getResponseCode();
-    
-    if (responseCode !== 200) {
-      console.error('❌ Erro na Cloud Function:', responseCode);
-      console.error('Response:', response.getContentText());
-      return null;
-    }
-    
-    const result = JSON.parse(response.getContentText());
-    console.log('✅ Cloud Function executada com sucesso');
-    console.log('   • Tempo processamento:', result.processing_time_seconds, 's');
-    console.log('   • Deals processados:', result.summary?.total_deals || 0);
-    
-    return result;
-    
-  } catch (error) {
-    console.error('❌ Erro ao chamar Cloud Function:', error);
-    return null;
-  }
-}
 
-/**
- * Prepara dados brutos das abas para enviar à Cloud Function
- * @returns {Object} - {pipeline: [], won: [], lost: []}
- */
-/**
- * Prepara dados brutos das abas de análise para enviar à Cloud Function
- * IMPORTANTE: As abas de análise usam nomes em PT, mas mantemos os nomes originais
- * @returns {Object} Objeto com arrays pipeline, won, lost
- */
 /**
  * Sanitiza valor para serialização JSON
  * Converte Date para ISO string, remove null/undefined
@@ -176,12 +51,15 @@ function sanitizeValue(value) {
   return value;
 }
 
+/**
+ * Prepara dados brutos das abas de análise para enviar à Cloud Function
+ * @returns {Object} Objeto com arrays pipeline, won, lost
+ */
 function prepareRawDataForCloudFunction() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
   console.log('📊 Carregando dados brutos das abas de análise...');
   
-  // Carregar abas de análise (com IA)
   const pipelineSheet = ss.getSheetByName('🎯 Análise Forecast IA');
   const wonSheet = ss.getSheetByName('📈 Análise Ganhas');
   const lostSheet = ss.getSheetByName('📉 Análise Perdidas');
@@ -192,14 +70,12 @@ function prepareRawDataForCloudFunction() {
     lost: []
   };
   
-  // Pipeline
   if (pipelineSheet && pipelineSheet.getLastRow() > 1) {
     const pipelineData = pipelineSheet.getDataRange().getValues();
     const headers = pipelineData[0];
     data.pipeline = pipelineData.slice(1).map(row => {
       const obj = {};
       headers.forEach((header, idx) => {
-        // ✅ Sanitizar valores para JSON (Date → ISO string, null → null)
         obj[header] = sanitizeValue(row[idx]);
       });
       return obj;
@@ -207,7 +83,6 @@ function prepareRawDataForCloudFunction() {
     console.log('   • Pipeline:', data.pipeline.length, 'deals');
   }
   
-  // Ganhas
   if (wonSheet && wonSheet.getLastRow() > 1) {
     const wonData = wonSheet.getDataRange().getValues();
     const headers = wonData[0];
@@ -221,7 +96,6 @@ function prepareRawDataForCloudFunction() {
     console.log('   • Ganhas:', data.won.length, 'deals');
   }
   
-  // Perdidas
   if (lostSheet && lostSheet.getLastRow() > 1) {
     const lostData = lostSheet.getDataRange().getValues();
     const headers = lostData[0];
@@ -236,6 +110,49 @@ function prepareRawDataForCloudFunction() {
   }
   
   return data;
+}
+
+/**
+ * Chama a Cloud Function e retorna a resposta JSON.
+ * Usa o modo BigQuery (source=bigquery) para garantir dados atuais.
+ */
+function callCloudFunction(_rawData, filters) {
+  try {
+    const payload = {
+      source: 'bigquery',
+      filters: filters || {}
+    };
+
+    const options = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    };
+
+    console.log('☁️ Chamando Cloud Function:', CLOUD_FUNCTION_URL);
+    const response = UrlFetchApp.fetch(CLOUD_FUNCTION_URL, options);
+    const responseCode = response.getResponseCode();
+
+    if (responseCode !== 200) {
+      console.error(`☁️ ❌ Cloud Function retornou código ${responseCode}`);
+      console.error(response.getContentText());
+      return null;
+    }
+
+    const responseText = response.getContentText();
+    const data = JSON.parse(responseText);
+
+    if (data && data.status === 'error') {
+      console.error('☁️ ❌ Cloud Function retornou erro:', data.error || 'Erro desconhecido');
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('☁️ ❌ Erro ao chamar Cloud Function:', error);
+    return null;
+  }
 }
 
 // ================================================================================================
@@ -930,7 +847,7 @@ function checkDashboardAccess_() {
 }
 
 /**
- * Serve o HTML do Dashboard com Cache de 15 minutos
+ * Serve o HTML do Dashboard (sem cache)
  */
 function doGet(e) {
   // Verifica autenticação
@@ -1023,28 +940,12 @@ function doGet(e) {
   
   // Log de acesso autorizado
   console.log(`✅ Acesso autorizado: ${accessCheck.email} (${accessCheck.reason})`);
-  
-  const cache = CacheService.getScriptCache();
-  const CACHE_KEY = 'DASHBOARD_HTML_V59';
-  
-  // Se parâmetro nocache está presente, limpa cache e força regeneração
-  const forceRefresh = e && e.parameter && e.parameter.nocache;
-  if (forceRefresh) {
-    cache.remove(CACHE_KEY);
-    cache.remove(AI_ANALYSIS_CACHE_KEY);
-    console.log('🔄 Cache limpo via botão de refresh');
-  }
-  
-  let cached = !forceRefresh ? cache.get(CACHE_KEY) : null;
-
-  if (cached) {
-    return HtmlService.createHtmlOutput(cached);
-  }
+  console.log('🚫 Cache removido: gerando HTML e payload em tempo real');
 
   // Gera os dados frescos (getDashboardPayload já salva no cache com DASHBOARD_CACHE_KEY)
   const data = getDashboardPayload();
   
-  console.log('✅ Dashboard payload gerado e salvo em cache via getDashboardPayload()');
+  console.log('✅ Dashboard payload gerado via getDashboardPayload()');
   
   const template = HtmlService.createTemplateFromFile('Dashboard');
   // NÃO passa payload - o HTML vai buscar do cache
@@ -1066,21 +967,13 @@ function doGet(e) {
  * Evita passar dados grandes pelo template
  */
 function getDashboardDataFromCache() {
-  const cache = CacheService.getScriptCache();
-  // USA A MESMA CHAVE definida em SharedCode.gs
-  const cached = cache.get(DASHBOARD_CACHE_KEY);
-  
-  if (cached) {
-    console.log('✅ Retornando payload do cache para o HTML');
-    return cached; // Retorna como string JSON
-  }
-  
-  console.warn('⚠️ Cache não encontrado, gerando dados novamente...');
+  console.log('🚫 Cache removido: gerando payload em tempo real');
   const data = getDashboardPayload();
   
   // Otimiza antes de retornar
   const optimizedData = {
     l10: data.l10,
+    executive: data.executive || data.l10,
     fsrMetrics: data.fsrMetrics,
     fsrScorecard: (data.fsrScorecard || []).map(rep => ({
       name: rep.name,
@@ -1154,6 +1047,18 @@ function getDashboardDataFromCache() {
       lossTypes: [],
       lossLabels: []
     },
+    cloudAnalysis: data.cloudAnalysis ? {
+      pipeline_analysis: {
+        executive: data.cloudAnalysis.pipeline_analysis?.executive || {}
+      },
+      closed_analysis: {
+        closed_quarter: data.cloudAnalysis.closed_analysis?.closed_quarter || {}
+      }
+    } : {},
+    debugReport: data.debugReport || {
+      cloudFunction: { enabled: USE_CLOUD_FUNCTION, success: false },
+      dashboardCode: { pipeline_deals: 0, won_deals: 0, lost_deals: 0 }
+    },
     updatedAt: data.updatedAt,
     quarterLabel: data.quarterLabel
   };
@@ -1170,12 +1075,9 @@ function getDashboardDataFromCache() {
     optimizedData.aiAnalysis.croCommentary = optimizedData.aiAnalysis.croCommentary.substring(0, 1000);
     const reducedPayload = JSON.stringify(optimizedData);
     console.log(`📦 Payload reduzido para: ${(reducedPayload.length / 1024).toFixed(2)} KB`);
-    cache.put(DASHBOARD_CACHE_KEY, reducedPayload, 300); // 5 minutos
     return reducedPayload;
   }
-  
-  cache.put(DASHBOARD_CACHE_KEY, payload, 300); // 5 minutos
-  
+
   return payload;
 }
 
@@ -1184,19 +1086,7 @@ function getDashboardDataFromCache() {
  * Chamado pelo botão de atualizar no HTML
  */
 function clearCache() {
-  const cache = CacheService.getScriptCache();
-  const keys = [
-    'DASHBOARD_PAYLOAD_FOR_HTML_V1',
-    'DASHBOARD_DATA_PREPROCESSED_V2',
-    'AI_ANALYSIS_CACHE_V1',
-    DASHBOARD_CACHE_KEY  // Adiciona a chave atual do cache
-  ];
-  
-  keys.forEach(key => {
-    cache.remove(key);
-  });
-  
-  console.log('✅ Cache limpo com sucesso (incluindo DASHBOARD_CACHE_KEY)');
+  console.log('🚫 Cache removido: clearCache não faz nada');
   return true;
 }
 
@@ -1210,6 +1100,15 @@ function preprocessDashboardData(silent) {
   const startTime = new Date().getTime();
   
   try {
+    console.log('🚫 Cache removido: pré-processamento não salva payload');
+    if (!silent) {
+      SpreadsheetApp.getUi().alert(
+        'ℹ️ Cache removido',
+        'O dashboard sempre buscará dados em tempo real.',
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+    }
+    return;
     // Gera e salva o payload completo em cache
     const data = getDashboardPayload();
     
@@ -1339,59 +1238,11 @@ function updateCacheStatusSheet_(duration, data) {
  * Verifica status do cache sem processar novamente
  */
 function checkCacheStatus() {
-  const cache = CacheService.getScriptCache();
-  const cached = cache.get(DASHBOARD_CACHE_KEY);
-  
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName('📊 Cache Status');
-  
-  if (!cached) {
-    // Cache vazio
-    SpreadsheetApp.getUi().alert(
-      '⚠️ Cache Vazio',
-      'Não há dados pré-processados no momento.\n\n' +
-      'Execute "⚡ PRÉ-PROCESSAR Dashboard" para criar o cache.',
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
-    
-    // Atualiza aba se existir
-    if (sheet) {
-      sheet.getRange('B3').setValue('CACHE VAZIO').setFontColor('#FF0000');
-      sheet.getRange('B4').setValue('-');
-      sheet.getRange('B5').setValue('-');
-    }
-    
-    return;
-  }
-  
-  // Cache existe
-  try {
-    const data = JSON.parse(cached);
-    const dataSize = (cached.length / 1024).toFixed(2);
-    
-    SpreadsheetApp.getUi().alert(
-      '✅ Cache Ativo',
-      `O cache está ativo e funcionando!\n\n` +
-      `Tamanho: ${dataSize} KB\n` +
-      `Vendedores ativos: ${(data.fsrScorecard || []).filter(r => r.isActive).length}\n\n` +
-      `O Web App está carregando rapidamente.\n` +
-      `Veja a aba "📊 Cache Status" para mais detalhes.`,
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
-    
-    // Seleciona a aba de status
-    if (sheet) {
-      ss.setActiveSheet(sheet);
-    }
-    
-  } catch(e) {
-    SpreadsheetApp.getUi().alert(
-      '❌ Erro',
-      `Cache corrompido: ${e.message}\n\n` +
-      'Execute novamente "⚡ PRÉ-PROCESSAR Dashboard".',
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
-  }
+  SpreadsheetApp.getUi().alert(
+    'ℹ️ Cache Removido',
+    'O dashboard foi configurado para buscar dados sempre em tempo real (sem cache).',
+    SpreadsheetApp.getUi().ButtonSet.OK
+  );
 }
 
 /**
@@ -1399,23 +1250,7 @@ function checkCacheStatus() {
  * MODIFICADO: Tenta usar dados pré-processados primeiro
  */
 function getDashboardPayload() {
-  // Tenta usar dados pré-processados (muito mais rápido!)
-  const cache = CacheService.getScriptCache();
-  const cached = cache.get(DASHBOARD_CACHE_KEY);
-  
-  if (cached) {
-    console.log('⚡ Usando dados PRÉ-PROCESSADOS do cache (super rápido!)');
-    try {
-      const parsedCache = JSON.parse(cached);
-      console.log(`📅 Última atualização: ${parsedCache.updatedAt || 'N/A'}`);
-      return parsedCache;
-    } catch(e) {
-      console.warn('⚠️ Erro ao parsear cache, regenerando...', e);
-    }
-  }
-  
-  console.log('🔄 Cache não encontrado ou expirado, processando dados (pode demorar...)');
-  console.log('💡 Dica: Execute instalarTriggerAutomatico() para atualização automática a cada 30min');
+  console.log('🚫 Cache removido: processando dados em tempo real (pode demorar)');
   
   // ============================================================================
   // FONTE DE DADOS DO DASHBOARD
@@ -1584,9 +1419,6 @@ function getDashboardPayload() {
   const wonRaw = getSheetData(SHEETS.RESULTADO_GANHAS);       // 📈 Análise Ganhas
   const lostRaw = getSheetData(SHEETS.RESULTADO_PERDIDAS);    // 📉 Análise Perdidas
   
-  // NOVO: Dados da aba Sales Specialist
-  const salesSpecRaw = getSalesSpecialistData_();
-  
   // ============================================================================
   // CLOUD FUNCTION: Análise pesada via Python/Pandas
   // ============================================================================
@@ -1610,6 +1442,30 @@ function getDashboardPayload() {
     } else {
       console.warn('⚠️ Cloud Function falhou, continuando com análise local');
     }
+  }
+  
+  // SALES SPECIALIST: Só calcular localmente se BigQuery OFF ou Cloud Function falhou
+  let salesSpecRaw;
+  if (USE_BIGQUERY && cloudAnalysis) {
+    // Usa dados da Cloud Function (vem do BigQuery)
+    console.log('📊 Sales Specialist: usando dados do BigQuery via Cloud Function');
+    const spec = cloudAnalysis.closed_analysis?.closed_quarter?.forecast_specialist || {};
+    salesSpecRaw = {
+      totalGross: spec.billing_gross || 0,
+      totalNet: spec.billing_net || 0,
+      dealsCount: spec.deals_count || 0,
+      commitGross: 0,  // Cloud Function retorna agregado, não por tipo
+      commitNet: 0,
+      commitCount: spec.commit_deals || 0,
+      upsideGross: 0,
+      upsideNet: 0,
+      upsideCount: spec.upside_deals || 0,
+      salesSpecByFiscalQ: {}  // Cloud Function não retorna breakdown por Q (só quarter atual)
+    };
+  } else {
+    // Fallback: cálculo local
+    console.log('📊 Sales Specialist: usando cálculo local (fallback)');
+    salesSpecRaw = getSalesSpecialistData_();
   }
 
   // 2. Mapeia e Agrega (Usa sua função aggregateOpportunities)
@@ -1672,147 +1528,156 @@ function getDashboardPayload() {
     return 'Soluções';
   };
 
-  // 4. Calcula Indicadores L10 (7 KPIs Completos)
+  // ============================================================================
+  // 4. MÉTRICAS L10 - MAPEAMENTO CLOUD FUNCTION → LOCAL
+  // ============================================================================
+  // Se Cloud Function disponível: usa dados de cloudAnalysis
+  // Se não: calcula localmente (fallback)
+  // NOTA: L10 aqui é a Visão Executiva do dashboard
+  
   const lastWeekWins = wonAgg.filter(i => isIncremental(i) && i.closed >= lastMonday && i.closed <= lastFriday);
   
-  const l10 = {
-    // Indicador 1: Net Revenue Incremental
-    netRevenue: lastWeekWins.reduce((sum, i) => sum + i.net, 0),
+  // EXTRAÇÃO DE DADOS DA CLOUD FUNCTION
+  let l10Metrics = {};
+  
+  if (cloudAnalysis && cloudAnalysis.pipeline_analysis && cloudAnalysis.closed_analysis) {
+    // ✅ FONTE: CLOUD FUNCTION (Python/BigQuery)
+    console.log('📊 L10 Metrics: usando Cloud Function');
     
-    // Indicador 2: Bookings Incremental
-    bookingsGross: lastWeekWins.reduce((sum, i) => sum + i.gross, 0),
-    bookingsCount: lastWeekWins.length,
-
-    // Indicador 3: Pipeline Próxima Semana
-    pipelineNextWeek: openAgg
-      .filter(i => {
-        const d = new Date(i.closed);
-        return d >= nextMonday && d <= nextFriday;
-      })
-      .reduce((sum, i) => sum + i.gross, 0),
+    const pipelineData = cloudAnalysis.pipeline_analysis || {};
+    const closedData = cloudAnalysis.closed_analysis || {};
+    const pipelineExecutive = pipelineData.executive || {};
+    const pipelineAll = pipelineExecutive.pipeline_all || {};
+    const pipelineFy26 = pipelineExecutive.pipeline_fy26 || {};
+    const pipelineByQuarter = pipelineExecutive.pipeline_by_quarter || {};
+    const pipelineQuarterData = pipelineByQuarter[currentQuarterLabel] || {};
+    const closedQuarter = closedData.closed_quarter || {};
+    const closedQuarterClosed = closedQuarter.closed || {};
+    const forecastSpecialist = closedQuarter.forecast_specialist || {};
     
-    // Indicador 4: Pipeline Trimestre Atual (Stage >= Proposta)
-    pipelineQuarter: openAgg
-      .filter(i => {
-        const stageOk = /PROPOSTA|NEGOC|CONTRACT|CLOSED/.test(i.stage.toUpperCase());
-        return stageOk && i.fiscalQ === currentQuarterLabel;
-      })
-      .reduce((sum, i) => sum + i.gross, 0),
-
-    // Indicador 5: Aging Pipeline (>90 dias)
-    agingPipeline: openAgg.filter(i => {
-      const daysSinceCreated = i.inactiveDays || calculateIdleDays(i.created, today);
-      return daysSinceCreated > 90;
-    }).length,
+    // Próxima Semana (deals fechando entre nextMonday e nextFriday) - cálculo local
+    const nextWeekDeals = openAgg.filter(i => i.closed >= nextMonday && i.closed <= nextFriday);
+    const pipelineNextWeek = nextWeekDeals.reduce((s, i) => s + i.gross, 0);
     
-    // Indicador 6: Previsibilidade por Confiança (Previsão Ponderada)
-    predictableRevenue: openAgg.reduce((sum, i) => {
-      const confidence = parseFloat(i.confidence) || parseFloat(i.probability) || 50;
-      return sum + (i.gross * confidence / 100);
-    }, 0),
+    // Aging Pipeline (> 90 dias no funil) - cálculo local
+    const agingPipeline = openAgg.filter(i => (i.daysInFunnel || 0) > 90).length;
     
-    // NOVOS INDICADORES
-    // Total de deals no pipeline
-    dealsCount: openAgg.length,
-    
-    // Pipeline total (gross)
-    totalPipelineGross: openAgg.reduce((sum, i) => sum + i.gross, 0),
-    
-    // Pipeline total (net)
-    totalPipelineNet: openAgg.reduce((sum, i) => sum + i.net, 0),
-    
-    // Pipeline Total (TODO - Qualquer Ano Fiscal)
-    allPipelineGross: openAgg.reduce((sum, i) => sum + i.gross, 0),
-    allPipelineNet: openAgg.reduce((sum, i) => sum + i.net, 0),
-    allPipelineDeals: openAgg.length,
-    
-    // Pipeline Total Ano FY26 (TODAS as oportunidades abertas do ano fiscal 2026)
-    pipelineTotalAnoGross: (() => {
-      const fy26Deals = openAgg.filter(i => (i.fiscalQ || '').startsWith('FY26-'));
-      return fy26Deals.reduce((sum, i) => sum + i.gross, 0);
-    })(),
-    
-    pipelineTotalAnoNet: (() => {
-      const fy26Deals = openAgg.filter(i => (i.fiscalQ || '').startsWith('FY26-'));
-      return fy26Deals.reduce((sum, i) => sum + i.net, 0);
-    })(),
-    
-    pipelineTotalAnoDeals: openAgg.filter(i => (i.fiscalQ || '').startsWith('FY26-')).length,
-    
-    // Pipeline por Quarter (usa Fiscal Q para filtro)
-    pipelineQuarterDetails: (() => {
-      const quarters = ['Q1', 'Q2', 'Q3', 'Q4'];
-      const result = {};
+    l10Metrics = {
+      // Pipeline Totais
+      allPipelineGross: pipelineAll.gross || 0,
+      allPipelineNet: pipelineAll.net || 0,
+      allPipelineDeals: pipelineAll.deals_count || 0,
       
-      quarters.forEach(q => {
-        const targetFiscalQ = `FY26-${q}`; // Ex: "FY26-Q1"
-        
-        const dealsInQ = openAgg.filter(i => i.fiscalQ === targetFiscalQ);
-        
-        result[q] = {
-          gross: dealsInQ.reduce((sum, i) => sum + i.gross, 0),
-          net: dealsInQ.reduce((sum, i) => sum + i.net, 0),
-          count: dealsInQ.length
-          // REMOVIDO: deals array (economiza ~30KB, dados já estão em weeklyAgenda)
-        };
-      });
+      // Pipeline Quarter Atual
+      pipelineQuarter: pipelineQuarterData.gross || 0,
+      pipelineQuarterDeals: pipelineQuarterData.deals_count || 0,
       
-      return result;
-    })(),
-    
-    // Pipeline Sales Specialist (Curado pelos Sales Specialists)
-    pipelineSalesSpecialistGross: salesSpecRaw.totalGross,
-    pipelineSalesSpecialistNet: salesSpecRaw.totalNet,
-    pipelineSalesSpecialistDeals: salesSpecRaw.dealsCount,
-    
-    // Sales Specialist - Commit (Status = "Commit")
-    salesSpecCommitGross: salesSpecRaw.commitGross,
-    salesSpecCommitNet: salesSpecRaw.commitNet,
-    salesSpecCommitDeals: salesSpecRaw.commitCount,
-    
-    // Sales Specialist - Upside (Status = "Upside")
-    salesSpecUpsideGross: salesSpecRaw.upsideGross,
-    salesSpecUpsideNet: salesSpecRaw.upsideNet,
-    salesSpecUpsideDeals: salesSpecRaw.upsideCount,
-    
-    // Sales Specialist - Breakdown por Fiscal Q (baseado em Closed Date)
-    salesSpecByFiscalQ: salesSpecRaw.salesSpecByFiscalQ || {},
-    
-    // Deals com alta confiança (>50%)
-    highConfidenceDeals: (() => {
-      const highConf = openAgg.filter(i => {
-        const confidence = parseFloat(i.confidence) || parseFloat(i.probability) || 0;
-        return confidence > 50;
-      });
-      return {
-        gross: highConf.reduce((sum, i) => sum + i.gross, 0),
-        net: highConf.reduce((sum, i) => sum + i.net, 0),
-        count: highConf.length
-      };
-    })(),
-    
-    // Indicador 7: Margem Média por Categoria
-    marginByCategory: (() => {
-      const categories = {};
-      lastWeekWins.forEach(i => {
-        const cat = getCategory(i.products);
-        if (!categories[cat]) categories[cat] = { net: 0, gross: 0, count: 0 };
-        categories[cat].net += i.net;
-        categories[cat].gross += i.gross;
-        categories[cat].count++;
-      });
+      // Pipeline FY26 (filtrado)
+      pipelineTotalAnoGross: pipelineFy26.gross || 0,
+      pipelineTotalAnoNet: pipelineFy26.net || 0,
+      pipelineTotalAnoDeals: pipelineFy26.deals_count || 0,
       
-      return Object.keys(categories).map(cat => ({
-        category: cat,
-        margin: categories[cat].gross > 0 ? (categories[cat].net / categories[cat].gross * 100).toFixed(1) : 0,
-        count: categories[cat].count,
-        revenue: categories[cat].net
-      }));
-    })(),
+      // Sales Specialist (se disponível)
+      pipelineSalesSpecialistGross: forecastSpecialist.gross || 0,
+      pipelineSalesSpecialistNet: forecastSpecialist.net || 0,
+      pipelineSalesSpecialistDeals: forecastSpecialist.deals_count || 0,
+      
+      // Pipeline Próxima Semana
+      pipelineNextWeek: pipelineNextWeek,
+      
+      // Aging Pipeline
+      agingPipeline: agingPipeline,
+      
+      // Revenue Closed (Quarter Atual)
+      netRevenue: closedQuarterClosed.net || 0,
+      grossRevenue: closedQuarterClosed.gross || 0,
+      bookingsCount: closedQuarterClosed.deals_count || 0,
+      dealsCount: closedData.total_deals || 0,
+      
+      // Win Rate
+      winRate: closedData.win_rate || 0,
+      
+      // Última Semana
+      lastWeekBookings: lastWeekWins.length,
+      lastWeekRevenue: lastWeekWins.reduce((sum, w) => sum + w.net, 0)
+    };
     
-    // Quarter atual (label) - Adicionado para compatibilidade com o dashboard
-    currentQuarterLabel: currentQuarterLabel
-  };
+  } else {
+    // ❌ FALLBACK: CÁLCULO LOCAL
+    console.log('⚠️ L10 Metrics: Cloud Function indisponível, calculando localmente');
+    
+    // Pipeline Totais (Todos os anos)
+    const allPipelineGross = openAgg.reduce((s, i) => s + i.gross, 0);
+    const allPipelineNet = openAgg.reduce((s, i) => s + i.net, 0);
+    
+    // Pipeline Quarter Atual (filtrado por Fiscal Q)
+    const pipelineQuarterDeals = openAgg.filter(i => i.fiscalQ === currentQuarterLabel);
+    const pipelineQuarter = pipelineQuarterDeals.reduce((s, i) => s + (i.gross * (i.probability || 50) / 100), 0);
+    
+    // Pipeline FY26
+    const fy26Deals = openAgg.filter(i => (i.fiscalQ || '').startsWith('FY26-'));
+    const pipelineTotalAnoGross = fy26Deals.reduce((s, i) => s + i.gross, 0);
+    const pipelineTotalAnoNet = fy26Deals.reduce((s, i) => s + i.net, 0);
+    
+    // Próxima Semana (deals fechando entre nextMonday e nextFriday)
+    const nextWeekDeals = openAgg.filter(i => i.closed >= nextMonday && i.closed <= nextFriday);
+    const pipelineNextWeek = nextWeekDeals.reduce((s, i) => s + i.gross, 0);
+    
+    // Aging Pipeline (> 90 dias no funil)
+    const agingPipeline = openAgg.filter(i => (i.daysInFunnel || 0) > 90).length;
+    
+    // Revenue Quarter Atual (Deals FECHADOS no quarter)
+    const quarterWins = wonAgg.filter(i => i.fiscalQ === currentQuarterLabel && isIncremental(i));
+    const netRevenue = quarterWins.reduce((s, w) => s + w.net, 0);
+    const grossRevenue = quarterWins.reduce((s, w) => s + w.gross, 0);
+    
+    l10Metrics = {
+      // Pipeline Totais
+      allPipelineGross,
+      allPipelineNet,
+      allPipelineDeals: openAgg.length,
+      
+      // Pipeline Quarter Atual
+      pipelineQuarter,
+      pipelineQuarterDeals: pipelineQuarterDeals.length,
+      
+      // Pipeline FY26
+      pipelineTotalAnoGross,
+      pipelineTotalAnoNet,
+      pipelineTotalAnoDeals: fy26Deals.length,
+      
+      // Sales Specialist
+      pipelineSalesSpecialistGross: salesSpecRaw.totalGross || 0,
+      pipelineSalesSpecialistNet: salesSpecRaw.totalNet || 0,
+      pipelineSalesSpecialistDeals: salesSpecRaw.dealsCount || 0,
+      
+      // Pipeline Próxima Semana
+      pipelineNextWeek,
+      
+      // Aging
+      agingPipeline,
+      
+      // Revenue Closed
+      netRevenue,
+      grossRevenue,
+      bookingsCount: quarterWins.length,
+      dealsCount: wonAgg.length + lostAgg.length,
+      
+      // Win Rate
+      winRate: wonAgg.length > 0 ? Math.round((wonAgg.length / (wonAgg.length + lostAgg.length)) * 100) : 0,
+      
+      // Última Semana
+      lastWeekBookings: lastWeekWins.length,
+      lastWeekRevenue: lastWeekWins.reduce((sum, w) => sum + w.net, 0)
+    };
+  }
+  
+  // Log de métricas calculadas
+  console.log('📊 L10 Metrics Calculadas:');
+  console.log(`   • Pipeline Total: $${l10Metrics.allPipelineGross.toFixed(0)} (${l10Metrics.allPipelineDeals} deals)`);
+  console.log(`   • Pipeline Q Atual: $${l10Metrics.pipelineQuarter.toFixed(0)}`);
+  console.log(`   • Revenue Q Atual: $${l10Metrics.netRevenue.toFixed(0)} (${l10Metrics.bookingsCount} deals)`);
+  console.log(`   • Aging >90d: ${l10Metrics.agingPipeline} deals`);
 
   // 5. Calcula FSR Scorecard (Performance + Diagnóstico de Comportamento)
   const fsrMap = {};
@@ -1908,21 +1773,6 @@ function getDashboardPayload() {
     
     // Verifica se está no quarter atual usando Fiscal Q
     const isInCurrentQuarter = item.fiscalQ && item.fiscalQ === currentQuarterLabel;
-    
-    // Debug: Log primeiros 5 deals ganhos para verificar dados
-    if (!wonAgg.debugLogged) wonAgg.debugLogged = 0;
-    if (wonAgg.debugLogged < 5) {
-      console.log(`📊 Debug Deal Ganho #${wonAgg.debugLogged + 1}:`, {
-        oppName: item.oppName,
-        owner: owner,
-        gross: item.gross,
-        net: item.net,
-        fiscalQ: item.fiscalQ,
-        currentQuarterLabel: currentQuarterLabel,
-        isInCurrentQuarter: isInCurrentQuarter
-      });
-      wonAgg.debugLogged++;
-    }
 
     fsrMap[owner].won.push({
       cycle: item.ciclo || 0,
@@ -1983,15 +1833,9 @@ function getDashboardPayload() {
     });
   });
   
-  // Log para debug
-  console.log(`📊 Dashboard Debug: ${cycleValidCount}/${cycleDebugCount} deals com ciclo > 0`);
-  console.log(`📅 Filtragem por quarter: ${currentQuarterLabel}`);
-  
   // Conta quantos deals estão no quarter atual
   const winsInQuarter = wonAgg.filter(item => item.fiscalQ === currentQuarterLabel).length;
   const lossesInQuarter = lostAgg.filter(item => item.fiscalQ === currentQuarterLabel).length;
-  console.log(`✅ Wins no ${currentQuarterLabel}: ${winsInQuarter}/${wonAgg.length}`);
-  console.log(`❌ Losses no ${currentQuarterLabel}: ${lossesInQuarter}/${lostAgg.length}`);
   
   if (sampleCiclos.length > 0) {
     console.log('📊 Amostra de ciclos:', JSON.stringify(sampleCiclos.slice(0, 2)));
@@ -2084,11 +1928,6 @@ function getDashboardPayload() {
   // Separa vendedores ativos e inativos
   const activeReps = fsrScorecard.filter(r => r.isActive);
   const inactiveReps = fsrScorecard.filter(r => !r.isActive);
-  
-  // Debug: Log vendedores ativos
-  console.log(`📊 FSR Debug: ${activeReps.length} ativos, ${inactiveReps.length} inativos de ${fsrScorecard.length} total`);
-  console.log('Ativos:', activeReps.map(r => r.name).join(', '));
-  console.log('Inativos:', inactiveReps.map(r => r.name).join(', '));
 
   // 6. Prepara Pautas Semanais Inteligentes (Top 3-5 deals críticos por Quarter)
   const weeklyTopics = {};
@@ -2340,19 +2179,12 @@ function getDashboardPayload() {
   
   // 8. Gera Análise IA com Cache Inteligente (economiza quota)
   const metricsForAI = {
-    l10: {
-      netRevenue: l10.netRevenue,
-      bookingsCount: l10.bookingsCount,
-      agingPipeline: l10.agingPipeline,
-      pipelineQuarter: l10.pipelineQuarter,
-      pipelineNextWeek: l10.pipelineNextWeek
-    },
+    l10: l10Metrics,  // ✅ Métricas L10 (Cloud Function ou Local)
     fsr: fsrMetrics,
     insights: {
       topWinFactors,
       topLossCauses
     },
-    // FILTRO POR QUARTER ATUAL: Top 5 oportunidades apenas do quarter corrente
     topOpportunities: (weeklyAgenda[currentQuarterLabel] || []).slice(0, 5)
   };
   
@@ -2518,7 +2350,8 @@ function getDashboardPayload() {
 
   // Monta payload final
   const payload = {
-    l10,
+    l10: l10Metrics,  // ✅ Métricas L10 (Visão Executiva)
+    executive: l10Metrics,  // Alias explícito para Visão Executiva
     fsrScorecard,
     fsrMetrics,
     weeklyAgenda: weeklyAgendaFiltered, // Apenas FY26
@@ -2537,7 +2370,7 @@ function getDashboardPayload() {
   
   // Debug: Verifica payload final
   console.log(`📦 Payload montado:`, {
-    'l10 keys': Object.keys(l10).length,
+    'l10 keys': Object.keys(l10Metrics).length,
     'fsrScorecard': fsrScorecard.length + ' vendedores',
     'weeklyAgenda quarters': Object.keys(weeklyAgendaFiltered).length,
     'wonAgg': wonAgg.length + ' deals',
@@ -2547,35 +2380,21 @@ function getDashboardPayload() {
   
   // Salva no cache preprocessado (TTL: 5 minutos)
   // Reutiliza a variável 'cache' já declarada no início da função
-  try {
-    const payloadStr = JSON.stringify(payload);
-    const payloadSizeKB = (payloadStr.length / 1024).toFixed(2);
-    const payloadSizeMB = (payloadStr.length / (1024 * 1024)).toFixed(2);
-    
-    console.log(`📦 Tamanho do payload: ${payloadSizeKB} KB (${payloadSizeMB} MB)`);
-    console.log(`📊 Componentes do payload:`);
-    console.log(`   • l10: ${(JSON.stringify(payload.l10).length / 1024).toFixed(1)} KB`);
-    console.log(`   • fsrScorecard (${payload.fsrScorecard.length} vendedores): ${(JSON.stringify(payload.fsrScorecard).length / 1024).toFixed(1)} KB`);
-    console.log(`   • weeklyAgenda (${Object.keys(payload.weeklyAgenda).length} quarters): ${(JSON.stringify(payload.weeklyAgenda).length / 1024).toFixed(1)} KB`);
-    console.log(`   • aiAnalysis: ${(JSON.stringify(payload.aiAnalysis).length / 1024).toFixed(1)} KB`);
-    
-    // Google Apps Script cache limit é 100KB por item
-    if (payloadStr.length > 100000) {
-      console.warn(`⚠️ AVISO: Payload muito grande (${payloadSizeKB} KB), pode falhar ao salvar. Limite: 100 KB`);
-      throw new Error(`Payload too large: ${payloadSizeKB} KB (limit: 100 KB)`);
-    }
-    
-    cache.put(DASHBOARD_CACHE_KEY, payloadStr, 5 * 60); // 5 minutos
-    console.log('💾 Payload salvo em cache preprocessado (TTL: 5min)');
-  } catch(e) {
-    console.warn('⚠️ Falha ao salvar cache preprocessado:', e.message);
-    // Retorna payload mesmo sem cache - o HTML pode processar diretamente
-  }
+  const payloadStr = JSON.stringify(payload);
+  const payloadSizeKB = (payloadStr.length / 1024).toFixed(2);
+  const payloadSizeMB = (payloadStr.length / (1024 * 1024)).toFixed(2);
+  
+  console.log(`📦 Tamanho do payload: ${payloadSizeKB} KB (${payloadSizeMB} MB)`);
+  console.log(`📊 Componentes do payload:`);
+  console.log(`   • l10: ${(JSON.stringify(payload.l10).length / 1024).toFixed(1)} KB`);
+  console.log(`   • fsrScorecard (${payload.fsrScorecard.length} vendedores): ${(JSON.stringify(payload.fsrScorecard).length / 1024).toFixed(1)} KB`);
+  console.log(`   • weeklyAgenda (${Object.keys(payload.weeklyAgenda).length} quarters): ${(JSON.stringify(payload.weeklyAgenda).length / 1024).toFixed(1)} KB`);
+  console.log(`   • aiAnalysis: ${(JSON.stringify(payload.aiAnalysis).length / 1024).toFixed(1)} KB`);
+  
+  // Cache removido: payload não é salvo
   
   // Salva também em aba de debug para análise
-  console.log('💾 Salvando payload na aba de debug...');
   savePayloadToDebugSheet_(payload);
-  console.log('✅ Payload salvo na aba de debug');
   
   // ============================================================================
   // CÁLCULO DE MÉTRICAS DE CONFIANÇA (antes de criar staticMetrics)
@@ -2629,62 +2448,13 @@ function getDashboardPayload() {
   console.log(`   • Confiança média: ${totalDealsProcessed > 0 ? ((totalConfidence / totalDealsProcessed) * 100).toFixed(1) : 0}%`);
   console.log(`   • Deals >= 50% confiança: ${above50Count} (Gross: ${above50Value.toFixed(0)}, Net: ${above50Net.toFixed(0)})`);
   
-  // ============================================================================
-  // NOVA ARQUITETURA HÍBRIDA: Salva métricas estáticas em aba dedicada
-  // ============================================================================
-  const staticMetrics = {
-    updatedAt: new Date().toISOString(),
-    quarterLabel: currentQuarter.label,
-    
-    // Pipeline Total (Todos os Anos)
-    allPipelineGross: l10.allPipelineGross || 0,
-    allPipelineNet: l10.allPipelineNet || 0,
-    allPipelineDeals: l10.allPipelineDeals || 0,
-    
-    // Pipeline FY26
-    fy26PipelineGross: l10.pipelineTotalAnoGross || 0,
-    fy26PipelineNet: l10.pipelineTotalAnoNet || 0,
-    fy26PipelineDeals: l10.pipelineTotalAnoDeals || 0,
-    
-    // Sales Specialist
-    salesSpecGross: l10.pipelineSalesSpecialistGross || 0,
-    salesSpecNet: l10.pipelineSalesSpecialistNet || 0,
-    salesSpecDeals: l10.pipelineSalesSpecialistDeals || 0,
-    
-    // Revenue do Quarter Atual
-    revenueQuarter: l10.netRevenue || 0,
-    revenueDealsCount: l10.bookingsCount || 0,
-    
-    // Vendedores
-    activeRepsCount: activeReps.length,
-    inactiveRepsCount: inactiveReps.length,
-    avgWinRate: fsrMetrics.avgWinRate || 0,
-    
-    // Confiança Média
-    avgConfidence: totalDealsProcessed > 0 
-      ? ((totalConfidence / totalDealsProcessed) * 100).toFixed(1)
-      : 0,
-    
-    // Deals com >= 50% confiança
-    highConfGross: above50Value || 0,
-    highConfNet: above50Net || 0,
-    highConfDeals: above50Count || 0,
-    
-    // WORD CLOUDS COM FREQUÊNCIAS (calculados acima)
-    wordClouds: {
-      winTypes: winTypesFreq,
-      winLabels: winLabelsFreq,
-      lossTypes: lossTypesFreq,
-      lossLabels: lossLabelsFreq
-    }
+  // Word clouds disponíveis diretamente no payload
+  payload.wordClouds = {
+    winTypes: winTypesFreq,
+    winLabels: winLabelsFreq,
+    lossTypes: lossTypesFreq,
+    lossLabels: lossLabelsFreq
   };
-  
-  // Salva métricas estáticas na aba (agora inclui word clouds)
-  console.log('📝 Salvando métricas na aba Dashboard_Metrics...');
-  console.log('   • Métricas:', Object.keys(staticMetrics));
-  console.log('   • Word Clouds:', staticMetrics.wordClouds ? Object.keys(staticMetrics.wordClouds) : 'none');
-  updateMetricsSheet_(staticMetrics);
-  console.log('✅ Métricas salvas com sucesso!');
   
   // ============================================================================
   // ADICIONA ANÁLISE DA CLOUD FUNCTION AO PAYLOAD (se disponível)
@@ -2692,15 +2462,43 @@ function getDashboardPayload() {
   if (cloudAnalysis) {
     console.log('☁️ Adicionando análise da Cloud Function ao payload...');
     payload.cloudAnalysis = {
+      // snake_case (compatível com Dashboard.html)
+      closed_analysis: cloudAnalysis.closed_analysis,
+      pipeline_analysis: cloudAnalysis.pipeline_analysis,
+      seller_scorecard: cloudAnalysis.seller_scorecard,
+      war_targets: cloudAnalysis.war_targets,
+      summary: cloudAnalysis.summary,
+      processing_time_seconds: cloudAnalysis.processing_time_seconds,
+      // camelCase (compatibilidade retroativa)
       closedAnalysis: cloudAnalysis.closed_analysis,
       pipelineAnalysis: cloudAnalysis.pipeline_analysis,
       sellerScorecard: cloudAnalysis.seller_scorecard,
       warTargets: cloudAnalysis.war_targets,
-      summary: cloudAnalysis.summary,
       processingTime: cloudAnalysis.processing_time_seconds
     };
     console.log('✅ Análise da Cloud Function incluída no payload');
   }
+
+  // ============================================================================
+  // DEBUG REPORT: Fontes de dados (Cloud Function x Cache x DashboardCode)
+  // ============================================================================
+  payload.debugReport = {
+    timestamp: new Date().toISOString(),
+    cloudFunction: {
+      enabled: USE_CLOUD_FUNCTION,
+      success: !!cloudAnalysis,
+      pipeline_deals: cloudAnalysis?.data_summary?.pipeline_deals || 0,
+      closed_deals: cloudAnalysis?.data_summary?.closed_deals || 0,
+      sellers_analyzed: cloudAnalysis?.data_summary?.sellers_analyzed || 0
+    },
+    dashboardCode: {
+      pipeline_deals: openAgg.length,
+      won_deals: wonAgg.length,
+      lost_deals: lostAgg.length,
+      weeklyAgenda_quarters: Object.keys(weeklyAgendaFiltered).length
+    }
+  };
+  console.log('🧪 DEBUG REPORT:', JSON.stringify(payload.debugReport));
   
   return payload;
 }
@@ -3128,11 +2926,9 @@ function savePayloadToDebugSheet_(payload) {
     // Auto-fit columns
     debugSheet.autoResizeColumns(1, 2);
     
-    console.log(`✅ Payload salvo na aba 'Payload_Debug' para análise`);
     return true;
     
   } catch(e) {
-    console.error(`❌ Erro ao salvar payload em debug sheet: ${e.message}`);
     return false;
   }
 }
@@ -3278,38 +3074,16 @@ function shouldRegenerateAIAnalysis_(currentMetrics, previousMetrics) {
  * Gera análise IA com cache inteligente (economiza quota)
  */
 function getAIAnalysisWithCache_(metrics, forceRegenerate = false) {
-  const cache = CacheService.getScriptCache();
-  const cached = cache.get(AI_ANALYSIS_CACHE_KEY);
-  
-  if (cached && !forceRegenerate) {
-    const cachedData = JSON.parse(cached);
-    
-    // Verifica se precisa regenerar baseado em mudanças
-    if (!shouldRegenerateAIAnalysis_(metrics, cachedData.metrics)) {
-      console.log('♻️ Usando análise IA em cache (sem mudanças significativas)');
-      return cachedData.analysis;
-    }
-  }
-  
-  // Gera nova análise
-  console.log('🤖 Gerando nova análise IA');
-  const analysis = generateFullAIAnalysis_(metrics);
-  
-  // Salva no cache
-  cache.put(AI_ANALYSIS_CACHE_KEY, JSON.stringify({
-    metrics: metrics,
-    analysis: analysis,
-    timestamp: new Date().toISOString()
-  }), AI_CACHE_TTL);
-  
-  return analysis;
+  console.log('🤖 Gerando análise IA (sem cache)');
+  return generateFullAIAnalysis_(metrics);
 }
 
 /**
  * Gera análise IA completa (Executivo + Aprendizados + CRO Commentary + Top Oportunidades)
  */
 function generateFullAIAnalysis_(metrics) {
-  const { l10, fsr, insights, topOpportunities } = metrics;
+  const l10 = metrics.l10 || {};
+  const { fsr, insights, topOpportunities } = metrics;
   
   // 1. Visão Executiva (Overview Geral)
   let executive = "<b>Visão executiva indisponível.</b>";
@@ -3578,34 +3352,7 @@ function generateFullAIAnalysis_(metrics) {
 
 /** Função para limpar cache manualmente via Menu */
 function clearDashboardCache() {
-  const cache = CacheService.getScriptCache();
-  cache.remove('DASHBOARD_HTML_V59');
-  cache.remove(AI_ANALYSIS_CACHE_KEY);
-  SpreadsheetApp.getUi().alert("✅ Cache limpo (HTML + IA)! Recarregue o Web App.");
-}
-
-/** Função para debugar dados do dashboard */
-function debugDashboardData() {
-  const data = getDashboardPayload();
-  
-  console.log('=== DEBUG DASHBOARD ===');
-  console.log('Total vendedores no scorecard:', data.fsrScorecard.length);
-  console.log('Vendedores ativos:', data.fsrMetrics.totalActiveReps);
-  console.log('Vendedores inativos:', data.fsrMetrics.totalInactiveReps);
-  console.log('Win Rate médio:', data.fsrMetrics.avgWinRate);
-  console.log('Ciclo médio (ganhos):', data.fsrMetrics.avgWinCycle);
-  console.log('Ciclo médio (perdas):', data.fsrMetrics.avgLossCycle);
-  
-  console.log('\n=== VENDEDORES ATIVOS ===');
-  data.fsrScorecard.filter(r => r.isActive).forEach(r => {
-    console.log(`${r.name}: ${r.totalWon} ganhos (${r.avgWinCycle}d), ${r.totalLost} perdas (${r.avgLossCycle}d)`);
-  });
-  
-  console.log('\n=== ANÁLISES IA (primeiros 200 chars) ===');
-  console.log('Executive:', data.aiAnalysis.executive.substring(0, 200));
-  console.log('CRO:', data.aiAnalysis.croCommentary.substring(0, 200));
-  
-  SpreadsheetApp.getUi().alert("Debug concluído. Veja os logs em Execuções.");
+  SpreadsheetApp.getUi().alert("ℹ️ Cache removido. Nada para limpar.");
 }
 
 /** Função para gerenciar autenticação do dashboard */
@@ -3680,10 +3427,7 @@ function setupDashboardAutoRefresh() {
  */
 function refreshDashboardData() {
   try {
-    // Limpa cache HTML para forçar regeneração
-    CacheService.getScriptCache().remove('DASHBOARD_HTML_V59');
-    
-    // Pré-carrega dados (warm-up do cache)
+    // Gera payload em tempo real
     getDashboardPayload();
     
     console.log('✅ Dashboard refresh completado: ' + new Date().toISOString());
@@ -3889,20 +3633,14 @@ function atualizarDashboardAutomatico() {
   console.log(`⏰ Timestamp: ${startTime.toISOString()}`);
   
   try {
-    // 1. Limpa caches antigos do HTML
-    limparCachesAntigos_();
-    
-    // 2. Gera novo payload (getDashboardPayload já salva no cache)
+    // 1. Gera novo payload em tempo real
     const payload = getDashboardPayload();
     
     // 3. Força timestamp atualizado
     payload.updatedAt = startTime.toISOString();
     payload.autoRefresh = true;
     
-    // 4. Salva novamente no cache com timestamp correto
-    const cache = CacheService.getScriptCache();
-    const TTL_SECONDS = 5 * 60; // 5 minutos
-    cache.put(DASHBOARD_CACHE_KEY, JSON.stringify(payload), TTL_SECONDS);
+    // 4. Cache removido: não salva payload
     
     // 5. Log de sucesso
     const endTime = new Date();
@@ -3929,46 +3667,7 @@ function atualizarDashboardAutomatico() {
  * @private
  */
 function limparCachesAntigos_() {
-  const cache = CacheService.getScriptCache();
-  
-  // Lista de chaves de cache conhecidas
-  const keysToClean = [
-    'DASHBOARD_HTML_V59',
-    AI_ANALYSIS_CACHE_KEY
-  ];
-  
-  keysToClean.forEach(key => {
-    try {
-      cache.remove(key);
-    } catch (e) {
-      // Ignora erros silenciosamente
-    }
-  });
-}
-
-/**
- * Wrapper do menu: Executa análise detalhada do payload
- * Chamado via menu UI > Web Dashboard > Debug: Análise Detalhada do Payload
- */
-function savePayloadDetailedAnalysisMenu() {
-  try {
-    const ui = SpreadsheetApp.getUi();
-    ui.alert('⏳ Processando... Analisando payload detalhadamente.\n\nIsso pode levar alguns segundos.');
-    
-    const payload = preprocessDashboardData(true); // true = modo silencioso
-    
-    if (!payload) {
-      ui.alert('❌ Erro: Payload não gerado. Verifique os logs do Apps Script.');
-      return;
-    }
-    
-    savePayloadDetailedAnalysis(payload);
-    
-    ui.alert('✅ Sucesso!\n\nAnálise detalhada salva na aba "Payload_Detailed".\n\nVocê pode analisar cada campo, tamanho e quantidade de dados.');
-  } catch(e) {
-    SpreadsheetApp.getUi().alert('❌ Erro: ' + e.message);
-    console.error('Erro em savePayloadDetailedAnalysisMenu:', e);
-  }
+  return;
 }
 
 /**
@@ -4138,5 +3837,82 @@ function getSalesSpecialistData_() {
   } catch (error) {
     console.error('❌ Erro ao ler dados Sales Specialist:', error);
     return { totalGross: 0, totalNet: 0, dealsCount: 0 };
+  }
+}
+
+// ============================================================================
+// FUNÇÕES PARA INTELIGÊNCIA ML
+// ============================================================================
+
+/**
+ * Retorna predições dos 6 modelos de Machine Learning
+ * Chamado pelo Dashboard.html para popular a aba "🤖 Inteligência ML"
+ */
+function getMLPredictions() {
+  console.log('[ML] Buscando predições de Machine Learning...');
+  
+  try {
+    const CF_URL = 'https://us-central1-operaciones-br.cloudfunctions.net/sales-intelligence-engine';
+    
+    // Chama Cloud Function com parâmetro model=all para trazer todos os 6 modelos
+    const payload = {
+      model: 'all',
+      filters: {}
+    };
+    
+    const options = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    };
+    
+    console.log('[ML] Chamando Cloud Function:', CF_URL);
+    const response = UrlFetchApp.fetch(CF_URL, options);
+    const responseCode = response.getResponseCode();
+    
+    if (responseCode !== 200) {
+      console.error(`[ML] ❌ Cloud Function retornou código ${responseCode}`);
+      return JSON.stringify({
+        status: 'error',
+        error: `Cloud Function retornou código ${responseCode}`,
+        previsao_ciclo: { enabled: false },
+        classificador_perda: { enabled: false },
+        risco_abandono: { enabled: false },
+        performance_vendedor: { enabled: false },
+        prioridade_deals: { enabled: false },
+        proxima_acao: { enabled: false }
+      });
+    }
+    
+    const responseText = response.getContentText();
+    const data = JSON.parse(responseText);
+    
+    console.log('[ML] ✅ Dados recebidos com sucesso');
+    console.log('[ML] Status:', data.status);
+    console.log('[ML] Modelos disponíveis:', {
+      previsaoCiclo: data.previsao_ciclo?.enabled || false,
+      classificadorPerda: data.classificador_perda?.enabled || false,
+      riscoAbandono: data.risco_abandono?.enabled || false,
+      performanceVendedor: data.performance_vendedor?.enabled || false,
+      prioridadeDeals: data.prioridade_deals?.enabled || false,
+      proximaAcao: data.proxima_acao?.enabled || false
+    });
+    
+    // Retorna JSON string formatado para o Dashboard
+    return JSON.stringify(data);
+    
+  } catch (error) {
+    console.error('[ML] ❌ Erro ao buscar predições ML:', error);
+    return JSON.stringify({
+      status: 'error',
+      error: error.toString(),
+      previsao_ciclo: { enabled: false },
+      classificador_perda: { enabled: false },
+      risco_abandono: { enabled: false },
+      performance_vendedor: { enabled: false },
+      prioridade_deals: { enabled: false },
+      proxima_acao: { enabled: false }
+    });
   }
 }
