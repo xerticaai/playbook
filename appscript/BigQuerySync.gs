@@ -205,15 +205,33 @@ function syncToBigQueryScheduled() {
       // Tentar parsear data em formato dd/mm/yyyy
       const match = String(dataFechamento).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
       if (match) {
-        const dia = parseInt(match[1]);
-        const mes = parseInt(match[2]) - 1; // Meses começam em 0
+        let dia = parseInt(match[1]);
+        let mes = parseInt(match[2]) - 1; // Meses começam em 0
         const ano = parseInt(match[3]);
-        const data = new Date(ano, mes, dia);
+        let data = new Date(ano, mes, dia);
         data.setHours(0, 0, 0, 0);
         
-        if (data > hoje) {
+        // Se data é futura, pode estar invertida (MM/DD em vez de DD/MM)
+        // Tentar inverter e verificar se fica no passado
+        if (data > hoje && dia <= 12) { // Só inverter se dia <= 12 (pode ser mês)
+          const dataInvertida = new Date(ano, dia - 1, mes + 1); // Inverter dia/mês
+          dataInvertida.setHours(0, 0, 0, 0);
+          
+          if (dataInvertida <= hoje) {
+            // Data invertida é válida e está no passado! Usar ela
+            console.warn(`🔧 Data corrigida de ${dataFechamento} (futuro) para ${String(mes + 1).padStart(2, '0')}/${String(dia).padStart(2, '0')}/${ano} (passado)`);
+            // Atualizar o deal com a data correta
+            deal.Data_Fechamento = `${String(mes + 1).padStart(2, '0')}/${String(dia).padStart(2, '0')}/${ano}`;
+            return true; // Manter deal com data corrigida
+          } else {
+            // Mesmo invertida continua futura: realmente é futura
+            console.warn(`⚠️ Deal WON com data futura removido: ${dataFechamento} (Gross: ${deal.Gross})`);
+            return false; // Filtrar deal com data futura
+          }
+        } else if (data > hoje) {
+          // Data futura mas dia > 12: não pode inverter, realmente é futura
           console.warn(`⚠️ Deal WON com data futura removido: ${dataFechamento} (Gross: ${deal.Gross})`);
-          return false; // Filtrar deal com data futura
+          return false;
         }
       }
       return true; // Manter deal
@@ -226,15 +244,33 @@ function syncToBigQueryScheduled() {
       // Tentar parsear data em formato dd/mm/yyyy
       const match = String(dataFechamento).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
       if (match) {
-        const dia = parseInt(match[1]);
-        const mes = parseInt(match[2]) - 1;
+        let dia = parseInt(match[1]);
+        let mes = parseInt(match[2]) - 1;
         const ano = parseInt(match[3]);
-        const data = new Date(ano, mes, dia);
+        let data = new Date(ano, mes, dia);
         data.setHours(0, 0, 0, 0);
         
-        if (data > hoje) {
+        // Se data é futura, pode estar invertida (MM/DD em vez de DD/MM)
+        // Tentar inverter e verificar se fica no passado
+        if (data > hoje && dia <= 12) { // Só inverter se dia <= 12 (pode ser mês)
+          const dataInvertida = new Date(ano, dia - 1, mes + 1); // Inverter dia/mês
+          dataInvertida.setHours(0, 0, 0, 0);
+          
+          if (dataInvertida <= hoje) {
+            // Data invertida é válida e está no passado! Usar ela
+            console.warn(`🔧 Data corrigida de ${dataFechamento} (futuro) para ${String(mes + 1).padStart(2, '0')}/${String(dia).padStart(2, '0')}/${ano} (passado)`);
+            // Atualizar o deal com a data correta
+            deal.Data_Fechamento = `${String(mes + 1).padStart(2, '0')}/${String(dia).padStart(2, '0')}/${ano}`;
+            return true; // Manter deal com data corrigida
+          } else {
+            // Mesmo invertida continua futura: realmente é futura
+            console.warn(`⚠️ Deal LOST com data futura removido: ${dataFechamento} (Gross: ${deal.Gross})`);
+            return false; // Filtrar deal com data futura
+          }
+        } else if (data > hoje) {
+          // Data futura mas dia > 12: não pode inverter, realmente é futura
           console.warn(`⚠️ Deal LOST com data futura removido: ${dataFechamento} (Gross: ${deal.Gross})`);
-          return false; // Filtrar deal com data futura
+          return false;
         }
       }
       return true; // Manter deal
