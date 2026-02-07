@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.tmp
+*.swp
+.DS_Store
+.git/
+.gitignore
+.vscode/
+node_modules/
+**/google-cloud-sdk/

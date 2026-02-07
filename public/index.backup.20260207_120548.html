@@ -16,210 +16,48 @@
   </style>
   <style>
     :root {
-      /* Xertica.ai Brand Palette v.2 */
-      --primary: #00BEFF;
-      --primary-dark: #047EA9;
-      --accent-pink: #FF89FF;
-      --accent-green: #C0FF7D;
-      --primary-purple: #8b5cf6;
-      --bg-deep: #050a10;
-      --bg-dark: #0f172a;
-      --bg-card: #1a1d29;
-      --glass-surface: rgba(18, 28, 41, 0.65);
-      --glass-border: rgba(0, 190, 255, 0.15);
-      --text-main: #e2e8f0;
-      --text-muted: #94a3b8;
+      --bg-dark: #1c2b3e;
+      --bg-card: #24344d;
+      --primary-cyan: #00BEFF;
       --text-white: #ffffff;
       --text-gray: #b0b8c4;
-      --primary-cyan: #00BEFF;
       --success: #C0FF7D;
       --danger: #E14849;
       --warning: #FFA500;
     }
     
     * { box-sizing: border-box; }
-    body { 
-      margin: 0; 
-      font-family: 'Roboto', sans-serif; 
-      background-color: var(--bg-deep);
-      /* Retro-Futurist Grid Background */
-      background-image: 
-        linear-gradient(rgba(0, 190, 255, 0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0, 190, 255, 0.03) 1px, transparent 1px),
-        radial-gradient(circle at 50% 0%, rgba(0, 190, 255, 0.15) 0%, transparent 60%);
-      background-size: 40px 40px, 40px 40px, 100% 100%;
-      color: var(--text-main); 
-      display: flex; 
-      height: 100vh; 
-      overflow: hidden;
-      overflow-x: hidden;
-    }
+    body { margin: 0; font-family: 'Roboto', sans-serif; background-color: var(--bg-dark); color: var(--text-white); display: flex; height: 100vh; overflow: hidden; }
     
     /* Sidebar */
-    .sidebar { 
-      width: 250px; 
-      background: rgba(8, 14, 23, 0.8); 
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border-right: 1px solid rgba(255,255,255,0.05); 
-      padding: 20px; 
-      display: flex; 
-      flex-direction: column;
-      box-shadow: 4px 0 30px rgba(0, 0, 0, 0.3);
-    }
+    .sidebar { width: 250px; background: rgba(0,0,0,0.2); border-right: 1px solid rgba(255,255,255,0.05); padding: 20px; display: flex; flex-direction: column; }
     .logo { font-family: 'Poppins', sans-serif; font-weight: 700; font-size: 24px; color: var(--text-white); margin-bottom: 40px; letter-spacing: 1px; }
     .logo span { color: var(--primary-cyan); }
     .logo img { transition: opacity 0.3s ease; }
     .logo:hover img { opacity: 0.8; }
-    .nav-item { 
-      padding: 12px 15px; 
-      margin: 5px 0; 
-      border-radius: 12px; 
-      cursor: pointer; 
-      transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); 
-      font-weight: 500; 
-      user-select: none;
-      position: relative;
-      overflow: hidden;
-    }
-    .nav-item::before {
-      content: '';
-      position: absolute;
-      left: 0; top: 0; bottom: 0; width: 3px;
-      background: var(--primary-cyan);
-      border-radius: 0 4px 4px 0;
-      transform: scaleY(0);
-      transition: transform 0.3s ease;
-    }
-    .nav-item.active::before { transform: scaleY(1); }
-    .nav-item:hover, .nav-item.active { 
-      background: linear-gradient(90deg, rgba(0,190,255,0.15) 0%, transparent 100%); 
-      color: var(--primary-cyan); 
-      box-shadow: 0 0 15px rgba(0,190,255,0.2);
-      transform: translateX(2px);
-    }
+    .nav-item { padding: 12px 15px; margin: 5px 0; border-radius: 8px; cursor: pointer; transition: all 0.3s; font-weight: 500; user-select: none; }
+    .nav-item:hover, .nav-item.active { background: rgba(0, 190, 255, 0.15); color: var(--primary-cyan); box-shadow: 0 0 10px rgba(0,190,255,0.1); }
 
     /* Main Content */
     .main { flex: 1; padding: 30px; overflow-y: auto; }
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
     h1, h2, h3, h4 { font-family: 'Poppins', sans-serif; margin: 0; }
-    h3 { 
-      margin-bottom: 20px; 
-      color: var(--text-main);
-      font-family: 'Poppins', sans-serif;
-      font-weight: 600;
-      font-size: 20px;
-      letter-spacing: -0.5px;
-    }
-    h4 { 
-      color: var(--primary-cyan); 
-      margin: 30px 0 20px 0; 
-      padding: 16px 20px; 
-      font-size: 16px;
-      font-weight: 600;
-      background: var(--glass-surface);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border-radius: 12px;
-      border: 1px solid var(--glass-border);
-      border-left: 4px solid var(--primary-cyan);
-      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-    }
-    
-    /* Section Headers com Glassmorphism */
-    .metric-section-header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin: 30px 0 20px 0;
-      padding: 18px 24px;
-      font-size: 16px;
-      font-weight: 600;
-      background: var(--glass-surface);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border-radius: 16px;
-      border: 1px solid var(--glass-border);
-      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
-    .metric-section-header:hover {
-      transform: translateX(3px);
-      box-shadow: 0 6px 30px rgba(0,190,255,0.15);
-    }
-    .metric-section-header.pipeline { border-left: 4px solid var(--primary-cyan); color: var(--primary-cyan); }
-    .metric-section-header.sales-specialist { border-left: 4px solid var(--accent-green); color: var(--accent-green); }
-    .metric-section-header.won { border-left: 4px solid var(--accent-green); color: var(--accent-green); }
-    .metric-section-header.lost { border-left: 4px solid var(--danger); color: var(--danger); }
-    .metric-section-header.mvp { border-left: 4px solid var(--primary-purple); color: var(--primary-purple); }
-    .metric-section-header.sellers { border-left: 4px solid var(--primary-purple); color: var(--primary-purple); }
-    
-    /* Small Labels (Forecast Health) */
-    .forecast-health-label {
-      font-size: 13px;
-      margin-bottom: 10px;
-      border: none;
-      padding: 0;
-      color: var(--text-muted);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      background: none;
-      box-shadow:none;
-    }
+    h3 { margin-bottom: 20px; color: var(--text-white); }
+    h4 { color: var(--primary-cyan); margin: 20px 0 10px 0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; font-size: 16px; }
     .timestamp { font-size: 12px; color: var(--text-gray); }
 
     /* AI Analysis Card */
-    .ai-card { 
-      background: var(--glass-surface);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid var(--glass-border); 
-      padding: 25px; 
-      border-radius: 20px; 
-      margin-bottom: 30px; 
-      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1), 0 0 30px rgba(0,190,255,0.1);
-      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease, border-color 0.3s ease;
-    }
-    .ai-card:hover {
-      border-color: rgba(0, 190, 255, 0.4);
-      box-shadow: 0 10px 40px -10px rgba(0, 190, 255, 0.25);
-      transform: translateY(-2px);
-    }
+    .ai-card { background: linear-gradient(135deg, rgba(0,190,255,0.1) 0%, rgba(28,43,62,1) 100%); border: 1px solid rgba(0,190,255,0.3); padding: 25px; border-radius: 12px; margin-bottom: 30px; box-shadow: 0 0 20px rgba(0,190,255,0.1); }
     .ai-card h2 { color: var(--primary-cyan); font-size: 18px; margin-bottom: 15px; display: flex; align-items: center; gap: 10px; }
     .ai-content { font-size: 15px; line-height: 1.8; color: #e0e6ed; }
 
     /* KPI Grid */
-    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 18px; margin-bottom: 30px; }
-    .kpi-card { 
-      background: var(--glass-surface);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      padding: 20px; 
-      border-radius: 20px; 
-      border: 1px solid var(--glass-border);
-      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease, border-color 0.3s ease;
-      position: relative; 
-      overflow: hidden;
-    }
-    .kpi-card:hover { 
-      transform: translateY(-4px);
-      border-color: rgba(0, 190, 255, 0.4);
-      box-shadow: 0 10px 40px -10px rgba(0, 190, 255, 0.2);
-    }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
+    .kpi-card { background: var(--bg-card); padding: 18px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); transition: transform 0.2s; position: relative; overflow: hidden; }
+    .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,190,255,0.1); }
     .kpi-card .icon-lg { position: absolute; top: 15px; right: 15px; opacity: 0.2; }
     .kpi-title { font-size: 11px; color: var(--text-gray); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
-    .kpi-value { 
-      font-size: 28px; 
-      font-weight: 700; 
-      font-family: 'Poppins', sans-serif; 
-      margin-top: 8px;
-      background: linear-gradient(180deg, #fff 0%, #cbd5e1 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
+    .kpi-value { font-size: 26px; font-weight: 700; font-family: 'Poppins', sans-serif; margin-top: 8px; }
     .kpi-subtitle { font-size: 12px; color: var(--text-gray); margin-top: 5px; }
     .val-green { color: var(--success); }
     .val-red { color: var(--danger); }
@@ -227,59 +65,19 @@
     .val-warning { color: var(--warning); }
 
     /* Tables */
-    table { 
-      width: 100%; 
-      border-collapse: collapse; 
-      margin-top: 15px; 
-      background: var(--glass-surface);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border-radius: 12px; 
-      overflow: hidden;
-      border: 1px solid var(--glass-border);
-    }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; background: var(--bg-card); border-radius: 8px; overflow: hidden; }
     th { text-align: left; color: var(--text-gray); font-size: 11px; text-transform: uppercase; padding: 12px 15px; border-bottom: 2px solid rgba(255,255,255,0.1); font-weight: 600; letter-spacing: 0.5px; }
     td { padding: 12px 15px; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 13px; }
-    tr:hover { 
-      background: rgba(0,190,255,0.05);
-      transition: background 0.2s ease;
-    }
+    tr:hover { background: rgba(255,255,255,0.02); }
     tr:last-child td { border-bottom: none; }
-    .badge { 
-      padding: 4px 12px; 
-      border-radius: 99px; 
-      font-size: 11px; 
-      font-weight: 600; 
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-    }
-    .badge-success { background: rgba(192, 255, 125, 0.1); color: var(--accent-green); border: 1px solid rgba(192, 255, 125, 0.2); }
+    .badge { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; display: inline-block; }
+    .badge-success { background: rgba(192, 255, 125, 0.15); color: var(--success); }
     .badge-danger { background: rgba(225, 72, 73, 0.15); color: var(--danger); }
-    .badge-warning { background: rgba(255, 137, 255, 0.1); color: var(--accent-pink); border: 1px solid rgba(255, 137, 255, 0.2); }
+    .badge-warning { background: rgba(255, 165, 0, 0.15); color: var(--warning); }
 
     /* Deal Cards (Pauta) */
-    .deal-card { 
-      background: var(--glass-surface);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      padding: 18px; 
-      margin-bottom: 12px; 
-      border-radius: 16px; 
-      border-left: 4px solid var(--primary-cyan); 
-      border: 1px solid var(--glass-border);
-      border-left-width: 4px;
-      border-left-color: var(--primary-cyan);
-      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
-    .deal-card:hover { 
-      background: rgba(0, 190, 255, 0.08); 
-      transform: translateX(5px);
-      border-color: rgba(0, 190, 255, 0.4);
-      box-shadow: 0 4px 20px rgba(0,190,255,0.15);
-    }
+    .deal-card { background: var(--bg-card); padding: 15px; margin-bottom: 12px; border-radius: 8px; border-left: 3px solid var(--primary-cyan); transition: all 0.2s; }
+    .deal-card:hover { background: rgba(36, 52, 77, 0.8); transform: translateX(3px); }
     .deal-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px; }
     .deal-name { font-weight: 600; font-size: 14px; color: var(--text-white); }
     .deal-value { font-weight: 700; color: var(--primary-cyan); font-size: 15px; }
@@ -288,35 +86,15 @@
 
     /* Margin Category Grid */
     .margin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 15px; }
-    .margin-card { 
-      background: rgba(0,190,255,0.05);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      padding: 15px; 
-      border-radius: 12px; 
-      border: 1px solid rgba(0,190,255,0.15); 
-      text-align: center;
-      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
-    .margin-card:hover {
-      transform: translateY(-3px);
-      border-color: rgba(0,190,255,0.4);
-      box-shadow: 0 4px 15px rgba(0,190,255,0.15);
-    }
+    .margin-card { background: rgba(0,190,255,0.05); padding: 12px; border-radius: 8px; border: 1px solid rgba(0,190,255,0.1); text-align: center; }
     .margin-card-title { font-size: 11px; color: var(--text-gray); text-transform: uppercase; }
     .margin-card-value { font-size: 22px; font-weight: 700; color: var(--primary-cyan); margin: 5px 0; }
     .margin-card-sub { font-size: 11px; color: var(--text-gray); }
 
     /* Sections Control */
-    .section { display: none; animation: fadeInUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+    .section { display: none; animation: fadeIn 0.4s ease; }
     .section.active { display: block; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-    
-    @keyframes pulse-glow {
-      0%, 100% { box-shadow: 0 0 5px var(--primary-cyan), 0 0 10px var(--primary-cyan); }
-      50% { box-shadow: 0 0 2px var(--primary-cyan), 0 0 5px var(--primary-cyan); }
-    }
     
     /* Loading State */
     .loading { text-align: center; padding: 40px; color: var(--text-gray); }
@@ -325,11 +103,9 @@
     .exec-tab.active {
       color: var(--primary-cyan) !important;
       border-bottom: 3px solid var(--primary-cyan) !important;
-      background: linear-gradient(180deg, transparent, rgba(0,190,255,0.08));
     }
     .exec-tab:hover {
-      color: var(--text-main);
-      background: rgba(255,255,255,0.02);
+      color: var(--text-white);
     }
     .exec-tab-content {
       animation: fadeIn 0.3s ease;
@@ -339,11 +115,9 @@
     .ml-tab.active {
       color: var(--primary-cyan) !important;
       border-bottom: 3px solid var(--primary-cyan) !important;
-      background: linear-gradient(180deg, transparent, rgba(0,190,255,0.08));
     }
     .ml-tab:hover {
-      color: var(--text-main);
-      background: rgba(255,255,255,0.02);
+      color: var(--text-white);
     }
     .ml-tab-content {
       animation: fadeIn 0.3s ease;
@@ -358,15 +132,15 @@
       position: fixed;
       bottom: 30px;
       right: 30px;
-      background: linear-gradient(135deg, var(--primary-cyan) 0%, var(--primary-dark) 100%);
-      color: var(--bg-deep);
+      background: var(--primary-cyan);
+      color: var(--bg-dark);
       border: none;
       border-radius: 50%;
       width: 60px;
       height: 60px;
       font-size: 24px;
       cursor: pointer;
-      box-shadow: 0 4px 20px rgba(0, 190, 255, 0.4), 0 0 40px rgba(0, 190, 255, 0.2);
+      box-shadow: 0 4px 12px rgba(0, 190, 255, 0.4);
       transition: all 0.3s ease;
       z-index: 1000;
       display: flex;
@@ -374,8 +148,8 @@
       justify-content: center;
     }
     .refresh-btn:hover {
-      transform: scale(1.1) rotate(180deg);
-      box-shadow: 0 6px 30px rgba(0, 190, 255, 0.6), 0 0 60px rgba(0, 190, 255, 0.3);
+      transform: scale(1.1);
+      box-shadow: 0 6px 16px rgba(0, 190, 255, 0.6);
     }
     .refresh-btn:active {
       transform: scale(0.95);
@@ -486,101 +260,6 @@
       </svg>
     </button>
 
-    <!-- ========== FILTROS GLOBAIS (TOPO) ========== -->
-    <div id="filters-container" style="
-      position: sticky; 
-      top: 0; 
-      z-index: 999;
-      background: var(--glass-surface);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      padding: 20px 24px; 
-      margin: 0 0 30px 0; 
-      border-radius: 16px; 
-      border: 1px solid var(--glass-border);
-      box-shadow: 0 8px 32px rgba(0,0,0,0.2), 0 0 40px rgba(0,190,255,0.1);
-    ">
-      
-      <!-- Filtros Rápidos - FY26 Quarters -->
-      <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap;">
-        <span style="font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; min-width: 80px;">FY26 Quick:</span>
-        <button onclick="applyQuickFilter('2026', 'Q1')" style="padding: 8px 16px; border-radius: 12px; border: 1px solid rgba(0,190,255,0.3); background: rgba(0,190,255,0.1); color: var(--primary-cyan); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.3s; white-space: nowrap;" onmouseover="this.style.background='rgba(0,190,255,0.2)'; this.style.borderColor='var(--primary-cyan)'" onmouseout="this.style.background='rgba(0,190,255,0.1)'; this.style.borderColor='rgba(0,190,255,0.3)'">Q1 2026</button>
-        <button onclick="applyQuickFilter('2026', 'Q2')" style="padding: 8px 16px; border-radius: 12px; border: 1px solid rgba(0,190,255,0.3); background: rgba(0,190,255,0.1); color: var(--primary-cyan); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.3s; white-space: nowrap;" onmouseover="this.style.background='rgba(0,190,255,0.2)'; this.style.borderColor='var(--primary-cyan)'" onmouseout="this.style.background='rgba(0,190,255,0.1)'; this.style.borderColor='rgba(0,190,255,0.3)'">Q2 2026</button>
-        <button onclick="applyQuickFilter('2026', 'Q3')" style="padding: 8px 16px; border-radius: 12px; border: 1px solid rgba(0,190,255,0.3); background: rgba(0,190,255,0.1); color: var(--primary-cyan); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.3s; white-space: nowrap;" onmouseover="this.style.background='rgba(0,190,255,0.2)'; this.style.borderColor='var(--primary-cyan)'" onmouseout="this.style.background='rgba(0,190,255,0.1)'; this.style.borderColor='rgba(0,190,255,0.3)'">Q3 2026</button>
-        <button onclick="applyQuickFilter('2026', 'Q4')" style="padding: 8px 16px; border-radius: 12px; border: 1px solid rgba(0,190,255,0.3); background: rgba(0,190,255,0.1); color: var(--primary-cyan); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.3s; white-space: nowrap;" onmouseover="this.style.background='rgba(0,190,255,0.2)'; this.style.borderColor='var(--primary-cyan)'" onmouseout="this.style.background='rgba(0,190,255,0.1)'; this.style.borderColor='rgba(0,190,255,0.3)'">Q4 2026</button>
-        <button onclick="applyQuickFilter('2026', '')" style="padding: 8px 16px; border-radius: 12px; border: 1px solid rgba(192,255,125,0.3); background: rgba(192,255,125,0.1); color: var(--accent-green); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.3s; white-space: nowrap;" onmouseover="this.style.background='rgba(192,255,125,0.2)'; this.style.borderColor='var(--accent-green)'" onmouseout="this.style.background='rgba(192,255,125,0.1)'; this.style.borderColor='rgba(192,255,125,0.3)'">FY26 Full</button>
-        <button onclick="clearAllFilters()" style="padding: 8px 16px; border-radius: 12px; border: 1px solid rgba(225,72,73,0.3); background: rgba(225,72,73,0.1); color: var(--danger); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.3s; white-space: nowrap; margin-left: 8px;" onmouseover="this.style.background='rgba(225,72,73,0.2)'; this.style.borderColor='var(--danger)'" onmouseout="this.style.background='rgba(225,72,73,0.1)'; this.style.borderColor='rgba(225,72,73,0.3)'">✕ Limpar</button>
-      </div>
-      
-      <!-- Filtros Detalhados -->
-      <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
-      
-      <!-- Filtro por Quarter -->
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span style="font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-          Quarter:
-        </span>
-        <select id="quarter-filter" onchange="syncQuarterMonth('quarter')" style="padding: 8px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); color: #ffffff; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.3s;" onmouseover="this.style.background='rgba(255,255,255,0.12)'; this.style.borderColor='rgba(255,255,255,0.25)'" onmouseout="this.style.background='rgba(255,255,255,0.08)'; this.style.borderColor='rgba(255,255,255,0.15)'">
-          <option value="" selected style="background: #1a1d29; color: #ffffff;">Todos</option>
-          <option value="Q1" style="background: #1a1d29; color: #ffffff;">Q1 (Jan-Mar)</option>
-          <option value="Q2" style="background: #1a1d29; color: #ffffff;">Q2 (Abr-Jun)</option>
-          <option value="Q3" style="background: #1a1d29; color: #ffffff;">Q3 (Jul-Set)</option>
-          <option value="Q4" style="background: #1a1d29; color: #ffffff;">Q4 (Out-Dez)</option>
-        </select>
-      </div>
-      
-      <!-- Filtro por Vendedor -->
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span style="font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-          Vendedor:
-        </span>
-        <select id="rep-filter" onchange="filterByRep(this.value)" style="padding: 8px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); color: #ffffff; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.3s; min-width: 180px;" onmouseover="this.style.background='rgba(255,255,255,0.12)'; this.style.borderColor='rgba(255,255,255,0.25)'" onmouseout="this.style.background='rgba(255,255,255,0.08)'; this.style.borderColor='rgba(255,255,255,0.15)'">
-          <option value="all" style="background: #1a1d29; color: #ffffff;">Todos os Vendedores</option>
-        </select>
-      </div>
-
-      <!-- Filtro por Ano -->
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span style="font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-          Ano:
-        </span>
-        <select id="year-filter" onchange="reloadDashboard()" style="padding: 8px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); color: #ffffff; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.3s;" onmouseover="this.style.background='rgba(255,255,255,0.12)'; this.style.borderColor='rgba(255,255,255,0.25)'" onmouseout="this.style.background='rgba(255,255,255,0.08)'; this.style.borderColor='rgba(255,255,255,0.15)'">
-          <option value="" selected style="background: #1a1d29; color: #ffffff;">Todos</option>
-          <option value="2024" style="background: #1a1d29; color: #ffffff;">2024</option>
-          <option value="2025" style="background: #1a1d29; color: #ffffff;">2025</option>
-          <option value="2026" style="background: #1a1d29; color: #ffffff;">2026</option>
-          <option value="2027" style="background: #1a1d29; color: #ffffff;">2027</option>
-        </select>
-      </div>
-      
-      <!-- Filtro por Mês -->
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <span style="font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line></svg>
-          Mês:
-        </span>
-        <select id="month-filter" onchange="syncQuarterMonth('month')" style="padding: 8px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); color: #ffffff; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.3s;" onmouseover="this.style.background='rgba(255,255,255,0.12)'; this.style.borderColor='rgba(255,255,255,0.25)'" onmouseout="this.style.background='rgba(255,255,255,0.08)'; this.style.borderColor='rgba(255,255,255,0.15)'">
-          <option value="" selected style="background: #1a1d29; color: #ffffff;">Todos</option>
-          <option value="1" style="background: #1a1d29; color: #ffffff;">Janeiro</option>
-          <option value="2" style="background: #1a1d29; color: #ffffff;">Fevereiro</option>
-          <option value="3" style="background: #1a1d29; color: #ffffff;">Março</option>
-          <option value="4" style="background: #1a1d29; color: #ffffff;">Abril</option>
-          <option value="5" style="background: #1a1d29; color: #ffffff;">Maio</option>
-          <option value="6" style="background: #1a1d29; color: #ffffff;">Junho</option>
-          <option value="7" style="background: #1a1d29; color: #ffffff;">Julho</option>
-          <option value="8" style="background: #1a1d29; color: #ffffff;">Agosto</option>
-          <option value="9" style="background: #1a1d29; color: #ffffff;">Setembro</option>
-          <option value="10" style="background: #1a1d29; color: #ffffff;">Outubro</option>
-          <option value="11" style="background: #1a1d29; color: #ffffff;">Novembro</option>
-          <option value="12" style="background: #1a1d29; color: #ffffff;">Dezembro</option>
-        </select>
-      </div>
-    </div>
-    </div>
-
     <!-- SEÇÃO 0: VISÃO EXECUTIVA (NOVA) -->
     <div id="executive" class="section active">
       <!-- TABS DA VISÃO EXECUTIVA -->
@@ -672,12 +351,95 @@
         </svg>
         Métricas Principais
       </h3>
-      <p style="color: var(--text-muted); font-size: 12px; margin: -5px 0 15px 0;">Onde estamos vs. onde queremos chegar</p>
+      <p style="color: var(--text-gray); font-size: 12px; margin: -5px 0 15px 0;">Onde estamos vs. onde queremos chegar</p>
+      
+      <!-- Filtros de Período - STICKY -->
+      <div id="filters-container" style="position: sticky; top: -30px; z-index: 1000; background: linear-gradient(135deg, #1a1d29 0%, #252b3b 100%); padding: 16px 20px; margin: -30px -30px 20px -30px; border-radius: 0; border-bottom: 3px solid var(--primary-cyan); box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+        
+        <!-- Filtros Rápidos - FY26 Quarters -->
+        <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">
+          <span style="font-size: 11px; color: rgba(255,255,255,0.6); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; min-width: 80px;">FY26 Quick:</span>
+          <button onclick="applyQuickFilter('2026', 'Q1')" style="padding: 6px 14px; border-radius: 6px; border: 1px solid rgba(0,190,255,0.3); background: rgba(0,190,255,0.1); color: var(--primary-cyan); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.2s; white-space: nowrap;" onmouseover="this.style.background='rgba(0,190,255,0.2)'; this.style.borderColor='var(--primary-cyan)'" onmouseout="this.style.background='rgba(0,190,255,0.1)'; this.style.borderColor='rgba(0,190,255,0.3)'">Q1 2026</button>
+          <button onclick="applyQuickFilter('2026', 'Q2')" style="padding: 6px 14px; border-radius: 6px; border: 1px solid rgba(0,190,255,0.3); background: rgba(0,190,255,0.1); color: var(--primary-cyan); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.2s; white-space: nowrap;" onmouseover="this.style.background='rgba(0,190,255,0.2)'; this.style.borderColor='var(--primary-cyan)'" onmouseout="this.style.background='rgba(0,190,255,0.1)'; this.style.borderColor='rgba(0,190,255,0.3)'">Q2 2026</button>
+          <button onclick="applyQuickFilter('2026', 'Q3')" style="padding: 6px 14px; border-radius: 6px; border: 1px solid rgba(0,190,255,0.3); background: rgba(0,190,255,0.1); color: var(--primary-cyan); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.2s; white-space: nowrap;" onmouseover="this.style.background='rgba(0,190,255,0.2)'; this.style.borderColor='var(--primary-cyan)'" onmouseout="this.style.background='rgba(0,190,255,0.1)'; this.style.borderColor='rgba(0,190,255,0.3)'">Q3 2026</button>
+          <button onclick="applyQuickFilter('2026', 'Q4')" style="padding: 6px 14px; border-radius: 6px; border: 1px solid rgba(0,190,255,0.3); background: rgba(0,190,255,0.1); color: var(--primary-cyan); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.2s; white-space: nowrap;" onmouseover="this.style.background='rgba(0,190,255,0.2)'; this.style.borderColor='var(--primary-cyan)'" onmouseout="this.style.background='rgba(0,190,255,0.1)'; this.style.borderColor='rgba(0,190,255,0.3)'">Q4 2026</button>
+          <button onclick="applyQuickFilter('2026', '')" style="padding: 6px 14px; border-radius: 6px; border: 1px solid rgba(16,185,129,0.3); background: rgba(16,185,129,0.1); color: var(--success); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.2s; white-space: nowrap;" onmouseover="this.style.background='rgba(16,185,129,0.2)'; this.style.borderColor='var(--success)'" onmouseout="this.style.background='rgba(16,185,129,0.1)'; this.style.borderColor='rgba(16,185,129,0.3)'">FY26 Full</button>
+          <button onclick="clearAllFilters()" style="padding: 6px 14px; border-radius: 6px; border: 1px solid rgba(239,68,68,0.3); background: rgba(239,68,68,0.1); color: var(--danger); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.2s; white-space: nowrap; margin-left: 8px;" onmouseover="this.style.background='rgba(239,68,68,0.2)'; this.style.borderColor='var(--danger)'" onmouseout="this.style.background='rgba(239,68,68,0.1)'; this.style.borderColor='rgba(239,68,68,0.3)'">✕ Limpar</button>
+        </div>
+        
+        <!-- Filtros Detalhados -->
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+        
+        <!-- Filtro por Quarter -->
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 11px; color: rgba(255,255,255,0.7); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+            Quarter:
+          </span>
+          <select id="quarter-filter" onchange="syncQuarterMonth('quarter')" style="padding: 8px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); color: #ffffff; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" onmouseover="this.style.background='rgba(255,255,255,0.12)'; this.style.borderColor='rgba(255,255,255,0.25)'" onmouseout="this.style.background='rgba(255,255,255,0.08)'; this.style.borderColor='rgba(255,255,255,0.15)'">
+            <option value="" selected style="background: #1a1d29; color: #ffffff;">Todos</option>
+            <option value="Q1" style="background: #1a1d29; color: #ffffff;">Q1 (Jan-Mar)</option>
+            <option value="Q2" style="background: #1a1d29; color: #ffffff;">Q2 (Abr-Jun)</option>
+            <option value="Q3" style="background: #1a1d29; color: #ffffff;">Q3 (Jul-Set)</option>
+            <option value="Q4" style="background: #1a1d29; color: #ffffff;">Q4 (Out-Dez)</option>
+          </select>
+        </div>
+        
+        <!-- Filtro por Vendedor -->
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 11px; color: rgba(255,255,255,0.7); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+            Vendedor:
+          </span>
+          <select id="rep-filter" onchange="filterByRep(this.value)" style="padding: 8px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); color: #ffffff; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.1); min-width: 180px;" onmouseover="this.style.background='rgba(255,255,255,0.12)'; this.style.borderColor='rgba(255,255,255,0.25)'" onmouseout="this.style.background='rgba(255,255,255,0.08)'; this.style.borderColor='rgba(255,255,255,0.15)'">
+            <option value="all" style="background: #1a1d29; color: #ffffff;">Todos os Vendedores</option>
+            <!-- Preenchido dinamicamente -->
+          </select>
+        </div>
+
+        <!-- Filtro por Ano -->
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 11px; color: rgba(255,255,255,0.7); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+            Ano:
+          </span>
+          <select id="year-filter" onchange="reloadDashboard()" style="padding: 8px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); color: #ffffff; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" onmouseover="this.style.background='rgba(255,255,255,0.12)'; this.style.borderColor='rgba(255,255,255,0.25)'" onmouseout="this.style.background='rgba(255,255,255,0.08)'; this.style.borderColor='rgba(255,255,255,0.15)'">
+            <option value="" selected style="background: #1a1d29; color: #ffffff;">Todos</option>
+            <option value="2024" style="background: #1a1d29; color: #ffffff;">2024</option>
+            <option value="2025" style="background: #1a1d29; color: #ffffff;">2025</option>
+            <option value="2026" style="background: #1a1d29; color: #ffffff;">2026</option>
+            <option value="2027" style="background: #1a1d29; color: #ffffff;">2027</option>
+          </select>
+        </div>
+        
+        <!-- Filtro por Mês -->
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 11px; color: rgba(255,255,255,0.7); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line></svg>
+            Mês:
+          </span>
+          <select id="month-filter" onchange="syncQuarterMonth('month')" style="padding: 8px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); color: #ffffff; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.1);" onmouseover="this.style.background='rgba(255,255,255,0.12)'; this.style.borderColor='rgba(255,255,255,0.25)'" onmouseout="this.style.background='rgba(255,255,255,0.08)'; this.style.borderColor='rgba(255,255,255,0.15)'">
+            <option value="" selected style="background: #1a1d29; color: #ffffff;">Todos</option>
+            <option value="1" style="background: #1a1d29; color: #ffffff;">Janeiro</option>
+            <option value="2" style="background: #1a1d29; color: #ffffff;">Fevereiro</option>
+            <option value="3" style="background: #1a1d29; color: #ffffff;">Março</option>
+            <option value="4" style="background: #1a1d29; color: #ffffff;">Abril</option>
+            <option value="5" style="background: #1a1d29; color: #ffffff;">Maio</option>
+            <option value="6" style="background: #1a1d29; color: #ffffff;">Junho</option>
+            <option value="7" style="background: #1a1d29; color: #ffffff;">Julho</option>
+            <option value="8" style="background: #1a1d29; color: #ffffff;">Agosto</option>
+            <option value="9" style="background: #1a1d29; color: #ffffff;">Setembro</option>
+            <option value="10" style="background: #1a1d29; color: #ffffff;">Outubro</option>
+            <option value="11" style="background: #1a1d29; color: #ffffff;">Novembro</option>
+            <option value="12" style="background: #1a1d29; color: #ffffff;">Dezembro</option>
+          </select>
+        </div>
+      </div>
       
       <!-- ========================================================================== -->
       <!-- 📈 SEÇÃO 1: PIPELINE ABERTO (Oportunidades em Andamento) -->
       <!-- ========================================================================== -->
-      <h4 class="metric-section-header pipeline">
+      <h4 style="margin-top: 30px; margin-bottom: 15px; color: var(--primary-cyan); font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 10px; border-bottom: 2px solid var(--primary-cyan); padding-bottom: 10px;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
           <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
           <polyline points="17 6 23 6 23 12"/>
@@ -724,21 +486,11 @@
           <div class="kpi-subtitle" id="exec-above50-count" style="font-size: 11px; line-height: 1.3;">- deals</div>
           <div class="kpi-subtitle" id="exec-above50-net" style="font-size: 11px; margin-top: 5px; padding: 3px 8px; background: rgba(16,185,129,0.12); color: var(--success); border-radius: 4px; display: inline-block; font-weight: 600;">Net: -</div>
         </div>
-        <div class="kpi-card" style="border-left: 4px solid var(--warning);">
-          <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="12 6 12 12 16 14"/>
-          </svg>
-          <div class="kpi-title" style="color: var(--warning);">⏸️ Dias Idle Médio</div>
-          <div class="kpi-value val-warning" id="exec-idle-days-avg">-</div>
-          <div class="kpi-subtitle" id="exec-idle-days-detail">dias sem atividade</div>
-          <div class="kpi-subtitle" id="exec-idle-days-risk" style="font-size: 11px; margin-top: 5px; padding: 3px 8px; background: rgba(251,191,36,0.12); color: var(--warning); border-radius: 4px; display: inline-block; font-weight: 600;">-</div>
-        </div>
       </div>
 
       <!-- Saúde do Forecast (Barra Visual) - DENTRO DA SEÇÃO PIPELINE -->
       <div style="margin: 25px 0;">
-        <h4 class="forecast-health-label">
+        <h4 style="font-size: 13px; margin-bottom: 10px; border: none; padding-bottom: 0; color: var(--text-gray); display: flex; align-items: center; gap: 8px;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
             <path d="M12 2L2 7l10 5 10-5-10-5z"/>
             <path d="M2 17l10 5 10-5"/>
@@ -765,7 +517,7 @@
       <!-- ========================================================================== -->
       <!-- 👨‍💼 SEÇÃO 2: SALES SPECIALIST (Curadoria Manual) -->
       <!-- ========================================================================== -->
-      <h4 class="metric-section-header sales-specialist">
+      <h4 style="margin-top: 40px; margin-bottom: 15px; color: var(--success); font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 10px; border-bottom: 2px solid var(--success); padding-bottom: 10px;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
           <circle cx="9" cy="7" r="4"/>
@@ -822,7 +574,7 @@
 
       <!-- Saúde do Forecast - Sales Specialist -->
       <div style="margin: 25px 0;">
-        <h4 class="forecast-health-label">
+        <h4 style="font-size: 13px; margin-bottom: 10px; border: none; padding-bottom: 0; color: var(--text-gray); display: flex; align-items: center; gap: 8px;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
             <path d="M12 2L2 7l10 5 10-5-10-5z"/>
             <path d="M2 17l10 5 10-5"/>
@@ -843,7 +595,7 @@
       <!-- ========================================================================== -->
       <!-- ✅ SEÇÃO 3: DEALS FECHADOS - GANHOS (Deals Ganhos) -->
       <!-- ========================================================================== -->
-      <h4 class="metric-section-header won">
+      <h4 style="margin-top: 40px; margin-bottom: 15px; color: var(--success); font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 10px; border-bottom: 2px solid var(--success); padding-bottom: 10px;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
           <polyline points="20 6 9 17 4 12"/>
         </svg>
@@ -868,38 +620,12 @@
           <div class="kpi-value val-cyan" id="exec-conversion-rate">-</div>
           <div class="kpi-subtitle" id="exec-conversion-detail">-</div>
         </div>
-        <div class="kpi-card" style="border-left: 4px solid var(--success);">
-          <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="12 6 12 12 16 14"/>
-          </svg>
-          <div class="kpi-title" style="color: var(--success);">⏱️ Ciclo Médio (Ganhos)</div>
-          <div class="kpi-value val-green" id="exec-won-cycle-days">-</div>
-          <div class="kpi-subtitle">dias para fechar</div>
-        </div>
-        <div class="kpi-card">
-          <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-          </svg>
-          <div class="kpi-title">📊 Atividades Médias</div>
-          <div class="kpi-value val-cyan" id="exec-won-activities">-</div>
-          <div class="kpi-subtitle" id="exec-won-activities-detail">atividades por deal ganho</div>
-        </div>
-        <div class="kpi-card" style="border-left: 4px solid var(--primary-purple);">
-          <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 11l3 3L22 4"/>
-            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-          </svg>
-          <div class="kpi-title" style="color: var(--primary-purple);">🎯 MEDDIC Médio</div>
-          <div class="kpi-value" style="color: var(--primary-purple);" id="exec-won-meddic">-</div>
-          <div class="kpi-subtitle" id="exec-won-meddic-detail">score de qualificação</div>
-        </div>
       </div>
 
       <!-- ========================================================================== -->
       <!-- ❌ SEÇÃO 4: DEALS PERDIDOS (Deals Perdidos) -->
       <!-- ========================================================================== -->
-      <h4 class="metric-section-header lost">
+      <h4 style="margin-top: 40px; margin-bottom: 15px; color: var(--danger); font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 10px; border-bottom: 2px solid var(--danger); padding-bottom: 10px;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
           <line x1="18" y1="6" x2="6" y2="18"></line>
           <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -926,39 +652,12 @@
           <div class="kpi-value val-red" id="exec-loss-rate">-</div>
           <div class="kpi-subtitle" id="exec-loss-detail">-</div>
         </div>
-        <div class="kpi-card" style="border-left: 4px solid var(--danger);">
-          <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="12 6 12 12 16 14"/>
-          </svg>
-          <div class="kpi-title" style="color: var(--danger);">⏱️ Ciclo Médio (Perdas)</div>
-          <div class="kpi-value val-red" id="exec-lost-cycle-days">-</div>
-          <div class="kpi-subtitle">dias até perder</div>
-        </div>
-        <div class="kpi-card" style="border-left: 4px solid var(--warning);">
-          <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-            <line x1="12" y1="9" x2="12" y2="13"/>
-            <line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
-          <div class="kpi-title" style="color: var(--warning);">⚠️ Perdas Evitáveis</div>
-          <div class="kpi-value val-warning" id="exec-lost-evitavel-pct">-</div>
-          <div class="kpi-subtitle" id="exec-lost-evitavel-count">- deals evitáveis</div>
-        </div>
-        <div class="kpi-card">
-          <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-          </svg>
-          <div class="kpi-title">⚡ Eficiência de Ciclo</div>
-          <div class="kpi-value val-cyan" id="exec-cycle-efficiency">-</div>
-          <div class="kpi-subtitle" id="exec-cycle-efficiency-detail">ganhos vs perdas</div>
-        </div>
       </div>
 
       <!-- ========================================================================== -->
       <!-- 👥 SEÇÃO 5: PERFORMANCE DOS VENDEDORES -->
       <!-- ========================================================================== -->
-      <h4 class="metric-section-header sellers">
+      <h4 style="margin-top: 40px; margin-bottom: 15px; color: var(--primary-purple); font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 10px; border-bottom: 2px solid var(--primary-purple); padding-bottom: 10px;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
           <circle cx="9" cy="7" r="4"/>
@@ -2114,10 +1813,6 @@
         };
         
         DATA = normalizeCloudResponse(raw);
-        
-        // Armazenar pipeline raw para uso em filtros
-        window.DATA = DATA;
-        window.pipelineDataRaw = raw.pipeline || [];
 
         log('[DATA] Estrutura de dados carregada:', {
           'weeklyAgenda quarters': Object.keys(DATA.weeklyAgenda || {}).length,
@@ -2760,6 +2455,15 @@
         }, 500); // Aguarda animação de fade out
       }
     }
+
+    // Função de debounce para evitar requests excessivos
+    let filterDebounceTimer = null;
+    function debounceFilter(callback, delay = 500) {
+      return function(...args) {
+        clearTimeout(filterDebounceTimer);
+        filterDebounceTimer = setTimeout(() => callback.apply(this, args), delay);
+      };
+    }
     
     function showFilterLoader() {
       const filterLoader = document.getElementById('filter-loading');
@@ -3380,9 +3084,6 @@
         setTextSafe('exec-above50-value', formatMoney(above50Value));
         setTextSafe('exec-above50-count', above50Count + ' deals');
         setTextSafe('exec-above50-net', 'Net: ' + formatMoney(above50Net));
-        
-        // Calcular e atualizar Idle Days Médio do Pipeline
-        updateIdleDaysMetrics(window.pipelineDataRaw || DATA.pipeline || []);
         
         // Armazena métricas de ganhas/perdidas para uso global
         window.conversionMetrics = {
@@ -4725,101 +4426,6 @@
       }
     }
     
-    // Função para calcular e atualizar métricas de Idle Days
-    function updateIdleDaysMetrics(pipelineData) {
-      if (!Array.isArray(pipelineData) || pipelineData.length === 0) {
-        setTextSafe('exec-idle-days-avg', '-');
-        setTextSafe('exec-idle-days-detail', 'sem dados');
-        setTextSafe('exec-idle-days-risk', '-');
-        return;
-      }
-      
-      let totalIdleDays = 0;
-      let dealsWithIdle = 0;
-      let highRiskCount = 0; // > 30 dias idle
-      let mediumRiskCount = 0; // 15-30 dias
-      
-      pipelineData.forEach(deal => {
-        const idleDays = deal.Idle_Days || deal.idle_dias || deal.Idle_Dias || deal.idle_days;
-        
-        if (idleDays !== null && idleDays !== undefined && !isNaN(idleDays)) {
-          totalIdleDays += Number(idleDays);
-          dealsWithIdle++;
-          
-          if (idleDays > 30) {
-            highRiskCount++;
-          } else if (idleDays >= 15) {
-            mediumRiskCount++;
-          }
-        }
-      });
-      
-      if (dealsWithIdle === 0) {
-        setTextSafe('exec-idle-days-avg', '-');
-        setTextSafe('exec-idle-days-detail', 'sem dados de idle');
-        setTextSafe('exec-idle-days-risk', '-');
-        return;
-      }
-      
-      const avgIdleDays = Math.round(totalIdleDays / dealsWithIdle);
-      const riskPct = Math.round((highRiskCount / dealsWithIdle) * 100);
-      
-      // Atualizar card
-      setTextSafe('exec-idle-days-avg', avgIdleDays);
-      setTextSafe('exec-idle-days-detail', `${avgIdleDays} dias sem atividade`);
-      
-      // Montar label de risco
-      let riskLabel = '';
-      if (highRiskCount > 0) {
-        riskLabel = `🔴 ${highRiskCount} em alto risco (>30d)`;
-      } else if (mediumRiskCount > 0) {
-        riskLabel = `🟡 ${mediumRiskCount} em médio risco (15-30d)`;
-      } else {
-        riskLabel = `🟢 ${dealsWithIdle} deals ativos`;
-      }
-      
-      setTextSafe('exec-idle-days-risk', riskLabel);
-      
-      log('[IDLE DAYS] Calculado:', {
-        avgIdleDays,
-        dealsWithIdle,
-        highRiskCount,
-        mediumRiskCount,
-        riskPct: riskPct + '%'
-      });
-    }
-    
-    // Função auxiliar para filtrar pipeline por período
-    function filterPipelineByPeriod_(period) {
-      const allPipeline = window.DATA?.pipeline || window.pipelineDataRaw || [];
-      
-      if (!Array.isArray(allPipeline) || allPipeline.length === 0) {
-        log('[FILTER PIPELINE] ⚠️ Nenhum dado de pipeline disponível');
-        return [];
-      }
-      
-      if (period === 'all') {
-        return allPipeline;
-      }
-      
-      const fy = window.currentFY || 'FY26';
-      
-      if (period === 'total') {
-        return allPipeline.filter(d => 
-          (d.Fiscal_Q || d.fiscal_q || '').startsWith(fy + '-')
-        );
-      }
-      
-      if (['q1', 'q2', 'q3', 'q4'].includes(period)) {
-        const targetQuarter = fy + '-' + period.toUpperCase();
-        return allPipeline.filter(d => 
-          (d.Fiscal_Q || d.fiscal_q) === targetQuarter
-        );
-      }
-      
-      return allPipeline;
-    }
-    
     // Função para atualizar métricas de conversão ao filtrar por período
     function updateConversionMetricsForPeriod(period) {
       if (!window.wonAgg || !window.lostAgg) {
@@ -4909,124 +4515,33 @@
       setTextSafe('exec-ticket-lost-detail', 'média por deal');
       setTextSafe('exec-ticket-lost-net', 'Net: ' + formatMoney(ticketLostNet));
       
-      // Ciclo Médio e Atividades - GANHOS
+      // Ciclo Médio (calculado dos dados se disponível)
       if (window.wonAgg && window.wonAgg.length > 0) {
         let totalCycleDaysWon = 0;
-        let totalActivitiesWon = 0;
-        let totalMeddicWon = 0;
-        let totalBantWon = 0;
         let dealsWithCycleWon = 0;
-        let dealsWithActivitiesWon = 0;
-        let dealsWithMeddicWon = 0;
-        let dealsWithBantWon = 0;
-        
         window.wonAgg.forEach(deal => {
-          if (targetQuarter === null || deal.fiscalQ === targetQuarter) {
-            if (deal.ciclo_dias) {
-              totalCycleDaysWon += deal.ciclo_dias;
-              dealsWithCycleWon++;
-            }
-            if (deal.atividades) {
-              totalActivitiesWon += deal.atividades;
-              dealsWithActivitiesWon++;
-            }
-            if (deal.meddic_score) {
-              totalMeddicWon += deal.meddic_score;
-              dealsWithMeddicWon++;
-            }
-            if (deal.bant_score) {
-              totalBantWon += deal.bant_score;
-              dealsWithBantWon++;
-            }
+          if ((targetQuarter === null || deal.fiscalQ === targetQuarter) && deal.ciclo_dias) {
+            totalCycleDaysWon += deal.ciclo_dias;
+            dealsWithCycleWon++;
           }
         });
-        
         const avgCycleWon = dealsWithCycleWon > 0 ? Math.round(totalCycleDaysWon / dealsWithCycleWon) : 0;
-        const avgActivitiesWon = dealsWithActivitiesWon > 0 ? Math.round(totalActivitiesWon / dealsWithActivitiesWon) : 0;
-        const avgMeddicWon = dealsWithMeddicWon > 0 ? Math.round(totalMeddicWon / dealsWithMeddicWon) : 0;
-        const avgBantWon = dealsWithBantWon > 0 ? Math.round(totalBantWon / dealsWithBantWon) : 0;
-        
-        // Novos IDs para seção de ganhos
-        setTextSafe('exec-won-cycle-days', avgCycleWon);
-        setTextSafe('exec-won-activities', avgActivitiesWon);
-        setTextSafe('exec-won-activities-detail', `${avgActivitiesWon} atividades por deal ganho`);
-        setTextSafe('exec-won-meddic', avgMeddicWon);
-        setTextSafe('exec-won-meddic-detail', `${avgMeddicWon}/100 score de qualificação`);
-        
-        // IDs antigos (compatibilidade)
         setTextSafe('exec-cycle-won', avgCycleWon + ' dias');
         setTextSafe('exec-cycle-won-detail', dealsWithCycleWon + ' deals com ciclo');
-        
-        window.avgCycleWon = avgCycleWon; // Para uso em eficiência
       }
       
-      // Ciclo Médio e Atividades - PERDAS + Evitabilidade
       if (window.lostAgg && window.lostAgg.length > 0) {
         let totalCycleDaysLost = 0;
-        let totalActivitiesLost = 0;
-        let totalMeddicLost = 0;
-        let totalBantLost = 0;
         let dealsWithCycleLost = 0;
-        let dealsWithActivitiesLost = 0;
-        let dealsWithMeddicLost = 0;
-        let dealsWithBantLost = 0;
-        let evitavelCount = 0;
-        let totalEvitavelCheck = 0;
-        
         window.lostAgg.forEach(deal => {
-          if (targetQuarter === null || deal.fiscalQ === targetQuarter) {
-            if (deal.ciclo_dias) {
-              totalCycleDaysLost += deal.ciclo_dias;
-              dealsWithCycleLost++;
-            }
-            if (deal.atividades) {
-              totalActivitiesLost += deal.atividades;
-              dealsWithActivitiesLost++;
-            }
-            if (deal.meddic_score) {
-              totalMeddicLost += deal.meddic_score;
-              dealsWithMeddicLost++;
-            }
-            if (deal.bant_score) {
-              totalBantLost += deal.bant_score;
-              dealsWithBantLost++;
-            }
-            if (deal.evitavel) {
-              totalEvitavelCheck++;
-              if (deal.evitavel.toLowerCase() === 'sim') {
-                evitavelCount++;
-              }
-            }
+          if ((targetQuarter === null || deal.fiscalQ === targetQuarter) && deal.ciclo_dias) {
+            totalCycleDaysLost += deal.ciclo_dias;
+            dealsWithCycleLost++;
           }
         });
-        
         const avgCycleLost = dealsWithCycleLost > 0 ? Math.round(totalCycleDaysLost / dealsWithCycleLost) : 0;
-        const avgActivitiesLost = dealsWithActivitiesLost > 0 ? Math.round(totalActivitiesLost / dealsWithActivitiesLost) : 0;
-        const avgMeddicLost = dealsWithMeddicLost > 0 ? Math.round(totalMeddicLost / dealsWithMeddicLost) : 0;
-        const avgBantLost = dealsWithBantLost > 0 ? Math.round(totalBantLost / dealsWithBantLost) : 0;
-        const evitavelPct = totalEvitavelCheck > 0 ? Math.round((evitavelCount / totalEvitavelCheck) * 100) : 0;
-        
-        // Novos IDs para seção de perdas
-        setTextSafe('exec-lost-cycle-days', avgCycleLost);
-        setTextSafe('exec-lost-evitavel-pct', evitavelPct + '%');
-        setTextSafe('exec-lost-evitavel-count', `${evitavelCount} de ${totalLosses} deals evitáveis`);
-        
-        // IDs antigos (compatibilidade)
         setTextSafe('exec-cycle-lost', avgCycleLost + ' dias');
         setTextSafe('exec-cycle-lost-detail', dealsWithCycleLost + ' deals com ciclo');
-        
-        window.avgCycleLost = avgCycleLost; // Para uso em eficiência
-      }
-      
-      // Eficiência de Ciclo (ganhos vs perdas)
-      if (window.avgCycleWon && window.avgCycleLost && window.avgCycleLost > 0) {
-        const efficiency = Math.round((1 - (window.avgCycleWon / window.avgCycleLost)) * 100);
-        const efficiencyText = efficiency > 0 ? `+${efficiency}%` : `${efficiency}%`;
-        setTextSafe('exec-cycle-efficiency', efficiencyText);
-        setTextSafe('exec-cycle-efficiency-detail', `ganhos ${window.avgCycleWon}d vs perdas ${window.avgCycleLost}d`);
-      } else {
-        setTextSafe('exec-cycle-efficiency', '-');
-        setTextSafe('exec-cycle-efficiency-detail', 'dados insuficientes');
       }
       
       // Vendedores: Win Rate total
@@ -5308,10 +4823,6 @@
       
       // RECALCULA DEALS ≥50% CONFIANÇA IA ADAPTATIVA AO FILTRO
       updateHighConfidenceDeals(period);
-      
-      // RECALCULA IDLE DAYS MÉDIO DO PERÍODO FILTRADO
-      const pipelineFiltered = filterPipelineByPeriod_(period);
-      updateIdleDaysMetrics(pipelineFiltered);
       
       // Atualiza métricas de conversão (Ganhas/Perdidas com Gross/Net)
       updateConversionMetricsForPeriod(period);

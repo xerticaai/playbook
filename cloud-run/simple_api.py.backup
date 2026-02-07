@@ -1,0 +1,836 @@
+"""
+Sales Intelligence API - FastAPI Simplificada
+Endpoints para Dashboard consumir dados do BigQuery
+"""
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from google.cloud import bigquery
+from typing import List, Dict, Any
+import os
+from datetime import datetime
+
+app = FastAPI(
+    title="Sales Intelligence API",
+    description="BigQuery data for Sales Dashboard",
+    version="1.0.0"
+)
+
+# CORS - Permitir acesso do Dashboard
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Ajustar para domínio específico em produção
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# BigQuery Client
+PROJECT_ID = os.getenv("GCP_PROJECT", "operaciones-br")
+DATASET_ID = "sales_intelligence"
+
+def get_bq_client():
+    """Retorna cliente BigQuery"""
+    return bigquery.Client(project=PROJECT_ID)
+
+def query_to_dict(query: str) -> List[Dict[str, Any]]:
+    """Executa query e retorna lista de dicts"""
+    client = get_bq_client()
+    query_job = client.query(query)
+    results = query_job.result()
+    
+    rows = []
+    for row in results:
+        rows.append(dict(row))
+    
+    return rows
+
+# =============================================
+# HEALTH CHECK
+# =============================================
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    try:
+        # Testar conexão BigQuery
+        client = get_bq_client()
+        query = f"SELECT COUNT(*) as total FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`"
+        result = list(client.query(query).result())[0]
+        
+        return {
+            "status": "healthy",
+            "timestamp": datetime.utcnow().isoformat(),
+            "bigquery": "connected",
+            "pipeline_records": result["total"]
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+
+@app.get("/")
+async def root():
+    """Root endpoint"""
+    return {
+        "message": "Sales Intelligence API",
+        "version": "1.0.0",
+        "endpoints": {
+            "health": "/health",
+            "metrics": "/api/metrics",
+            "priorities": "/api/priorities",
+            "actions": "/api/actions",
+            "pipeline": "/api/pipeline",
+            "closed_won": "/api/closed/won",
+            "closed_lost": "/api/closed/lost"
+        }
+    }
+
+# =============================================
+# MÉTRICAS AGREGADAS
+# =============================================
+
+@app.get("/api/metrics")
+async def get_metrics():
+    """
+    Retorna métricas agregadas do pipeline
+    """
+    try:
+        query = f"""
+        WITH pipeline_summary AS (
+          SELECT 
+            COUNT(*) as total_opps,
+            ROUND(SUM(Gross), 2) as total_gross,
+            ROUND(SUM(Net), 2) as total_net,
+            ROUND(AVG(Gross), 2) as avg_deal_size,
+            COUNT(DISTINCT Vendedor) as total_sellers
+          FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
+        ),
+        won_summary AS (
+          SELECT
+            COUNT(*) as won_count,
+            ROUND(SUM(Gross), 2) as won_gross
+          FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`
+        ),
+        lost_summary AS (
+          SELECT
+            COUNT(*) as lost_count,
+            ROUND(SUM(Gross), 2) as lost_gross
+          FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`
+        ),
+        priorities AS (
+          SELECT
+            COUNT(*) as total_priority,
+            SUM(CASE WHEN priority_level = 'CRÍTICO' THEN 1 ELSE 0 END) as criticos,
+            SUM(CASE WHEN priority_level = 'ALTO' THEN 1 ELSE 0 END) as altos,
+            SUM(CASE WHEN nivel_risco = 'ALTO' THEN 1 ELSE 0 END) as alto_risco
+          FROM `{PROJECT_ID}.{DATASET_ID}.ml_prioridade_deal_v2`
+        )
+        
+        SELECT
+          p.*,
+          w.*,
+          l.*,
+          pr.*,
+          ROUND(w.won_count / NULLIF(w.won_count + l.lost_count, 0) * 100, 1) as win_rate
+        FROM pipeline_summary p, won_summary w, lost_summary l, priorities pr
+        """
+        
+        results = query_to_dict(query)
+        
+        if not results:
+            raise HTTPException(status_code=404, detail="No data found")
+        
+        return results[0]
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# =============================================
+# PRIORIDADES (VIEW ml_prioridade_deal_v2)
+# =============================================
+
+@app.get("/api/priorities")
+async def get_priorities(limit: int = 50):
+    """
+    Retorna deals ordenados por prioridade
+    """
+    try:
+        query = f"""
+        SELECT
+          Oportunidade,
+          Vendedor,
+          Perfil_Cliente,
+          Segmento,
+          Stage,
+          Close_Date,
+          CAST(Gross AS INT64) as Gross,
+          priority_score,
+          priority_level,
+          nivel_risco,
+          dias_em_pipeline,
+          dias_ate_close,
+          Atividades,
+          urgencia_score,
+          risco_score
+        FROM `{PROJECT_ID}.{DATASET_ID}.ml_prioridade_deal_v2`
+        ORDER BY priority_score DESC
+        LIMIT {limit}
+        """
+        
+        results = query_to_dict(query)
+        
+        return {
+            "total": len(results),
+            "deals": results
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# =============================================
+# AÇÕES RECOMENDADAS (VIEW ml_proxima_acao_v2)
+# =============================================
+
+@app.get("/api/actions")
+async def get_actions(limit: int = 50):
+    """
+    Retorna próximas ações recomendadas por urgência
+    """
+    try:
+        query = f"""
+        SELECT
+          Oportunidade,
+          Vendedor,
+          Perfil_Cliente,
+          Segmento,
+          CAST(Gross AS INT64) as Gross,
+          categoria_acao,
+          urgencia,
+          acao_recomendada,
+          checklist,
+          priority_score,
+          nivel_risco,
+          dias_ate_close
+        FROM `{PROJECT_ID}.{DATASET_ID}.ml_proxima_acao_v2`
+        WHERE urgencia = 'ALTA'
+        ORDER BY priority_score DESC
+        LIMIT {limit}
+        """
+        
+        results = query_to_dict(query)
+        
+        return {
+            "total": len(results),
+            "actions": results
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# =============================================
+# RESUMO DE AÇÕES
+# =============================================
+
+@app.get("/api/actions/summary")
+async def get_actions_summary():
+    """
+    Retorna distribuição de ações por categoria e urgência
+    """
+    try:
+        query = f"""
+        SELECT
+          categoria_acao,
+          urgencia,
+          COUNT(*) as total_deals,
+          ROUND(SUM(Gross), 0) as total_value
+        FROM `{PROJECT_ID}.{DATASET_ID}.ml_proxima_acao_v2`
+        GROUP BY categoria_acao, urgencia
+        ORDER BY total_deals DESC
+        """
+        
+        results = query_to_dict(query)
+        
+        return {
+            "summary": results
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# =============================================
+# PIPELINE COMPLETO
+# =============================================
+
+@app.get("/api/pipeline")
+async def get_pipeline(limit: int = 100):
+    """
+    Retorna pipeline completo
+    """
+    try:
+        query = f"""
+        SELECT
+          Oportunidade,
+          Conta,
+          Vendedor,
+          Perfil,
+          Produtos,
+          Fase_Atual,
+          Forecast_SF,
+          Fiscal_Q,
+          Data_Prevista,
+          CAST(Gross AS INT64) as Gross,
+          CAST(Net AS INT64) as Net,
+          Atividades,
+          Confiana as Confianca
+        FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
+        WHERE Fase_Atual NOT IN ('Closed Won', 'Closed Lost')
+        ORDER BY Gross DESC
+        LIMIT {limit}
+        """
+        
+        results = query_to_dict(query)
+        
+        return {
+            "total": len(results),
+            "pipeline": results
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# =============================================
+# CLOSED DEALS
+# =============================================
+
+@app.get("/api/closed/won")
+async def get_closed_won(limit: int = 50):
+    """
+    Retorna deals ganhos
+    """
+    try:
+        query = f"""
+        SELECT
+          Oportunidade,
+          Conta,
+          Vendedor,
+          Perfil_Cliente,
+          Portfolio,
+          Segmento,
+          Fiscal_Q,
+          Data_Fechamento,
+          CAST(Gross AS INT64) as Gross,
+          CAST(Net AS INT64) as Net,
+          Ciclo_dias,
+          Tipo_Resultado,
+          Fatores_Sucesso
+        FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`
+        ORDER BY Gross DESC
+        LIMIT {limit}
+        """
+        
+        results = query_to_dict(query)
+        
+        return {
+            "total": len(results),
+            "deals": results
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/closed/lost")
+async def get_closed_lost(limit: int = 50):
+    """
+    Retorna deals perdidos
+    """
+    try:
+        query = f"""
+        SELECT
+          Oportunidade,
+          Conta,
+          Vendedor,
+          Perfil_Cliente,
+          Portfolio,
+          Segmento,
+          Fiscal_Q,
+          Data_Fechamento,
+          CAST(Gross AS INT64) as Gross,
+          Ciclo_dias,
+          Tipo_Resultado,
+          Causa_Raiz,
+          Evitavel
+        FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`
+        ORDER BY Gross DESC
+        LIMIT {limit}
+        """
+        
+        results = query_to_dict(query)
+        
+        return {
+            "total": len(results),
+            "deals": results
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# =============================================
+# DASHBOARD COMPLETO - ENDPOINT CONSOLIDADO
+# =============================================
+
+@app.get("/api/dashboard")
+async def get_dashboard_payload(
+    year: int = None,      # Ex: 2026, 2025, 2024...
+    month: int = None,     # Ex: 1-12 (opcional)
+    seller: str = None     # Ex: "Alexsandra Junqueira"
+):
+    """
+    Retorna payload completo para o Dashboard
+    Filtros dinâmicos por data real de fechamento
+    - year: Ano (2024, 2025, 2026...)
+    - month: Mês 1-12 (opcional)
+    - seller: Nome do vendedor
+    """
+    try:
+        # Build WHERE clauses for pipeline (Data_Prevista)
+        pipeline_where = "WHERE Fase_Atual NOT IN ('Closed Won', 'Closed Lost') AND Data_Prevista IS NOT NULL"
+        if year:
+            pipeline_where += f" AND EXTRACT(YEAR FROM PARSE_DATE('%Y-%m-%d', Data_Prevista)) = {year}"
+        if month:
+            pipeline_where += f" AND EXTRACT(MONTH FROM PARSE_DATE('%Y-%m-%d', Data_Prevista)) = {month}"
+        if seller:
+            pipeline_where += f" AND Vendedor = '{seller}'"
+        
+        # Build WHERE clauses for closed deals (Data_Fechamento)
+        closed_where = "WHERE Data_Fechamento IS NOT NULL"
+        if year:
+            closed_where += f" AND EXTRACT(YEAR FROM PARSE_DATE('%Y-%m-%d', Data_Fechamento)) = {year}"
+        if month:
+            closed_where += f" AND EXTRACT(MONTH FROM PARSE_DATE('%Y-%m-%d', Data_Fechamento)) = {month}"
+        if seller:
+            closed_where += f" AND Vendedor = '{seller}'"
+        
+        # Build WHERE clauses for sales specialist (closed_date)
+        specialist_where = "WHERE closed_date IS NOT NULL"
+        if year:
+            specialist_where += f" AND EXTRACT(YEAR FROM closed_date) = {year}"
+        if month:
+            specialist_where += f" AND EXTRACT(MONTH FROM closed_date) = {month}"
+        if seller:
+            specialist_where += f" AND LOWER(vendedor) = LOWER('{seller}')"
+        
+        # ==================== PIPELINE ANALYSIS ====================
+        
+        # Pipeline Executive Summary - All
+        pipeline_all_query = f"""
+        SELECT 
+          COUNT(*) as deals_count,
+          ROUND(SUM(Gross), 2) as gross,
+          ROUND(SUM(Net), 2) as net
+        FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
+        WHERE Fase_Atual NOT IN ('Closed Won', 'Closed Lost')
+        """
+        pipeline_all = query_to_dict(pipeline_all_query)[0] if query_to_dict(pipeline_all_query) else {'deals_count': 0, 'gross': 0, 'net': 0}
+        
+        # Pipeline FY26
+        pipeline_fy26_query = f"""
+        SELECT 
+          COUNT(*) as deals_count,
+          ROUND(SUM(Gross), 2) as gross,
+          ROUND(SUM(Net), 2) as net
+        FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
+        WHERE Fase_Atual NOT IN ('Closed Won', 'Closed Lost')
+          AND Fiscal_Q LIKE 'FY26%'
+        """
+        pipeline_fy26 = query_to_dict(pipeline_fy26_query)[0] if query_to_dict(pipeline_fy26_query) else {'deals_count': 0, 'gross': 0, 'net': 0}
+        
+        # Pipeline Filtered
+        pipeline_filtered_query = f"""
+        SELECT 
+          COUNT(*) as deals_count,
+          ROUND(SUM(Gross), 2) as gross,
+          ROUND(SUM(Net), 2) as net
+        FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
+        {pipeline_where}
+        """
+        pipeline_filtered = query_to_dict(pipeline_filtered_query)[0] if query_to_dict(pipeline_filtered_query) else {'deals_count': 0, 'gross': 0, 'net': 0}
+        
+        # Pipeline by Month
+        pipeline_by_month_query = f"""
+        SELECT 
+          EXTRACT(YEAR FROM PARSE_DATE('%Y-%m-%d', Data_Prevista)) as year,
+          EXTRACT(MONTH FROM PARSE_DATE('%Y-%m-%d', Data_Prevista)) as month,
+          FORMAT_DATE('%B', PARSE_DATE('%Y-%m-%d', Data_Prevista)) as month_name,
+          COUNT(*) as count,
+          ROUND(SUM(Gross), 2) as gross,
+          ROUND(SUM(Net), 2) as net
+        FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
+        WHERE Fase_Atual NOT IN ('Closed Won', 'Closed Lost')
+          AND Data_Prevista IS NOT NULL
+        GROUP BY year, month, month_name
+        ORDER BY year, month
+        """
+        pipeline_by_month = query_to_dict(pipeline_by_month_query)
+        
+        # Pipeline by Forecast Category
+        pipeline_by_forecast_query = f"""
+        SELECT 
+          Forecast_SF as category,
+          COUNT(*) as count,
+          ROUND(SUM(Gross), 2) as total_gross,
+          ROUND(SUM(Net), 2) as total_net
+        FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
+        WHERE Fase_Atual NOT IN ('Closed Won', 'Closed Lost')
+          AND Forecast_SF IS NOT NULL
+        GROUP BY Forecast_SF
+        ORDER BY 
+          CASE Forecast_SF
+            WHEN 'COMMIT' THEN 1
+            WHEN 'UPSIDE' THEN 2
+            WHEN 'PIPELINE' THEN 3
+            ELSE 4
+          END
+        """
+        pipeline_by_forecast = query_to_dict(pipeline_by_forecast_query)
+        
+        # Pipeline by Seller
+        pipeline_by_seller_query = f"""
+        SELECT 
+          Vendedor as seller,
+          COUNT(*) as deals_count,
+          ROUND(SUM(Gross), 2) as gross,
+          ROUND(SUM(Net), 2) as net,
+          ROUND(AVG(Confiana), 1) as avg_confidence
+        FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
+        WHERE Fase_Atual NOT IN ('Closed Won', 'Closed Lost')
+          AND Vendedor IS NOT NULL
+        GROUP BY Vendedor
+        ORDER BY gross DESC
+        """
+        pipeline_by_seller = query_to_dict(pipeline_by_seller_query)
+        
+        # High Confidence Deals (>= 50%)
+        high_confidence_query = f"""
+        SELECT 
+          COUNT(*) as deals_count,
+          ROUND(SUM(Gross), 2) as gross,
+          ROUND(SUM(Net), 2) as net,
+          ROUND(AVG(Confiana), 1) as avg_confidence
+        FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
+        WHERE Fase_Atual NOT IN ('Closed Won', 'Closed Lost')
+          AND Confiana >= 50
+        """
+        high_confidence = query_to_dict(high_confidence_query)[0]
+        
+        # ==================== SALES SPECIALIST ====================
+        
+        sales_specialist_query = f"""
+        SELECT 
+          EXTRACT(YEAR FROM closed_date) as year,
+          EXTRACT(MONTH FROM closed_date) as month,
+          forecast_status as category,
+          COUNT(*) as deals_count,
+          ROUND(SUM(booking_total_gross), 2) as gross,
+          ROUND(SUM(booking_total_net), 2) as net
+        FROM `{PROJECT_ID}.{DATASET_ID}.sales_specialist`
+        {specialist_where}
+        GROUP BY year, month, forecast_status
+        ORDER BY year, month, 
+          CASE forecast_status
+            WHEN 'COMMIT' THEN 1
+            WHEN 'UPSIDE' THEN 2
+            WHEN 'PIPELINE' THEN 3
+            ELSE 4
+          END
+        """
+        sales_specialist_data = query_to_dict(sales_specialist_query)
+        
+        # Sales Specialist Totals
+        sales_specialist_total_query = f"""
+        SELECT 
+          COUNT(*) as deals_count,
+          ROUND(SUM(booking_total_gross), 2) as gross,
+          ROUND(SUM(booking_total_net), 2) as net
+        FROM `{PROJECT_ID}.{DATASET_ID}.sales_specialist`
+        {specialist_where}
+        """
+        sales_specialist_total = query_to_dict(sales_specialist_total_query)[0] if query_to_dict(sales_specialist_total_query) else {'deals_count': 0, 'gross': 0, 'net': 0}
+        
+        # ==================== CLOSED DEALS ANALYSIS ====================
+        
+        # Closed Won Summary (com filtros)
+        closed_won_summary_query = f"""
+        SELECT 
+          COUNT(*) as deals_count,
+          ROUND(SUM(Gross),  (com filtros)
+        win_rate_by_seller_query = f"""
+        WITH won AS (
+          SELECT Vendedor, COUNT(*) as won_count
+          FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`
+          {closed_where}
+          GROUP BY Vendedor
+        ),
+        lost AS (
+          SELECT Vendedor, COUNT(*) as lost_count
+          FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`
+          {closed_where}
+          GROUP BY Vendedor
+        )
+        SELECT 
+          COALESCE(w.Vendedor, l.Vendedor) as seller,
+          COALESCE(w.won_count, 0) as won,
+          COALESCE(l.lost_count, 0) as lost,
+          ROUND(COALESCE(w.won_count, 0) / NULLIF(COALESCE(w.won_count, 0) + COALESCE(l.lost_count, 0), 0) * 100, 1) as win_rate
+        FROM won w
+        FULL OUTER JOIN lost l ON w.Vendedor = l.Vendedor
+        ORDER BY win_rate DESC
+        """
+        win_rate_by_seller = query_to_dict(win_rate_by_seller_query)
+        
+        # Loss Reasons (com filtros)
+        loss_reasons_query = f"""
+        SELECT 
+          Causa_Raiz as reason,
+          COUNT(*) as count,
+          ROUND(SUM(Gross), 2) as total_gross,
+          ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 1) as percentage
+        FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`
+        {closed_where} ANDAS (
+          SELECT Vendedor, COUNT(*) as lost_count
+          FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`
+          WHERE Vendedor IS NOT NULL
+          GROUP BY Vendedor
+        )
+        SELECT 
+          COALESCE(w.Vendedor, l.Vendedor) as seller,
+          COALESCE(w.won_count, 0) as won,
+          COALESCE( (com filtros)
+        win_types_query = f"""
+        SELECT 
+          TRIM(word) as text,
+          COUNT(*) as value
+        FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`,
+        UNNEST(SPLIT(Tipo_Resultado, ',')) as word
+        {closed_where.replace('WHERE', 'WHERE Tipo_Resultado IS NOT NULL AND TRIM(word) != \'\'', 1)}
+        GROUP BY text
+        ORDER BY value DESC
+        LIMIT 20
+        """
+        win_types = query_to_dict(win_types_query)
+        
+        # Win Labels (Fatores de Sucesso) (com filtros)
+        win_labels_query = f"""
+        SELECT 
+          TRIM(word) as text,
+          COUNT(*) as value
+        FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`,
+        UNNEST(SPLIT(Fatores_Sucesso, ',')) as word
+        {closed_where.replace('WHERE', 'WHERE Fatores_Sucesso IS NOT NULL AND TRIM(word) != \'\'', 1)}
+        GROUP BY text
+        ORDER BY value DESC
+        LIMIT 20
+        """
+        win_labels = query_to_dict(win_labels_query)
+        
+        # Loss Types (com filtros)
+        loss_types_query = f"""
+        SELECT 
+          TRIM(word) as text,
+          COUNT(*) as value
+        FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`,
+        UNNEST(SPLIT(Tipo_Resultado, ',')) as word
+        {closed_where.replace('WHERE', 'WHERE Tipo_Resultado IS NOT NULL AND TRIM(word) != \'\'', 1)}
+        GROUP BY text
+        ORDER BY value DESC
+        LIMIT 20
+        """
+        loss_types = query_to_dict(loss_types_query)
+        
+        # Loss Labels (Causa Raiz) (com filtros)
+        loss_labels_query = f"""
+        SELECT 
+          TRIM(word) as text,
+          COUNT(*) as value
+        FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`,
+        UNNEST(SPLIT(Causa_Raiz, ',')) as word
+        {closed_where.replace('WHERE', 'WHERE Causa_Raiz IS NOT NULL AND TRIM(word) != \'\'', 1)}
+        """
+        win_labels = query_to_dict(win_labels_query)
+        
+        # Loss Types
+        loss_types_query = f"""
+        SELECT 
+          TRIM(word) as text,
+          COUNT(*) as value
+        FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`,
+        UNNEST(SPLIT(Tipo_Resultado, ',')) as word
+        WHERE Tipo_Resultado IS NOT NULL AND TRIM(word) != ''
+        GROUP BY text
+        ORDER BY value DESC
+        LIMIT 20
+        """
+        loss_types = query_to_dict(loss_types_query)
+        
+        # Loss Labels (Causa Raiz)
+        loss_labels_query = f"""
+        SELECT 
+          TRIM(word) as text,
+          COUNT(*) as value
+        FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`,
+        UNNEST(SPLIT(Causa_Raiz, ',')) as word
+        WHERE Causa_Raiz IS NOT NULL AND TRIM(word) != ''
+        GROUP BY text
+        ORDER BY value DESC
+        LIMIT 20
+        """
+        loss_labels = query_to_dict(loss_labels_query)
+        
+        # ==================== AI ANALYSIS (Templates Dinâmicos) ====================
+        
+        # Executive Analysis
+        top_seller = pipeline_by_seller[0]['seller'] if pipeline_by_seller else 'N/A'
+        top_seller_value = pipeline_by_seller[0]['gross'] if pipeline_by_seller else 0
+        period_label = f"{year}" if year else "Todos os períodos"
+        if month:
+            month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+            period_label += f" - {month_names[month-1]}"
+        
+        executive_analysis = f"""
+📊 **RESUMO EXECUTIVO - {period_label}**
+
+Pipeline Total: ${pipeline_all['gross']:,.0f} ({pipeline_all['deals_count']} deals)
+Taxa de Conversão: {win_rate}% ({closed_won_summary['deals_count']} ganhos / {total_closed} fechados)
+
+🎯 **DESTAQUES:**
+- Maior vendedor: {top_seller} (${top_seller_value:,.0f})
+- Ciclo médio Won: {closed_won_summary['avg_cycle_days']:.0f} dias
+- Ciclo médio Lost: {closed_lost_summary['avg_cycle_days']:.0f} dias
+- High Confidence (≥50%): {high_confidence['deals_count']} deals (${high_confidence['gross']:,.0f})
+        """.strip()
+        
+        # Wins Insights
+        top_win_factor = win_labels[0]['text'] if win_labels else "N/A"
+        wins_insights = f"""
+🏆 **FATORES DE SUCESSO**
+
+Principal fator: **{top_win_factor}** ({win_labels[0]['value'] if win_labels else 0} menções)
+Deals ganhos: {closed_won_summary['deals_count']} (${closed_won_summary['gross']:,.0f})
+Ciclo médio: {closed_won_summary['avg_cycle_days']:.0f} dias
+
+💡 **RECOMENDAÇÃO:** Replicar estratégias de "{top_win_factor}" em deals ativos.
+        """.strip()
+        
+        # Loss Insights
+        top_loss_reason = loss_reasons[0]['reason'] if loss_reasons else "N/A"
+        top_loss_pct = loss_reasons[0]['percentage'] if loss_reasons else 0
+        loss_insights = f"""
+⚠️ **ANÁLISE DE PERDAS**
+
+Principal causa: **{top_loss_reason}** ({top_loss_pct}% dos deals perdidos)
+Deals perdidos: {closed_lost_summary['deals_count']} (${closed_lost_summary['gross']:,.0f})
+Ciclo médio: {closed_lost_summary['avg_cycle_days']:.0f} dias
+
+🎯 **AÇÃO IMEDIATA:** Criar playbook para mitigar "{top_loss_reason}".
+        """.strip()
+        
+        # Top Opportunities
+        top_opps_analysis = f"""
+🚀 **PRIORIDADES DO QUARTER**
+
+High Confidence: {high_confidence['deals_count']} deals (${high_confidence['gross']:,.0f})
+Confiança média: {high_confidence['avg_confidence']:.1f}%
+
+Sales Specialist: {sales_specialist_total['deals_count']} deals curados (${sales_specialist_total['gross']:,.0f})
+
+⏰ **FOCO:** Fechar deals COMMIT nos próximos 15 dias.
+        """.strip()
+        
+        # Forecast Health
+        commit_data = next((f for f in pipeline_by_forecast if f['category'] == 'COMMIT'), {'total_gross': 0, 'count': 0})
+        upside_data = next((f for f in pipeline_by_forecast if f['category'] == 'UPSIDE'), {'total_gross': 0, 'count': 0})
+        pipeline_data = next((f for f in pipeline_by_forecast if f['category'] == 'PIPELINE'), {'total_gross': 0, 'count': 0})
+        
+        total_forecast = commit_data['total_gross'] + upside_data['total_gross'] + pipeline_data['total_gross']
+        commit_pct = round((commit_data['total_gross'] / total_forecast * 100), 1) if total_forecast > 0 else 0
+        upside_pct = round((upside_data['total_gross'] / total_forecast * 100), 1) if total_forecast > 0 else 0
+        
+        forecast_analysis = f"""
+📈 **SAÚDE DO FORECAST**
+
+COMMIT: ${commit_data['total_gross']:,.0f} ({commit_pct}%)
+UPSIDE: ${upside_data['total_gross']:,.0f} ({upside_pct}%)
+PIPELINE: ${pipeline_data['total_gross']:,.0f}
+
+✅ **STATUS:** {"Saudável" if commit_pct >= 30 else "Atenção necessária"} - {"Pipeline diversificado" if upside_pct >= 20 else "Baixa cobertura"}
+        """.strip()
+        
+        # ==================== CONSOLIDATE RESPONSE ====================
+        
+        return {
+            "timestamp": datetime.utcnow().isoformat(),
+            "filters": {
+                "year": year,
+                "month": month,
+                "seller": seller
+            },
+            "cloudAnalysis": {
+                "pipeline_analysis": {
+                    "executive": {
+                        "pipeline_all": pipeline_all,
+                        "pipeline_fy26": pipeline_fy26,
+                        "pipeline_filtered": pipeline_filtered,
+                        "pipeline_by_month": pipeline_by_month,
+                        "high_confidence": high_confidence
+                    },
+                    "sellers": pipeline_by_seller
+                },
+                "closed_analysis": {
+                    "closed_quarter": {
+                        "won": closed_won_summary,
+                        "lost": closed_lost_summary,
+                        "win_rate": win_rate,
+                        "total_closed": total_closed
+                    },
+                    "forecast_specialist": {
+                        "total": sales_specialist_total,
+                        "by_quarter": sales_specialist_data
+                    },
+                    "win_rate_by_seller": {s['seller']: s for s in win_rate_by_seller},
+                    "loss_reasons": loss_reasons,
+                    "avg_cycle_won_days": closed_won_summary['avg_cycle_days'],
+                    "avg_cycle_lost_days": closed_lost_summary['avg_cycle_days']
+                },
+                "aggregations": {
+                    "by_forecast_category": pipeline_by_forecast,
+                    "by_month": pipeline_by_month
+                }
+            },
+            "word_clouds": {
+                "winTypes": win_types,
+                "winLabels": win_labels,
+                "lossTypes": loss_types,
+                "lossLabels": loss_labels,
+                "riskFlags": [],  # TODO: Extrair de flags de risco
+                "actionLabels": []  # TODO: Extrair de ações recomendadas
+            },
+            "ai_analysis": {
+                "executive": executive_analysis,
+                "winsInsights": wins_insights,
+                "lossInsights": loss_insights,
+                "topOpportunitiesAnalysis": top_opps_analysis,
+                "forecastAnalysis": forecast_analysis
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Dashboard error: {str(e)}")
+
+# =============================================
+# RUN SERVER
+# =============================================
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8080))
+    uvicorn.run(app, host="0.0.0.0", port=port)

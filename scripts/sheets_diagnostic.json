@@ -1,0 +1,239 @@
+{
+  "timestamp": "2026-02-06T15:34:52.259Z",
+  "source": "Google Sheets",
+  "sheets": {
+    "pipeline": {
+      "sheet_name": "🎯 Análise Forecast IA",
+      "total_records": 268,
+      "unique_opportunities": 268,
+      "unique_vendors": 10,
+      "total_gross": 74158468.67,
+      "total_net": 28891641.24,
+      "avg_gross": 276710.7,
+      "avg_net": 107804.63,
+      "fiscal_q_coverage": 100,
+      "fiscal_q_distribution": {
+        "FY26-Q1": 40,
+        "FY26-Q3": 74,
+        "FY26-Q2": 111,
+        "FY26-Q4": 25,
+        "FY30-Q1": 1,
+        "FY28-Q1": 1,
+        "FY27-Q4": 2,
+        "FY29-Q4": 2,
+        "FY28-Q2": 2,
+        "FY27-Q2": 5,
+        "FY28-Q4": 1,
+        "FY29-Q1": 1,
+        "FY27-Q1": 3
+      },
+      "forecast_ia_coverage": 100,
+      "meddic_coverage": 69.8,
+      "bant_coverage": 48.9,
+      "atividades_coverage": 57.1,
+      "sample_records": [
+        {
+          "oportunidade": "ADDU-115803--[GWS] AGU_Contratação GWS_Enterprise Plus-X2",
+          "gross": 35824.53,
+          "net": 15164.91,
+          "fiscal_q": "FY26-Q1",
+          "forecast_ia": "UPSIDE",
+          "vendedor": "Carlos Moll"
+        },
+        {
+          "oportunidade": "ADDU-127871--#Sprint2 #Vertex AI [GCP] AGU_AgentSpace",
+          "gross": 42100,
+          "net": 39293.33,
+          "fiscal_q": "FY26-Q3",
+          "forecast_ia": "PIPELINE",
+          "vendedor": "Carlos Moll"
+        },
+        {
+          "oportunidade": "ADDU-115802--[GWS] AGU_Integração Office 365_Mio",
+          "gross": 200000,
+          "net": 200000,
+          "fiscal_q": "FY26-Q1",
+          "forecast_ia": "UPSIDE",
+          "vendedor": "Carlos Moll"
+        }
+      ]
+    },
+    "won": {
+      "sheet_name": "📈 Análise Ganhas",
+      "total_records": 506,
+      "unique_opportunities": 506,
+      "unique_vendors": 19,
+      "total_gross": 109849112.79,
+      "total_net": 37777512.49,
+      "avg_gross": 217093.11,
+      "fiscal_q_coverage": 100,
+      "fiscal_q_distribution": {
+        "FY24-Q2": 31,
+        "FY25-Q2": 85,
+        "FY25-Q4": 104,
+        "FY24-Q4": 50,
+        "FY23-Q4": 4,
+        "FY24-Q1": 19,
+        "FY25-Q1": 70,
+        "FY25-Q3": 86,
+        "FY24-Q3": 24,
+        "FY26-Q2": 1,
+        "FY26-Q1": 8,
+        "FY26-Q3": 23,
+        "FY23-Q2": 1
+      },
+      "portfolio_coverage": 100,
+      "segmento_coverage": 100,
+      "familia_coverage": 100,
+      "resumo_coverage": 100,
+      "causa_raiz_coverage": 100,
+      "fatores_sucesso_coverage": 100,
+      "tipo_resultado_coverage": 100,
+      "qualidade_eng_coverage": 100,
+      "gestao_opp_coverage": 100,
+      "sample_records": [
+        {
+          "oportunidade": "CALP-111417-Camara Laranjal Paulista-",
+          "gross": 573.5808,
+          "net": 23.86,
+          "fiscal_q": "FY24-Q2",
+          "portfolio": "GWorkspace Licenciamiento",
+          "segmento": "Gobierno",
+          "tipo_resultado": "TRANSFERENCIA",
+          "vendedor": "Alexsandra Junqueira"
+        },
+        {
+          "oportunidade": "#M25#Vertex AI_TJMG-124537-Acelerador de Transcrição (Via Serpro_) #privateoffer",
+          "gross": 268503.5,
+          "net": 196485.53000000003,
+          "fiscal_q": "FY25-Q2",
+          "portfolio": "Productos Xertica",
+          "segmento": "Gobierno",
+          "tipo_resultado": "EXPANSAO",
+          "vendedor": "Alexsandra Junqueira"
+        },
+        {
+          "oportunidade": "#M25#Gemini PROD-124344-PRODERJ-Adesão arp MPAP",
+          "gross": 266791.95999999996,
+          "net": 95167.36,
+          "fiscal_q": "FY25-Q4",
+          "portfolio": "GCP Servicios INFRA",
+          "segmento": "Gobierno",
+          "tipo_resultado": "EXPANSAO",
+          "vendedor": "Emilio Goncalves"
+        }
+      ]
+    },
+    "lost": {
+      "sheet_name": "📉 Análise Perdidas",
+      "total_records": 2069,
+      "unique_opportunities": 2069,
+      "unique_vendors": 22,
+      "total_gross": 330036794.81,
+      "total_net": 143162000.02,
+      "avg_gross": 159515.13,
+      "fiscal_q_coverage": 100,
+      "fiscal_q_distribution": {
+        "FY26-Q2": 114,
+        "FY26-Q4": 15,
+        "FY26-Q1": 198,
+        "FY26-Q3": 32,
+        "FY25-Q4": 433,
+        "FY28-Q1": 1,
+        "FY28-Q2": 1,
+        "FY27-Q1": 1,
+        "FY25-Q1": 148,
+        "FY25-Q3": 296,
+        "FY25-Q2": 250,
+        "FY24-Q4": 299,
+        "FY24-Q2": 85,
+        "FY24-Q1": 4,
+        "FY24-Q3": 192
+      },
+      "portfolio_coverage": 100,
+      "segmento_coverage": 100,
+      "resumo_coverage": 100,
+      "causa_raiz_coverage": 100,
+      "causas_secundarias_coverage": 100,
+      "evitavel_coverage": 100,
+      "sinais_alerta_coverage": 100,
+      "momento_critico_coverage": 100,
+      "evitavel_distribution": {
+        "SIM": 1987,
+        "NAO": 0,
+        "TALVEZ": 0,
+        "NULL": 82
+      },
+      "sample_records": [
+        {
+          "oportunidade": "SNSB-129243--[GCP] Sebrae Nacional_PrestContas - 7° Sprint-X2",
+          "gross": 0,
+          "net": 0,
+          "fiscal_q": "FY26-Q2",
+          "evitavel": "PARCIALMENTE",
+          "tipo_resultado": "MA_QUALIFICACAO",
+          "vendedor": "Carlos Moll"
+        },
+        {
+          "oportunidade": "SNSB-132729--[GCP] Sebrae Nacional_PrestContas - 6° Sprint (Melhorias)",
+          "gross": 0,
+          "net": 0,
+          "fiscal_q": "FY26-Q2",
+          "evitavel": "SIM",
+          "tipo_resultado": "ABANDONO",
+          "vendedor": "Carlos Moll"
+        },
+        {
+          "oportunidade": "SNSB-129976--[GCP] SEBRAE NACIONAL_Atendimentos do novo Portal Sebrae-X1",
+          "gross": 0,
+          "net": 0,
+          "fiscal_q": "FY26-Q2",
+          "evitavel": "SIM",
+          "tipo_resultado": "MA_QUALIFICACAO",
+          "vendedor": "Carlos Moll"
+        }
+      ]
+    },
+    "salesSpecialist": {
+      "sheet_name": "Análise Sales Specialist",
+      "total_records": 21,
+      "unique_opportunities": 21,
+      "unique_vendors": 7,
+      "total_gross": 15570794.96,
+      "total_net": 4415410.98,
+      "avg_gross": 741466.43,
+      "sample_records": [
+        {
+          "opportunity": "MPDE-120402-Ministério Público do Estado do Maranhão - MPMA- Aceleradores Integrados - #M25 #VertexAI #DocumentAI #Gemin",
+          "account": "Ministério Público do Estado do Maranhão - MPMA",
+          "gross": 398000,
+          "net": 233910,
+          "status": "Aberta",
+          "vendedor": "Carlos Moll"
+        },
+        {
+          "opportunity": "#MP25 MPPA-124550-MPPA (Serpro)",
+          "account": "MPPA - Ministério Público do Pará",
+          "gross": 500000,
+          "net": 312000,
+          "status": "Aberta",
+          "vendedor": "Denilson Goes"
+        },
+        {
+          "opportunity": "TRED-138017--Pregão Eletrônico N° 90070/2025 | TRE-RN | GCP",
+          "account": "TRE-RN Tribunal Regional Eleitoral do Rio Grande do Norte",
+          "gross": 347944,
+          "net": 39471.6,
+          "status": "Aberta",
+          "vendedor": "Denilson Goes"
+        }
+      ]
+    }
+  },
+  "summary": {
+    "total_records": 2864,
+    "total_gross": 529615171.22999996,
+    "total_net": 214246564.73,
+    "unique_opportunities": 2864
+  }
+}

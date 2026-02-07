@@ -9,7 +9,7 @@
  * 2. MOTOR DE INATIVIDADE (DIAS): Identificação real de ociosidade vs. atividades agendadas.
  * 3. INTEGRIDADE DE PRODUTOS: Agregação por Deal Name com busca multidimensional de colunas.
  * 4. MEDDIC TRILÍNGUE + GOV: Suporte a termos em PT, EN, ES e marcos de Setor Público (TR/ARP/ETP).
- * 5. TAXONOMIA FISCAL: Rótulos FY26 automáticos sincronizados com o calendário GTM 2026.
+ * 5. TAXONOMIA FISCAL: Rótulos fiscal quarter automáticos calculados dinamicamente pela data de fechamento.
  * 6. MAPEAMENTO DINÂMICO: Todas as abas são lidas via cabeçalho (sem índices fixos).
  * 7. PROTOCOLO DE ANÁLISE FORÇADA: Análise obrigatória de todos os deals para expor riscos de "CRM Vazio".
  * 
@@ -108,18 +108,6 @@ const NORM_TEXT_CACHE_ = {};
 /** @constant {number} Tamanho máximo do cache de normalização */
 const NORM_CACHE_MAX_SIZE = 1000;
 
-/** @constant {string} Chave para cache de análise IA (economiza quota) */
-const AI_ANALYSIS_CACHE_KEY = "DASHBOARD_AI_ANALYSIS_V1";
-
-/** @constant {string} Chave para cache de dados preprocessados do dashboard */
-const DASHBOARD_CACHE_KEY = "DASHBOARD_DATA_PREPROCESSED_V2";
-
-/** @constant {number} Threshold de mudança para reprocessar IA (10% de diferença) */
-const CHANGE_THRESHOLD = 0.10;
-
-/** @constant {number} TTL do cache de análise IA (24 horas em segundos) */
-const AI_CACHE_TTL = 86400;
-
 const ACTIVE_SELLERS = [
   'GABRIEL LEICK', 
   'DENILSON GOES', 
@@ -131,25 +119,6 @@ const ACTIVE_SELLERS = [
   'GABRIELE OLIVEIRA', 
   'FABIO FERREIRA'
 ];
-
-/** 
- * @constant {Object} Configuração de autenticação do Dashboard
- * Altere 'enabled' para true para ativar autenticação
- */
-const DASHBOARD_AUTH = {
-  enabled: false, // Mude para true para ativar
-  allowedEmails: [
-    // Gestão
-    'amalia.silva@xertica.com',
-    'barbara.pessoa@xertica.com',
-    'gustavo.paula@xertica.com',
-    // Vendas
-    'gabriele.oliveira@xertica.com',
-    'emilio.goncalves@xertica.com'
-  ],
-  allowedDomain: 'xertica.com', // Domínio permitido (deixe null para desabilitar)
-  errorMessage: '🔒 Acesso negado. Entre em contato com o administrador.'
-};
 
 /**
  * Buffer de logs para escrita em lote
@@ -268,7 +237,7 @@ const ENUMS = {
     PIPELINE_INFLATION: "INFLAÇÃO DE PIPELINE",
     LOW_WIN_RATE: "VENDEDOR COM BAIXA TAXA DE CONVERSÃO",
     TOKEN_TRANSFER: "TRANSFERÊNCIA DE TOKEN DETECTADA",
-    GTM_VIP: "OPORTUNIDADE ESTRATÉGICA GTM 2026",
+    GTM_VIP: "OPORTUNIDADE ESTRATÉGICA GTM",
     STAGE_DRIFT: "DERIVA DE FASE DETECTADA",
     INTEGRITY_ALERT: "EDIÇÃO MANUAL DETECTADA",
     COLD_GATE: "GATE CRÍTICO ATIVO"
@@ -408,8 +377,15 @@ function detectGovProcurementStage_(text) {
   return info;
 }
 
+/**
+ * Extrai trecho de contexto (snippet) de um texto baseado em keywords
+ * Remove prefixos cronológicos e metadados do sistema
+ */
 function calculateMEDDICScore(item, text) {
-  const content = normText_(item.oppName + " " + item.desc + " " + text);
+  // Limpa HTML e metadados da descrição antes de processar
+  const cleanDesc = cleanActivityText_(item.desc || "");
+  const fullContent = item.oppName + " " + cleanDesc + " " + text;
+  const content = normText_(fullContent);
   
   const criteria = {
     Metrics: ["ROI","RETORNO","ECONOMIA","REDUCAO","AUMENTO","PAYBACK","KPI","AHORRO"],
@@ -423,21 +399,34 @@ function calculateMEDDICScore(item, text) {
   let score = 0;
   let gaps = [];
   let hits = [];
+  let evidenceWithCitations = [];
+  
   for (let key in criteria) {
-    const found = criteria[key].some(word => content.includes(word));
+    const found = criteria[key].some(word => content.includes(normText_(word)));
     if (found) {
       score += 16;
       hits.push(key);
+      // Retorna apenas o nome do critério, sem detalhamento
+      evidenceWithCitations.push(key);
     } else {
       gaps.push(key);
     }
   }
   
-  return { score: Math.min(100, score), gaps: gaps, hits: hits };
+  return { 
+    score: Math.min(100, score), 
+    gaps: gaps, 
+    hits: hits,
+    evidenceWithCitations: evidenceWithCitations
+  };
 }
 
 function calculateBANTScore_(item, activity) {
-  const content = normText_((item.desc || "") + " " + (activity.fullText || ""));
+  // Limpa HTML e metadados da descrição antes de processar
+  const cleanDesc = cleanActivityText_(item.desc || "");
+  const fullContent = cleanDesc + " " + (activity.fullText || "");
+  const content = normText_(fullContent);
+  
   const criteria = {
     Budget: ["BUDGET", "ORCAMENTO", "VERBA", "CAPEX", "OPEX", "PRICING", "PRECO", "COTACAO"],
     Authority: ["DECISOR", "APROVADOR", "CFO", "CEO", "DIRETOR", "COMPRADOR", "OWNER", "SPONSOR", "PATROCINADOR"],
@@ -448,23 +437,39 @@ function calculateBANTScore_(item, activity) {
   let score = 0;
   let gaps = [];
   let hits = [];
+  let evidenceWithCitations = [];
 
   Object.keys(criteria).forEach(key => {
-    const found = criteria[key].some(word => content.includes(word));
+    const found = criteria[key].some(word => content.includes(normText_(word)));
     if (found) {
       score += 25;
       hits.push(key);
+      // Retorna apenas o nome do critério, sem detalhamento
+      evidenceWithCitations.push(key);
     } else {
       gaps.push(key);
     }
   });
 
-  return { score: Math.min(100, score), gaps: gaps, hits: hits };
+  return { 
+    score: Math.min(100, score), 
+    gaps: gaps, 
+    hits: hits,
+    evidenceWithCitations: evidenceWithCitations
+  };
 }
 
-function getOpenPrompt(item, profile, fiscal, activity, meddic, audit, idleDays, govFlags, inconsistency, govInfo) {
+function getOpenPrompt(item, profile, fiscal, activity, meddic, bant, personas, nextStepCheck, inactivityGate, audit, idleDays, govFlags, inconsistency, govInfo) {
   const today = getTodayContext_();
   const joinedFlags = (govFlags && govFlags.length) ? govFlags.join(", ") : "-";
+  
+  // Formata evidências com citações
+  const meddicEvidence = (meddic && meddic.evidenceWithCitations && meddic.evidenceWithCitations.length) 
+    ? meddic.evidenceWithCitations.join(", ") 
+    : "-";
+  const bantEvidence = (bant && bant.evidenceWithCitations && bant.evidenceWithCitations.length) 
+    ? bant.evidenceWithCitations.join(", ") 
+    : "-";
 
   const baseData = `
 DATA_ATUAL: ${today.br} (timezone: ${today.tz})
@@ -482,6 +487,27 @@ HISTÓRICO (top5): ${audit}
 FLAGS SISTEMA: ${joinedFlags}
 ALERTA INCOERÊNCIA: ${inconsistency}
 GOVERNO: ${govInfo.isGov ? 'SIM' : 'NAO'} | MARCOS: ${govInfo.stages.join(' > ') || 'N/A'}
+
+EVIDÊNCIAS DE QUALIFICAÇÃO:
+MEDDIC - Critérios Encontrados: ${meddicEvidence}
+MEDDIC - Gaps: ${(meddic && meddic.gaps && meddic.gaps.length) ? meddic.gaps.join(", ") : "Nenhum gap identificado"}
+BANT - Critérios Encontrados: ${bantEvidence}
+BANT - Gaps: ${(bant && bant.gaps && bant.gaps.length) ? bant.gaps.join(", ") : "Nenhum gap identificado"}
+
+PERSONAS IDENTIFICADAS:
+Champion: ${personas && personas.champion ? personas.champion : "Não identificado"}
+Economic Buyer: ${personas && personas.economicBuyer ? personas.economicBuyer : "Não identificado"}
+Influenciadores-chave: ${personas && personas.keyPersonas && personas.keyPersonas.length ? personas.keyPersonas.join(", ") : "Nenhum identificado"}
+Personas Ocultas (nomes recorrentes nas atividades): ${personas && personas.hiddenPersonas && personas.hiddenPersonas.length ? personas.hiddenPersonas.join(", ") : "Nenhuma detectada"}
+INSTRUÇÃO PERSONAS: Se encontrar nomes próprios recorrentes nas atividades que não estão explicitamente mapeados como Champion/Buyer, considere-os como potenciais Champions e recomende validação no campo 'personas_assessment'.
+
+VALIDAÇÃO DE PRÓXIMO PASSO:
+Next Step vs Última Atividade: ${nextStepCheck && nextStepCheck.alert ? nextStepCheck.alert : "N/A"}
+Risk Level: ${nextStepCheck && nextStepCheck.riskLevel ? nextStepCheck.riskLevel : "N/A"}
+
+GATE DE INATIVIDADE:
+${inactivityGate && inactivityGate.alert ? inactivityGate.alert : "OK"}
+Ação Recomendada: ${inactivityGate && inactivityGate.recommendedAction ? inactivityGate.recommendedAction : "NENHUMA"}
 `;
 
   return `
@@ -490,16 +516,20 @@ DADOS:
 ${baseData}
 
 REGRAS DE OURO (estritas):
-1) Se houver "DEAL DESK OBRIGATORIO" e NÃO houver evidência de aprovação (pricing/financeiro/deal desk), AÇÃO = CHECAR-DEAL-DESK.
-2) Se houver "INCOERENCIA FASE x DADOS" ou ALERTA INCOERÊNCIA != OK, reduza CONFIANÇA e AÇÃO = AUDITORIA-CRM.
-3) Se a descrição for vaga/curta (ex.: "follow up"), marque label "BANT AUSENTE".
-4) Se for GOVERNO e houver marcos (ETP/TR/EDITAL/PNCP/ARP etc.), NÃO penalize apenas por idle; exija evidência do próximo marco.
-5) AÇÃO: NUNCA use "GENERICO". Escolha exatamente uma:
+1) Se houver "GATE CRÍTICO ACIONADO" no Gate de Inatividade, CONFIANÇA = máximo 40 e AÇÃO = AUDITORIA-CRM.
+2) Se houver "INCONERENCIA" na validação de Próximo Passo com Risk Level "CRITICAL", CONFIANÇA máximo 35.
+3) Se Champion OU Economic Buyer forem "Não identificado" E Inatividade > 14 dias, adicione label "PERSONAS-AUSENTES".
+4) Se MEDDIC tiver mais de 3 gaps OU BANT tiver mais de 2 gaps, classifique como "BAIXA qualificação".
+5) Se houver "DEAL DESK OBRIGATORIO" e NÃO houver evidência de aprovação (pricing/financeiro/deal desk), AÇÃO = CHECAR-DEAL-DESK.
+6) Se houver "INCOERENCIA FASE x DADOS" ou ALERTA INCOERÊNCIA != OK, reduza CONFIANÇA e AÇÃO = AUDITORIA-CRM.
+7) Se a descrição for vaga/curta (ex.: "follow up"), marque label "BANT AUSENTE".
+8) Se for GOVERNO e houver marcos (ETP/TR/EDITAL/PNCP/ARP etc.), NÃO penalize apenas por idle; exija evidência do próximo marco.
+9) AÇÃO: NUNCA use "GENERICO". Escolha exatamente uma:
 [AUDITORIA-CRM, VALIDAR-DATA, AUMENTAR-CADENCIA, CHECAR-DEAL-DESK, REQUALIFICAR, FECHAMENTO-IMEDIATO, ENCERRAR-INATIVO]
 
 ESCALA DE CONFIANÇA (0-100):
 - 0-20: Muito baixa (múltiplos bloqueadores críticos, alta chance de perda)
-- 21-40: Baixa (bloqueadores significativos, qualificação fraca)
+- 21-40: Baixa (bloqueadores significativos, qualificação fraca, anomalias de inatividade)
 - 41-60: Moderada (alguns riscos, mas viável com ação)
 - 61-80: Alta (bem qualificado, poucos riscos)
 - 81-100: Muito alta (evidências fortes, caminho claro para fechamento)
@@ -515,14 +545,16 @@ RETORNE APENAS JSON (sem markdown):
   "forecast_cat": "COMMIT|UPSIDE|PIPELINE",
   "confianca": 50,
   "motivo_confianca": "Frase curta e profissional explicando o score.",
-  "justificativa": "Análise técnica detalhada.",
+  "justificativa": "Análise técnica detalhada com base nas evidências fornecidas.",
   "engagement_quality": "BAIXA|MÉDIA|ALTA",
   "acao_code": "",
-  "acao_desc": "Instrução tática.",
-  "check_incoerencia": "OK ou explicação",
+  "acao_desc": "Instrução tática baseada em evidências.",
+  "check_incoerencia": "OK ou explicação detalhada",
   "perguntas_auditoria": ["Pergunta 1", "Pergunta 2", "Pergunta 3"],
   "gaps_identificados": ["Gap 1", "Gap 2"],
-  "risco_principal": "Descrição do maior risco",
+  "risco_principal": "Descrição do maior risco com base em evidências",
+  "evidencia_citada": "Trecho específico que suportou a decisão",
+  "personas_assessment": "Avaliação da qualidade de personas identificadas",
   "labels": ["TAG1", "TAG2"]
 }`;
 }
@@ -601,6 +633,239 @@ RETORNE APENAS JSON (sem markdown):
   "licoes_aprendidas": "O que evitar em deals futuros",
   "labels": ["TAG1", "TAG2", "TAG3"]
 }`;
+}
+
+/**
+ * Extrai nomes de personas (Champion e Economic Buyer) a partir do texto de atividades
+ * Inclui detecção de cargos B2G (Governo) e busca de "Personas Ocultas" (nomes recorrentes)
+ */
+function extractPersonasFromActivities(fullText, descriptionBANT) {
+  if (!fullText || !fullText.length) return { champion: null, economicBuyer: null, keyPersonas: [], hiddenPersonas: [] };
+  
+  const personas = { champion: null, economicBuyer: null, keyPersonas: [], hiddenPersonas: [] };
+  const textCombined = (fullText + " " + (descriptionBANT || "")).toLowerCase();
+  
+  // DICIONÁRIO B2G: Cargos que são automaticamente Economic Buyers
+  const b2gTitles = [
+    'secretario', 'secretária', 'prefeito', 'prefeita', 'governador', 'governadora',
+    'ministro', 'ministra', 'diretor', 'diretora', 'ordenador', 'ordenadora',
+    'subsecretario', 'subsecretária', 'coordenador', 'coordenadora'
+  ];
+  
+  // Padrão: "conversa com o Secretário" ou "Secretário João"
+  const b2gPattern = new RegExp(`(${b2gTitles.join('|')})\\s*([A-Za-zÀ-ÿ]+)?`, 'gi');
+  const b2gMatches = textCombined.match(b2gPattern);
+  
+  if (b2gMatches && b2gMatches.length > 0) {
+    // Se encontrou cargo B2G, marca como Economic Buyer
+    const firstMatch = b2gMatches[0];
+    const titleMatch = firstMatch.match(new RegExp(`(${b2gTitles.join('|')})`, 'i'));
+    
+    if (titleMatch) {
+      const title = titleMatch[1].charAt(0).toUpperCase() + titleMatch[1].slice(1);
+      personas.economicBuyer = title;
+      personas.keyPersonas.push(title);
+    }
+  }
+  
+  // Busca por nomes próprios explícitos no BANT (campo "A:")
+  // Padrão: "A: Nome Sobrenome" ou "Authority: Nome"
+  const bantAuthorityPattern = /A:\s*([A-ZÀ-Ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-Ÿ][a-zà-ÿ]+)?)/;
+  const bantMatch = (descriptionBANT || fullText).match(bantAuthorityPattern);
+  
+  if (bantMatch && bantMatch[1]) {
+    const name = bantMatch[1].trim();
+    if (name.length > 3 && !personas.economicBuyer) {
+      personas.economicBuyer = name;
+      personas.keyPersonas.push(name);
+    } else if (name.length > 3 && personas.economicBuyer) {
+      // Se já tem cargo, adiciona nome como refinamento
+      personas.economicBuyer = `${personas.economicBuyer} (${name})`;
+      personas.keyPersonas.push(name);
+    }
+  }
+  
+  // Padrões de Champion
+  const championPatterns = [
+    /(?:champion|aliado|defensor|ponto focal|sponsor|patrocinador)[:\s]+([A-ZÀ-Ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-Ÿ][a-zà-ÿ]+)?)/i,
+    /(?:coordenador|gerente|analista)[:\s]+([A-ZÀ-Ÿ][a-zà-ÿ]+)/i
+  ];
+  
+  for (let pattern of championPatterns) {
+    const match = fullText.match(pattern);
+    if (match && match[1]) {
+      const name = match[1].trim();
+      if (name.length > 2 && name !== personas.economicBuyer) {
+        personas.champion = name;
+        personas.keyPersonas.push(name);
+        break;
+      }
+    }
+  }
+  
+  // BUSCA DE PERSONAS OCULTAS: Detecta nomes próprios recorrentes no texto
+  // Busca padrões como "Glaucius", "Maria", "João" mencionados múltiplas vezes
+  const namePattern = /(?:^|\s)([A-ZÀ-Ÿ][a-zà-ÿ]{3,})(?:\s|,|\.|\n|$)/g;
+  const nameMatches = fullText.match(namePattern);
+  
+  if (nameMatches && nameMatches.length > 0) {
+    const nameFrequency = {};
+    
+    // Conta frequência de cada nome
+    nameMatches.forEach(match => {
+      const cleanName = match.trim();
+      // Filtra palavras comuns que começam com maiúscula mas não são nomes
+      const ignoreWords = ['Data', 'Tipo', 'Cliente', 'Projeto', 'Reunião', 'Email', 'Telefone'];
+      if (!ignoreWords.includes(cleanName) && cleanName.length > 3) {
+        nameFrequency[cleanName] = (nameFrequency[cleanName] || 0) + 1;
+      }
+    });
+    
+    // Se algum nome aparece 2+ vezes, considera persona oculta
+    Object.entries(nameFrequency).forEach(([name, count]) => {
+      if (count >= 2) {
+        personas.hiddenPersonas.push(`${name} (${count}x mencionado)`);
+        
+        // Se não tem Champion ainda, sugere o mais recorrente
+        if (!personas.champion && count >= 2) {
+          personas.champion = `${name} (sugerido)`;
+          personas.keyPersonas.push(name);
+        }
+      }
+    });
+  }
+  
+  return personas;
+}
+
+/**
+ * Valida consistência entre "Next Step" do CRM e última atividade
+ * Retorna: { isConsistent: bool, alert: string, nextStepReality: string }
+ */
+function validateNextStepConsistency(nextStep, lastActivityText, lastActivityDate) {
+  if (!nextStep || !lastActivityText) {
+    return { 
+      isConsistent: true, 
+      alert: "Sem dados para validação", 
+      nextStepReality: "N/A",
+      riskLevel: "INFO"
+    };
+  }
+  
+  const nextStepNorm = normText_(nextStep);
+  const activityNorm = normText_(lastActivityText);
+  
+  // Padrões conflitantes
+  const signingKeywords = ["assinatura", "assinar", "contrato", "agreement"];
+  const negotiationKeywords = ["negociacao", "desconto", "preco", "condicoes"];
+  const paymentKeywords = ["pagamento", "forma", "condicoes financeiras"];
+  const discoveryKeywords = ["discovery", "reuniao", "entendimento", "necessidades"];
+  
+  const nextStepCategory = nextStepNorm.includes("assinatura") ? "signing" :
+                           nextStepNorm.includes("negociacao") || nextStepNorm.includes("proposta") ? "negotiation" :
+                           nextStepNorm.includes("decision") || nextStepNorm.includes("aprovacao") ? "approval" :
+                           "other";
+  
+  const activityCategory = activityNorm.includes("pagamento") || activityNorm.includes("forma de pagamento") ? "payment_discussion" :
+                           activityNorm.includes("negociacao") || activityNorm.includes("desconto") ? "negotiation" :
+                           activityNorm.includes("bloqueio") || activityNorm.includes("objecao") ? "blocker" :
+                           activityNorm.includes("reuniao") || activityNorm.includes("discovery") ? "discovery" :
+                           "other";
+  
+  // Validações
+  const conflicts = {
+    "signing - payment_discussion": "INCONERENCIA: Next Step é 'assinar', mas última atividade fala de 'forma de pagamento'",
+    "signing - negotiation": "INCONERENCIA: Next Step é 'assinar', mas última atividade fala de negociação/desconto",
+    "signing - blocker": "INCONERENCIA CRÍTICA: Next Step é 'assinar', mas última atividade menciona bloqueio",
+    "negotiation - discovery": "INCONERENCIA: Next Step é 'negociação', mas atividade ainda em fase discovery",
+    "approval - payment_discussion": "INCONERENCIA: Next Step é 'aprovação', mas ainda discutindo 'forma de pagamento'"
+  };
+  
+  const conflictKey = `${nextStepCategory} - ${activityCategory}`;
+  const alert = conflicts[conflictKey] || null;
+  
+  return {
+    isConsistent: !alert,
+    alert: alert || "OK",
+    nextStepCategory: nextStepCategory,
+    activityCategory: activityCategory,
+    riskLevel: alert ? (alert.includes("CRÍTICA") ? "CRITICAL" : "MEDIUM") : "LOW"
+  };
+}
+
+/**
+ * Hard Gate: Inatividade crítica baseada em forecast, fase e tempo de funil
+ * Deals em fase inicial são muito mais penalizados por inatividade
+ */
+function checkInactivityGate(idleDaysValue, forecastCategory, lastActivityDate, currentStage, daysInFunnel) {
+  const idleDays = typeof idleDaysValue === 'string' ? parseInt(idleDaysValue) : idleDaysValue;
+  
+  // Identifica se está em fase inicial (qualificação)
+  const stageNorm = currentStage ? normText_(currentStage) : '';
+  const isEarlyStage = /CALIFIC|QUALIFY|DISCOVERY|PROSPECT|INICIAL/i.test(stageNorm);
+  
+  // GATE CRÍTICO 1: Deal em fase inicial com >90 dias de inatividade = ZUMBI
+  if (isEarlyStage && idleDays > 90) {
+    return {
+      isBlocked: true,
+      severity: "CRITICAL",
+      alert: `🚨 GATE CRÍTICO: Deal em fase inicial (${currentStage}) com ${idleDays} dias de inatividade. Deal classificado como ZUMBI.`,
+      recommendedAction: "ENCERRAR-INATIVO",
+      suggestedConfidence: 0
+    };
+  }
+  
+  // GATE CRÍTICO 2: Deal em fase inicial >150 dias no funil + >60 dias inativo
+  if (isEarlyStage && daysInFunnel > 150 && idleDays > 60) {
+    return {
+      isBlocked: true,
+      severity: "CRITICAL",
+      alert: `🚨 GATE CRÍTICO: Deal há ${daysInFunnel} dias em fase inicial com ${idleDays} dias sem atividade. Indicativo de "parking lot".`,
+      recommendedAction: "ENCERRAR-INATIVO",
+      suggestedConfidence: 0
+    };
+  }
+  
+  // GATE CRÍTICO 3: UPSIDE/COMMIT com >30 dias inativo
+  if (idleDays > 30 && (forecastCategory === 'UPSIDE' || forecastCategory === 'COMMIT')) {
+    return {
+      isBlocked: true,
+      severity: "CRITICAL",
+      alert: `⚠️ GATE CRÍTICO: Inatividade de ${idleDays} dias com forecast '${forecastCategory}'. Obrigatória auditoria antes de incluir no pipeline.`,
+      recommendedAction: "AUDITORIA-CRM",
+      suggestedConfidence: 15
+    };
+  }
+  
+  // GATE AVISO: Fase inicial com >45 dias inativo
+  if (isEarlyStage && idleDays > 45) {
+    return {
+      isBlocked: false,
+      severity: "WARNING",
+      alert: `⚠️ GATE AVISO: Deal em qualificação com ${idleDays} dias de inatividade. Risco alto de perda.`,
+      recommendedAction: "REQUALIFICAR",
+      suggestedConfidence: 10
+    };
+  }
+  
+  // GATE AVISO: UPSIDE com >20 dias inativo
+  if (idleDays > 20 && forecastCategory === 'UPSIDE') {
+    return {
+      isBlocked: false,
+      severity: "WARNING",
+      alert: `⚠️ GATE AVISO: Inatividade de ${idleDays} dias com forecast 'UPSIDE'. Validar com vendedor.`,
+      recommendedAction: "VALIDAR-COM-VENDEDOR",
+      suggestedConfidence: 25
+    };
+  }
+  
+  return {
+    isBlocked: false,
+    severity: "CLEAR",
+    alert: "OK",
+    recommendedAction: null,
+    suggestedConfidence: null
+  };
 }
 
 function callGeminiAPI(prompt, optionalConfig) {
@@ -729,9 +994,16 @@ function buildOpenOutputRow(runId, item, profile, fiscal, activity, meddic, ia, 
   const gaps = (ia.gaps_identificados && ia.gaps_identificados.length > 0) ? ia.gaps_identificados.join(", ") : meddic.gaps.join(", ");
   const bant = calculateBANTScore_(item, activity);
   const bantGaps = bant.gaps.length ? bant.gaps.join(", ") : "OK";
-  const bantEvidence = bant.hits.length ? bant.hits.join(", ") : "-";
+  
+  // Usa evidenceWithCitations se disponível, senão cai para hits
+  const bantEvidence = (bant.evidenceWithCitations && bant.evidenceWithCitations.length) 
+    ? bant.evidenceWithCitations.join(", ") 
+    : (bant.hits.length ? bant.hits.join(", ") : "-");
+  
   const meddicGaps = meddic.gaps.length ? meddic.gaps.join(", ") : "OK";
-  const meddicEvidence = (meddic.hits && meddic.hits.length) ? meddic.hits.join(", ") : "-";
+  const meddicEvidence = (meddic.evidenceWithCitations && meddic.evidenceWithCitations.length) 
+    ? meddic.evidenceWithCitations.join(", ") 
+    : ((meddic.hits && meddic.hits.length) ? meddic.hits.join(", ") : "-");
 
   // Velocity metrics (se disponível)
   const velSummary = item._velocityMetrics ? 
@@ -864,19 +1136,24 @@ function buildClosedOutputRow(runId, mode, item, profile, fiscal, ia, labels, ac
 }
 
 function calculateFiscalQuarter(date) {
-  if (!date || !(date instanceof Date)) {
+  let parsedDate = date;
+  if (!(parsedDate instanceof Date)) {
+    parsedDate = parseDate(parsedDate);
+  }
+  if (!parsedDate || !(parsedDate instanceof Date)) {
     logToSheet("ERROR", "QuarterCalc", `❌ calculateFiscalQuarter: date inválido! type=${typeof date}, value=${date}`);
     return { label: "N/A", year: 0, q: 0 };
   }
   
   // Validar se é data válida (não NaN)
-  if (isNaN(date.getTime())) {
-    logToSheet("ERROR", "QuarterCalc", `❌ calculateFiscalQuarter: date é NaN! value=${date}`);
+  if (isNaN(parsedDate.getTime())) {
+    logToSheet("ERROR", "QuarterCalc", `❌ calculateFiscalQuarter: date é NaN! value=${parsedDate}`);
     return { label: "N/A", year: 0, q: 0 };
   }
   
   // ============================================================================
-  // REGRA DE OURO: CALENDÁRIO FISCAL 2026 (JANEIRO A DEZEMBRO)
+  // CALENDÁRIO FISCAL (JANEIRO A DEZEMBRO)
+  // Calcula dinamicamente o fiscal year baseado na data de fechamento
   // ============================================================================
   // Q1: Janeiro, Fevereiro, Março (meses 0, 1, 2)
   // Q2: Abril, Maio, Junho (meses 3, 4, 5)
@@ -884,8 +1161,8 @@ function calculateFiscalQuarter(date) {
   // Q4: Outubro, Novembro, Dezembro (meses 9, 10, 11)
   // ============================================================================
   
-  const month = date.getMonth(); // 0-11 (0=Janeiro, 11=Dezembro)
-  const year = date.getFullYear();
+  const month = parsedDate.getMonth(); // 0-11 (0=Janeiro, 11=Dezembro)
+  const year = parsedDate.getFullYear();
   
   // Calcula quarter: Jan-Mar=Q1, Abr-Jun=Q2, Jul-Set=Q3, Out-Dez=Q4
   let q;
@@ -938,7 +1215,22 @@ function calculateQuarterRecognizedValue(billingCalendar, totalValue, closeDate)
 
   // CRÍTICO: Adiciona 1 mês ao closeDate para refletir o delay de faturamento
   // Ex: Fechou em Janeiro → Primeiro pagamento em Fevereiro
-  const actualCloseDate = new Date(closeDate);
+  const parsedCloseDate = parseDate(closeDate);
+  if (!parsedCloseDate || isNaN(parsedCloseDate.getTime())) {
+    if (calculateQuarterRecognizedValue.debugCount < MAX_DEBUG_LOGS) {
+      logToSheet("ERROR", "QuarterCalc", `❌ closeDate inválido! value=${closeDate}`);
+      calculateQuarterRecognizedValue.debugCount++;
+    }
+    return { 
+      q1: 0, 
+      q2: 0, 
+      q3: 0, 
+      q4: 0,
+      calendarType: "-", 
+      details: "0" 
+    };
+  }
+  const actualCloseDate = new Date(parsedCloseDate);
   const firstPaymentDate = new Date(actualCloseDate);
   firstPaymentDate.setMonth(firstPaymentDate.getMonth() + 1);
   
@@ -1251,7 +1543,8 @@ function normalizeStage_(stage) {
 function buildOppKey_(accName, oppName, createdDate) {
   const acc = normText_(accName);
   const opp = normText_(oppName);
-  const created = createdDate ? Utilities.formatDate(createdDate, Session.getScriptTimeZone(), "yyyy-MM-dd") : "";
+  const createdObj = parseDate(createdDate);
+  const created = createdObj ? Utilities.formatDate(createdObj, Session.getScriptTimeZone(), "yyyy-MM-dd") : "";
   return `${acc}|${opp}|${created}`;
 }
 
@@ -1457,12 +1750,39 @@ function getModeConfig(mode) {
  * - Históricos TÊM "Data de criação" / "Created Date"
  * - Análises NÃO TÊM "Created Date" (ciclo já calculado na coluna "Ciclo (dias)")
  * - Análise Forecast usa "Data Prevista" em vez de "Close Date"
- * - Análises já têm "Fiscal Q" calculado (FY26-Q1, FY26-Q2, etc)
+ * - Análises já têm "Fiscal Q" calculado dinamicamente (ex: FY24-Q3, FY25-Q1, FY26-Q2, FY27-Q4)
  * - NET = 0 é NORMAL em perdidas e renovações orgânicas
  * ============================================================================
  */
+
+// Cache global de headers normalizados
+const HEADER_CACHE_ = {};
+
+/**
+ * Obtém headers normalizados do cache ou normaliza se necessário
+ * @param {Array} headers - Array de headers brutos
+ * @return {Array} Headers normalizados
+ */
+function getNormalizedHeaders_(headers) {
+  const cacheKey = headers.join("||");
+  
+  if (!HEADER_CACHE_[cacheKey]) {
+    HEADER_CACHE_[cacheKey] = headers.map(x => normText_(x));
+  }
+  
+  return HEADER_CACHE_[cacheKey];
+}
+
+/**
+ * Limpa o cache de headers (útil após atualizações de schema)
+ */
+function clearHeaderCache_() {
+  Object.keys(HEADER_CACHE_).forEach(key => delete HEADER_CACHE_[key]);
+  logToSheet("INFO", "Cache", "Cache de headers limpo");
+}
+
 function getColumnMapping(headers) {
-  const h = headers.map(x => normText_(x));
+  const h = getNormalizedHeaders_(headers);
   
   const find = (possibleNames) => {
     for (let name of possibleNames) {
@@ -1850,9 +2170,12 @@ function indexDataByMultiKey_(sheetObj) {
   // Ampliado: buscar mais variações de colunas de ID e Nome
   const idIdx = find(["Opportunity ID", "Opportunity: ID", "Record ID", "Id", "ID"]);
   const nmIdx = find([
-    "Opportunity", "Opportunity Name", "Oportunidade", 
-    "Nome da oportunidade", "Nome da Oportunidade",
-    "Relacionado a", "Related To", "Parent Record",
+    "Nome da oportunidade",           // EXATO - coluna 7 de Alteracoes_Oportunidade
+    "Opportunity Name",                // Inglês
+    "Oportunidade",                    // Genérico (última prioridade)
+    "Opportunity",                     // Genérico inglês
+    "Related To",                      // Salesforce
+    "Parent Record",
     "Opportunity: Opportunity Name"
   ]);
   
@@ -1887,6 +2210,65 @@ function indexDataByMultiKey_(sheetObj) {
   }
 
   return map;
+}
+
+/**
+ * Sanitiza texto de atividades removendo HTML, metadados de sistema e ruído
+ * Remove: tags HTML, #StatusUpdate, "La Oportunidad", espaços excessivos
+ */
+function cleanActivityText_(text) {
+  if (!text || typeof text !== 'string') return "";
+  
+  let cleaned = text
+    // Remove todas as tags HTML (<p>, <strong>, <br>, etc)
+    .replace(/<\/?[^>]+(>|$)/gi, '')
+    
+    // Remove entidades HTML (&nbsp;, &quot;, etc)
+    .replace(/&[a-z]+;/gi, ' ')
+    
+    // Remove metadados de sistema conhecidos
+    .replace(/#StatusUpdate/gi, '')
+    .replace(/La Oportunidad/gi, '')
+    .replace(/Opportunity Name:/gi, '')
+    .replace(/Status:/gi, '')
+    
+    // Remove IDs de tickets (SECE-123456, PROJ-456789)
+    .replace(/[A-Z]{3,5}-\d{5,7}/gi, '')
+    
+    // Remove hashtags de sistema (#Sprint2, #Vertex, #AI, etc)
+    .replace(/#[A-Za-z0-9_]+/gi, '')
+    
+    // Remove padrões de email (mais agressivo)
+    .replace(/From:\s*[^\s|]+/gi, '')
+    .replace(/To:\s*[^\s|]+/gi, '')
+    .replace(/CC:\s*[^\s|]+/gi, '')
+    .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi, '[email]')
+    .replace(/correo electrónico/gi, '')
+    .replace(/correo electronico/gi, '')
+    .replace(/unsubscribe/gi, '')
+    .replace(/Para ver este debate/gi, '')
+    .replace(/visita \[LINK\]/gi, '')
+    
+    // Remove URLs longas (só poluem)
+    .replace(/https?:\/\/[^\s]+/gi, '')
+    .replace(/\[LINK\]/gi, '')
+    
+    // Remove padrões de data isolados do tipo "Data: DD/MM/YYYY" (com ou sem pipe)
+    .replace(/Data:\s*\d{1,2}\/\d{1,2}\/\d{2,4}\s*\|?/gi, '')
+    
+    // Remove padrões de campo técnico "Field: value |"
+    .replace(/\b[A-Z][a-z]+:\s+[A-Z][a-z]+\.\s*/g, '')
+    
+    // Normaliza quebras de linha e espaços
+    .replace(/\n{3,}/g, '\n\n')  // Max 2 quebras consecutivas
+    .replace(/\s{2,}/g, ' ')      // Max 1 espaço
+    .replace(/\|{2,}/g, '|')      // Max 1 pipe
+    .replace(/\|\s*\|/g, '|')     // Remove pipes vazios
+    .replace(/^\|+/, '')          // Remove pipes no início
+    .replace(/\|+$/, '')          // Remove pipes no fim
+    .trim();
+  
+  return cleaned;
 }
 
 function processActivityStatsSmart(acts, headers, hoje) {
@@ -1927,11 +2309,36 @@ function processActivityStatsSmart(acts, headers, hoje) {
     const weight = weightKey ? typeWeights[weightKey] : 0.6;
     weighted += weight;
     if (t) channelCount[t] = (channelCount[t] || 0) + 1;
-    return { date: d, text: colText > -1 ? String(a[colText] || "") : "" };
+    
+    // LIMPEZA CRÍTICA: Remove HTML e metadados antes de processar
+    const rawText = colText > -1 ? String(a[colText] || "") : "";
+    const cleanText = cleanActivityText_(rawText);
+    
+    return { date: d, text: cleanText, type: t };
   }).filter(a => a.date).sort((a, b) => b.date - a.date);
 
   const lastDate = sortedActs.length > 0 ? sortedActs[0].date : null;
-  const fullText = sortedActs.slice(0, 15).map(a => a.text).join(" | ");
+  
+  // Construir fullText com prefixos cronológicos para priorizar contexto recente
+  const fullTextParts = sortedActs.slice(0, 15).map((a, index) => {
+    const dataFmt = Utilities.formatDate(a.date, "GMT-3", "dd/MM/yyyy");
+    let prefixo = "";
+    
+    if (index === 0) {
+      prefixo = "--- ÚLTIMA ATIVIDADE REGISTRADA ---\n";
+    } else if (index === 1) {
+      prefixo = "[ANTERIOR] ";
+    } else if (index > 1 && index <= 3) {
+      prefixo = "[RECENTE] ";
+    } else {
+      prefixo = "[HISTÓRICO] ";
+    }
+    
+    const tipoDisplay = a.type ? `Tipo: ${a.type} | ` : "";
+    return `${prefixo}Data: ${dataFmt} | ${tipoDisplay}${a.text}`;
+  });
+  
+  const fullText = fullTextParts.join("\n\n");
   const channelSummary = Object.keys(channelCount).length
     ? Object.keys(channelCount).map(k => `${k}:${channelCount[k]}`).join(" | ")
     : "-";
@@ -1954,6 +2361,175 @@ function summarizeChangesSmart(changes, headers) {
     const d = colDate > -1 ? formatDateRobust(c[colDate]) : "";
     return `[${d}] ${f}->${v}`;
   }).join(" | ");
+}
+
+/**
+ * Extrai a data da última mudança de fase (Stage) do histórico de changes.
+ * Usado para determinar a data real de fechamento de deals Won/Lost.
+ * 
+ * @param {Array} changes - Array de mudanças
+ * @param {Array} headers - Headers da planilha de changes
+ * @returns {Date|null} - Data da última mudança de fase ou null se não encontrada
+ */
+function getLastStageChangeDate(changes, headers) {
+  if (!changes || !changes.length) return null;
+  
+  const h = headers.map(x => normText_(x));
+  const findIdx = (cands) => { for (let c of cands) { const i = h.indexOf(normText_(c)); if (i > -1) return i; } return -1; };
+  
+  const colField = findIdx(["field / event", "campo/compromisso", "campo / compromisso", "campo", "field"]);
+  const colDate = findIdx(["edit date", "data de edição", "data de edicao", "data edição", "data edicao", "data", "date"]);
+  
+  if (colField === -1 || colDate === -1) return null;
+  
+  // Busca pela última mudança de Stage (mais recente)
+  let lastStageDate = null;
+  
+  for (let i = 0; i < changes.length; i++) {
+    const field = normText_(String(changes[i][colField] || ""));
+    
+    // Identifica mudanças de fase (Stage/Estagio/Etapa/Fase)
+    if (/STAGE|ESTAGIO|ETAPA|FASE/.test(field)) {
+      const date = parseDate(changes[i][colDate]);
+      if (date && (!lastStageDate || date > lastStageDate)) {
+        lastStageDate = date;
+      }
+    }
+  }
+  
+  return lastStageDate;
+}
+
+/**
+ * Aplica correção de data de fechamento para deals Won/Lost.
+ * Usa a data da última mudança de fase como data real de fechamento.
+ * Recalcula automaticamente o ciclo baseado na data corrigida.
+ * 
+ * @param {Object} item - Item de deal (objeto com propriedades)
+ * @param {string} mode - Modo de processamento ('WON', 'LOST', 'OPEN')
+ * @param {Array} relatedChanges - Histórico de mudanças do deal
+ * @param {Array} changesHeaders - Headers da planilha de mudanças
+ * @returns {Object} - Item modificado com closed e ciclo atualizados
+ */
+function applyClosedDateCorrection_(item, mode, relatedChanges, changesHeaders) {
+  // Só aplica para deals fechados (WON/LOST)
+  if (mode !== 'WON' && mode !== 'LOST') {
+    return item;
+  }
+  
+  const lastStageDate = getLastStageChangeDate(relatedChanges, changesHeaders);
+  
+  if (lastStageDate) {
+    item.closed = lastStageDate;
+    
+    // Recalcular ciclo com a data corrigida
+    if (item.created) {
+      item.ciclo = Math.ceil((lastStageDate - item.created) / MS_PER_DAY);
+    }
+  }
+  
+  return item;
+}
+
+/**
+ * Valida consistência temporal de um deal.
+ * Detecta datas invertidas, ausentes ou ilógicas.
+ * 
+ * @param {Object} item - Item de deal
+ * @param {string} mode - Modo ('WON', 'LOST', 'OPEN')
+ * @param {Date} hoje - Data atual de referência
+ * @returns {Array<string>} - Array de problemas detectados (vazio se OK)
+ */
+function validateDealDates_(item, mode, hoje) {
+  const issues = [];
+  
+  // Validação 1: Data de criação ausente
+  if (!item.created || !(item.created instanceof Date) || isNaN(item.created.getTime())) {
+    issues.push("DATA CRIAÇÃO INVÁLIDA");
+    return issues; // Não pode validar outras sem created
+  }
+  
+  // Validação 2: Data de fechamento obrigatória para WON/LOST
+  if ((mode === 'WON' || mode === 'LOST') && 
+      (!item.closed || !(item.closed instanceof Date) || isNaN(item.closed.getTime()))) {
+    issues.push("DATA FECHAMENTO AUSENTE");
+  }
+  
+  // Validação 3: Datas invertidas (created > closed)
+  if (item.closed && item.created > item.closed) {
+    issues.push("DATA INVERTIDA (created > closed)");
+  }
+  
+  // Validação 4: Data de criação no futuro
+  if (item.created > hoje) {
+    const diasFuturo = Math.ceil((item.created - hoje) / MS_PER_DAY);
+    issues.push(`CREATED NO FUTURO (+${diasFuturo} dias)`);
+  }
+  
+  // Validação 5: Data de fechamento muito futura (>2 anos)
+  if (item.closed) {
+    const maxFutureDate = new Date(hoje.getTime() + (730 * MS_PER_DAY)); // 2 anos
+    if (item.closed > maxFutureDate) {
+      issues.push("CLOSE DATE ABSURDO (>2 anos futuro)");
+    }
+  }
+  
+  // Validação 6: Deal OPEN com data de fechamento no passado
+  if (mode === 'OPEN' && item.closed && item.closed < hoje) {
+    const diasAtrasado = Math.ceil((hoje - item.closed) / MS_PER_DAY);
+    if (diasAtrasado > 7) { // tolerância de 7 dias
+      issues.push(`SLIPPAGE DETECTADO (-${diasAtrasado} dias)`);
+    }
+  }
+  
+  return issues;
+}
+
+/**
+ * Valida se o ciclo calculado é lógico e consistente.
+ * 
+ * @param {number} ciclo - Ciclo em dias
+ * @param {Date} created - Data de criação
+ * @param {Date} closed - Data de fechamento
+ * @param {string} oppName - Nome da oportunidade (para log)
+ * @returns {Object} - { isValid: boolean, issue: string|null, correctedCiclo: number }
+ */
+function validateCiclo_(ciclo, created, closed, oppName) {
+  const result = {
+    isValid: true,
+    issue: null,
+    correctedCiclo: ciclo
+  };
+  
+  // Validação 1: Ciclo negativo
+  if (ciclo < 0) {
+    result.isValid = false;
+    result.issue = "CICLO NEGATIVO";
+    result.correctedCiclo = Math.abs(ciclo); // Corrige invertendo
+    logToSheet("ERROR", "CicloValidation", 
+      `Ciclo negativo detectado (${ciclo} dias) - datas invertidas?`,
+      { oportunidade: oppName }
+    );
+  }
+  
+  // Validação 2: Ciclo zero (fechou no mesmo dia)
+  else if (ciclo === 0 && created && closed) {
+    const hoursDiff = Math.abs(closed - created) / (1000 * 3600);
+    if (hoursDiff < 1) {
+      result.isValid = false;
+      result.issue = "CICLO ZERO - FECHAMENTO INSTANTÂNEO";
+      result.correctedCiclo = 1; // Força mínimo de 1 dia
+    }
+  }
+  
+  // Validação 3: Ciclo absurdamente longo (>3 anos)
+  else if (ciclo > 1095) { // 3 anos = 1095 dias
+    result.isValid = false;
+    result.issue = `CICLO ABSURDO (${ciclo} dias = ${Math.round(ciclo/365)} anos)`;
+    // Mantém valor mas flageia
+  }
+  
+  return result;
 }
 
 /**
@@ -2647,6 +3223,7 @@ function getActorEmail_() {
  * Calcula hash de integridade de uma oportunidade
  */
 function computeOppIntegrityHash_(item) {
+  const closedDate = item.closed instanceof Date ? item.closed : parseDate(item.closed);
   const criticalFields = [
     item.oppKey || "",
     item.oppName || "",
@@ -2654,7 +3231,7 @@ function computeOppIntegrityHash_(item) {
     item.owner || "",
     normalizeStage_(item.stage) || "",
     item.probabilidad || 0,
-    item.closed instanceof Date ? Utilities.formatDate(item.closed, "GMT", "yyyy-MM-dd") : "",
+    closedDate instanceof Date ? Utilities.formatDate(closedDate, "GMT", "yyyy-MM-dd") : "",
     item.gross || 0,
     item.net || 0,
     item.products || "",
@@ -2909,19 +3486,47 @@ function calculateDealVelocity_(item, changeHistory, activityData, headers) {
     }
   }
 
-  // 5. PREDICTION (baseado em múltiplos sinais)
+  // 5. PREDICTION (baseado em múltiplos sinais com ponderação de magnitude)
   let signals = 0;
-  if (metrics.valueVelocity > 5) signals++;
-  if (metrics.valueVelocity < -5) signals--;
-  if (metrics.probabilityTrend > 0) signals++;
-  if (metrics.probabilityTrend < 0) signals--;
-  if (metrics.activityMomentum > 50) signals++;
-  if (metrics.activityMomentum < -30) signals--;
-  if (metrics.stageVelocity > 0 && metrics.stageVelocity < 14) signals++;
-  if (metrics.stageVelocity > 45) signals--;
+  
+  // Ponderar velocidade de valor pela magnitude da mudança
+  if (valueChanges.length >= 2) {
+    const firstVal = parseMoney(valueChanges[0].oldValue || "0");
+    const lastVal = parseMoney(valueChanges[valueChanges.length - 1].newValue || "0");
+    const absoluteChange = Math.abs(lastVal - firstVal);
+    
+    // Peso baseado na magnitude: mudanças > $50k têm peso total, < $5k têm peso reduzido
+    let magnitudeWeight = 1.0;
+    if (absoluteChange < 5000) magnitudeWeight = 0.3;
+    else if (absoluteChange < 20000) magnitudeWeight = 0.6;
+    else if (absoluteChange < 50000) magnitudeWeight = 0.8;
+    
+    if (metrics.valueVelocity > 5) signals += magnitudeWeight;
+    if (metrics.valueVelocity < -5) signals -= magnitudeWeight;
+  }
+  
+  // Probabilidade tem peso total (mudanças de % são significativas)
+  if (metrics.probabilityTrend > 0) signals += 1;
+  if (metrics.probabilityTrend < 0) signals -= 1;
+  
+  // Ponderar activity momentum pela quantidade de mudanças
+  if (changes.length > 0) {
+    const changeCount = changes.length;
+    let activityWeight = 1.0;
+    if (changeCount < 5) activityWeight = 0.4;
+    else if (changeCount < 10) activityWeight = 0.7;
+    
+    if (metrics.activityMomentum > 50) signals += activityWeight;
+    if (metrics.activityMomentum < -30) signals -= activityWeight;
+  }
+  
+  // Stage velocity mantém peso total
+  if (metrics.stageVelocity > 0 && metrics.stageVelocity < 14) signals += 1;
+  if (metrics.stageVelocity > 45) signals -= 1;
 
-  if (signals >= 2) metrics.prediction = "ACELERANDO";
-  else if (signals <= -2) metrics.prediction = "DESACELERANDO";
+  // Limiares ajustados para signals ponderados (decimais)
+  if (signals >= 1.5) metrics.prediction = "ACELERANDO";
+  else if (signals <= -1.5) metrics.prediction = "DESACELERANDO";
   else if (metrics.stageVelocity === 0 && activityData.count < 2) metrics.prediction = "ESTAGNADO";
   else metrics.prediction = "ESTÁVEL";
 

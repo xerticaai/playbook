@@ -9,7 +9,7 @@ function onOpen() {
     const ui = SpreadsheetApp.getUi();
     ui.createMenu('🚀 Sales AI (GTM)')
       // ══════════════════════════════════════════════════════════════
-      // SEÇÃO 1: AUTOMAÇÃO (Auto-Sync + Dashboard)
+      // SEÇÃO 1: AUTOMAÇÃO (Auto-Sync)
       // ══════════════════════════════════════════════════════════════
       .addSubMenu(ui.createMenu('⚡ Sistema Automático')
         .addItem('🤖 ▶️ Ativar Auto-Sync', 'ativarAutoSync')
@@ -30,6 +30,8 @@ function onOpen() {
         .addItem('❌ Analisar Perdidas (Lost)', 'startLost')
         .addSeparator()
         .addItem('🔧 Corrigir Change Tracking (Ganhas/Perdidas)', 'corrigirChangeTrackingClosedDeals')
+        .addItem('📅 Corrigir Datas de Fechamento (Ganhas/Perdidas)', 'corrigirDatasFechamentoClosedDeals')
+        .addItem('📊 Recalcular Fiscal Q (Todas Análises)', 'recalcularFiscalQTodasAnalises')
         .addItem('⏰ Atualizar Timestamps', 'atualizarTimestampsManual')
         .addItem('📋 Relatório de Qualidade de Dados', 'gerarRelatorioQualidadeDados'))
       
@@ -110,8 +112,7 @@ function syncToBigQueryManual() {
       `Dados carregados no BigQuery com sucesso!\n\n` +
       `• Pipeline: ${result.pipelineRows} linhas\n` +
       `• Closed Deals: ${result.closedRows} linhas\n` +
-      `• Duração: ${result.duration}s\n\n` +
-      `O dashboard agora pode usar o BigQuery para análises.`,
+      `• Duração: ${result.duration}s`,
       ui.ButtonSet.OK
     );
   } else {
@@ -171,8 +172,7 @@ function configurarBigQuerySync() {
       `Sync automático ativado!\n\n` +
       `⏰ Frequência: A cada 1 hora\n` +
       `📊 Última sync: ${result.pipelineRows} pipeline + ${result.closedRows} closed\n` +
-      `⏱️ Duração: ${result.duration}s\n\n` +
-      `O dashboard agora pode usar BigQuery + ML predictions.`,
+      `⏱️ Duração: ${result.duration}s`,
       ui.ButtonSet.OK
     );
   } else {
@@ -193,9 +193,7 @@ function desativarBigQuerySync() {
   
   const response = ui.alert(
     '🛑 Desativar BigQuery',
-    'Isso irá:\n' +
-    '• Remover trigger de sync automático\n' +
-    '• Dashboard pode voltar a processar dados localmente\n\n' +
+    'Remover trigger de sync automático com BigQuery?\n\n' +
     'Continuar?',
     ui.ButtonSet.YES_NO
   );
@@ -214,8 +212,7 @@ function desativarBigQuerySync() {
   
   ui.alert(
     '✅ BigQuery Desativado',
-    `Sync automático removido (${removed} trigger${removed > 1 ? 's' : ''}).\n\n` +
-    `Dashboard voltou ao modo local (se USE_BIGQUERY=false).`,
+    `Sync automático removido (${removed} trigger${removed > 1 ? 's' : ''}).`,
     ui.ButtonSet.OK
   );
 }

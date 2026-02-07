@@ -9,7 +9,7 @@
  * 2. MOTOR DE INATIVIDADE (DIAS): Identificação real de ociosidade vs. atividades agendadas.
  * 3. INTEGRIDADE DE PRODUTOS: Agregação por Deal Name com busca multidimensional de colunas.
  * 4. MEDDIC TRILÍNGUE + GOV: Suporte a termos em PT, EN, ES e marcos de Setor Público (TR/ARP/ETP).
- * 5. TAXONOMIA FISCAL: Rótulos FY26 automáticos sincronizados com o calendário GTM 2026.
+ * 5. TAXONOMIA FISCAL: Rótulos fiscal quarter automáticos calculados dinamicamente pela data de fechamento.
  * 6. MAPEAMENTO DINÂMICO: Todas as abas são lidas via cabeçalho (sem índices fixos).
  * 7. PROTOCOLO DE ANÁLISE FORÇADA: Análise obrigatória de todos os deals para expor riscos de "CRM Vazio".
  * 
@@ -858,6 +858,19 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
     const relatedActivities = activitiesMap.get(oppLookupKey) || [];
     const relatedChanges = changesMap.get(oppLookupKey) || [];
 
+    // Aplicar correção de data de fechamento para WON/LOST
+    applyClosedDateCorrection_(item, mode, relatedChanges, changesHeaders);
+
+    // Validar consistência temporal
+    const dateIssues = validateDealDates_(item, mode, hoje);
+    if (dateIssues.length > 0) {
+      governanceIssues.push(...dateIssues);
+      logToSheet("WARN", "DateValidation", 
+        `Problemas temporais detectados: ${dateIssues.join(", ")}`,
+        { oportunidade: item.oppName, aba: mode }
+      );
+    }
+
     // --- ANÁLISE DETERMINÍSTICA (HARD GATES) ---
     const isBaseClient = baseClients.has(item.accName.toLowerCase());
     const clientProfile = isBaseClient ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT;
@@ -1203,8 +1216,26 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
       ? getDetailedActivityBreakdown(relatedActivities, activitiesHeaders, hoje)
       : null;
     
+    // NOVAS VALIDAÇÕES: Personas, Next Step Consistency, Inactivity Gate
+    const daysInFunnel = item.created ? Math.ceil((hoje - item.created) / MS_PER_DAY) : 0;
+    const personas = mode === 'OPEN' ? extractPersonasFromActivities(activityData.fullText, item.desc) : null;
+    const bant = mode === 'OPEN' ? calculateBANTScore_(item, activityData) : null;
+    const nextStepCheck = mode === 'OPEN' ? validateNextStepConsistency(item.nextStep || item.stage, activityData.fullText, activityData.lastDate) : null;
+    const inactivityGate = mode === 'OPEN' ? checkInactivityGate(idleDays, item.forecast_ia || item.probabilidad > 40 ? (item.probabilidad > 60 ? 'UPSIDE' : 'PIPELINE') : 'PIPELINE', activityData.lastDate, item.stage, daysInFunnel) : null;
+    
+    // Se inactivityGate detectar bloqueio crítico, adiciona às issues
+    if (inactivityGate && inactivityGate.isBlocked) {
+      governanceIssues.push("INATIVIDADE-GATE-CRÍTICO");
+      rulesApplied.push(inactivityGate.alert);
+      
+      // Aplica sugestão de confiança do gate se disponível
+      if (inactivityGate.suggestedConfidence !== null && inactivityGate.suggestedConfidence !== undefined) {
+        // Será usado no override após a chamada de IA
+      }
+    }
+    
     const prompt = (mode === 'OPEN')
-      ? getOpenPrompt(item, clientProfile, fiscal, activityData, meddic, auditSummary, idleDays, governanceIssues, inconsistencyCheck, govInfo)
+      ? getOpenPrompt(item, clientProfile, fiscal, activityData, meddic, bant, personas, nextStepCheck, inactivityGate, auditSummary, idleDays, governanceIssues, inconsistencyCheck, govInfo)
       : getClosedPrompt(mode, item, clientProfile, fiscal, activityData, meddic, auditSummary, idleDays, normalizeLossReason_(item.reason), detailedChanges, activityBreakdown);
     
     let jsonResp = { labels: [], forecast_cat: "PIPELINE" };
@@ -1267,7 +1298,15 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
     const finalLabels = normalizeList((jsonResp.labels || []).concat(governanceIssues), ENUMS.LABELS);
     const finalAction = overrideActionCode || jsonResp.acao_code || ENUMS.ACTION_CODE.CRM_AUDIT;
 
-    if (fiscal.year === 2026) finalLabels.push(ENUMS.LABELS.GTM_VIP);
+    // Label estratégica GTM:
+    // - WON/LOST: Sempre aplicada (são fatos históricos relevantes independente do ano)
+    // - OPEN: Apenas se ano fiscal >= ano atual (são previsões futuras)
+    if (mode === 'WON' || mode === 'LOST') {
+      finalLabels.push(ENUMS.LABELS.GTM_VIP);
+    } else if (mode === 'OPEN') {
+      const currentYear = new Date().getFullYear();
+      if (fiscal.year >= currentYear) finalLabels.push(ENUMS.LABELS.GTM_VIP);
+    }
 
     // ========================================================================
     // GOVERNANÇA DE FORECAST BASEADA EM CONFIANÇA
@@ -1454,6 +1493,19 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
     const oppLookupKey = normText_(item.oppId || item.oppName);
     const relatedActivities = activitiesMap.get(oppLookupKey) || [];
     const relatedChanges = changesMap.get(oppLookupKey) || [];
+
+    // Aplicar correção de data de fechamento para WON/LOST
+    applyClosedDateCorrection_(item, mode, relatedChanges, changesHeaders);
+
+    // Validar consistência temporal
+    const dateIssues = validateDealDates_(item, mode, hoje);
+    if (dateIssues.length > 0) {
+      governanceIssues.push(...dateIssues);
+      logToSheet("WARN", "DateValidation", 
+        `Problemas temporais detectados: ${dateIssues.join(", ")}`,
+        { oportunidade: item.oppName, aba: mode }
+      );
+    }
 
     const isBaseClient = baseClients.has(item.accName.toLowerCase());
     const clientProfile = isBaseClient ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT;
@@ -1766,8 +1818,21 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
       ? getDetailedActivityBreakdown(relatedActivities, activitiesHeaders, hoje)
       : null;
 
+    // NOVAS VALIDAÇÕES: Personas, Next Step Consistency, Inactivity Gate
+    const daysInFunnel = item.created ? Math.ceil((hoje - item.created) / MS_PER_DAY) : 0;
+    const personas = mode === 'OPEN' ? extractPersonasFromActivities(activityData.fullText, item.desc) : null;
+    const bant = mode === 'OPEN' ? calculateBANTScore_(item, activityData) : null;
+    const nextStepCheck = mode === 'OPEN' ? validateNextStepConsistency(item.nextStep || item.stage, activityData.fullText, activityData.lastDate) : null;
+    const inactivityGate = mode === 'OPEN' ? checkInactivityGate(idleDays, item.forecast_ia || item.probabilidad > 40 ? (item.probabilidad > 60 ? 'UPSIDE' : 'PIPELINE') : 'PIPELINE', activityData.lastDate, item.stage, daysInFunnel) : null;
+    
+    // Se inactivityGate detectar bloqueio crítico, adiciona às issues
+    if (inactivityGate && inactivityGate.isBlocked) {
+      governanceIssues.push("INATIVIDADE-GATE-CRÍTICO");
+      rulesApplied.push(inactivityGate.alert);
+    }
+
     const prompt = (mode === 'OPEN')
-      ? getOpenPrompt(item, clientProfile, fiscal, activityData, meddic, auditSummary, idleDays, governanceIssues, inconsistencyCheck, govInfo)
+      ? getOpenPrompt(item, clientProfile, fiscal, activityData, meddic, bant, personas, nextStepCheck, inactivityGate, auditSummary, idleDays, governanceIssues, inconsistencyCheck, govInfo)
       : getClosedPrompt(mode, item, clientProfile, fiscal, activityData, meddic, auditSummary, idleDays, normalizeLossReason_(item.reason), detailedChanges, activityBreakdown);
 
     let jsonResp = { labels: [], forecast_cat: "PIPELINE" };
@@ -1782,7 +1847,15 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
     const finalLabels = normalizeList((jsonResp.labels || []).concat(governanceIssues), ENUMS.LABELS);
     const finalAction = overrideActionCode || jsonResp.acao_code || ENUMS.ACTION_CODE.CRM_AUDIT;
 
-    if (fiscal.year === 2026) finalLabels.push(ENUMS.LABELS.GTM_VIP);
+    // Label estratégica GTM:
+    // - WON/LOST: Sempre aplicada (são fatos históricos relevantes independente do ano)
+    // - OPEN: Apenas se ano fiscal >= ano atual (são previsões futuras)
+    if (mode === 'WON' || mode === 'LOST') {
+      finalLabels.push(ENUMS.LABELS.GTM_VIP);
+    } else if (mode === 'OPEN') {
+      const currentYear = new Date().getFullYear();
+      if (fiscal.year >= currentYear) finalLabels.push(ENUMS.LABELS.GTM_VIP);
+    }
 
     // ========================================================================
     // GOVERNANÇA DE FORECAST BASEADA EM CONFIANÇA
@@ -4281,11 +4354,6 @@ function ativarAutoSync() {
   }
 }
 
-// Alias para compatibilidade com código legado
-function ativarAutoSyncPipeline() { 
-  ativarAutoSync(); 
-}
-
 /**
  * DESATIVAR SISTEMA (AUTO-SYNC)
  */
@@ -4554,6 +4622,54 @@ function corrigirChangeTrackingClosedDeals() {
     ui.alert(
       '❌ Erro',
       'Falha ao corrigir change tracking:\n\n' + error.message,
+      ui.ButtonSet.OK
+    );
+  }
+}
+
+/**
+ * CORRIGIR DATAS DE FECHAMENTO (WON/LOST)
+ * Atualiza as datas de fechamento para usar a data da última mudança de fase
+ */
+function corrigirDatasFechamentoClosedDeals() {
+  const ui = SpreadsheetApp.getUi();
+  
+  const response = ui.alert(
+    '📅 Corrigir Datas de Fechamento',
+    'Esta função irá atualizar as datas de fechamento de Ganhas e Perdidas ' +
+    'para usar a data REAL da última mudança de fase.\n\n' +
+    'Processará TODAS as linhas das abas de análise.\n\n' +
+    'Continuar?',
+    ui.ButtonSet.YES_NO
+  );
+  
+  if (response !== ui.Button.YES) return;
+  
+  try {
+    ui.alert(
+      '⏳ Processando...',
+      'Recalculando datas de fechamento para Ganhas e Perdidas.\n\nAguarde...',
+      ui.ButtonSet.OK
+    );
+    
+    const result = recalcularDatasFechamento_();
+    
+    ui.alert(
+      '✅ Correção Concluída',
+      `Datas de fechamento atualizadas com sucesso!\n\n` +
+      `Ganhas: ${result.wonUpdated} datas corrigidas\n` +
+      `Perdidas: ${result.lostUpdated} datas corrigidas\n` +
+      `Sem mudanças: ${result.skipped} (sem histórico de fase)\n\n` +
+      `Ciclos também foram recalculados automaticamente!\n\n` +
+      `Total processado: ${result.wonUpdated + result.lostUpdated + result.skipped}\n\n` +
+      `⚠️ Verifique os logs (View > Logs) para diagnóstico se tiver muitos skips.`,
+      ui.ButtonSet.OK
+    );
+    
+  } catch (error) {
+    ui.alert(
+      '❌ Erro',
+      'Falha ao corrigir datas:\n\n' + error.message,
       ui.ButtonSet.OK
     );
   }
@@ -5712,13 +5828,13 @@ function syncBaseToAnalysis_(mode) {
     
     // === 5. CRIAR ANÁLISES FALTANTES (PROCESSAMENTO DIRETO 1 POR VEZ) ===
     if (missingAnalyses.length > 0) {
-      // ORDENAÇÃO POR ANO FISCAL: 2026 primeiro, depois retroagindo (para WON/LOST)
+      // ORDENAÇÃO POR ANO FISCAL: Ano atual primeiro, depois retroagindo (para WON/LOST)
       if (mode === 'WON' || mode === 'LOST') {
-        console.log(`  📅 Ordenando ${mode} por ano fiscal (2026 → passado)...`);
+        console.log(`  📅 Ordenando ${mode} por ano fiscal (mais recente → passado)...`);
         missingAnalyses.sort((a, b) => {
           const yearA = baseOpps.get(normText_(a.name))?.fiscalYear || 0;
           const yearB = baseOpps.get(normText_(b.name))?.fiscalYear || 0;
-          return yearB - yearA; // Decrescente: 2026, 2025, 2024...
+          return yearB - yearA; // Decrescente: 2027, 2026, 2025, 2024...
         });
         
         const yearCounts = {};
@@ -5766,13 +5882,13 @@ function syncBaseToAnalysis_(mode) {
     
     // === 6. VERIFICAR E ATUALIZAR ANÁLISES EXISTENTES (1 POR VEZ) ===
     if (existingButMayNeedUpdate.length > 0) {
-      // ORDENAÇÃO POR ANO FISCAL: 2026 primeiro (para WON/LOST)
+      // ORDENAÇÃO POR ANO FISCAL: Ano atual primeiro (para WON/LOST)
       if (mode === 'WON' || mode === 'LOST') {
-        console.log(`  📅 Ordenando ${mode} para reprocessamento por ano fiscal (2026 → passado)...`);
+        console.log(`  📅 Ordenando ${mode} para reprocessamento por ano fiscal (mais recente → passado)...`);
         existingButMayNeedUpdate.sort((a, b) => {
           const yearA = baseOpps.get(normText_(a.name))?.fiscalYear || 0;
           const yearB = baseOpps.get(normText_(b.name))?.fiscalYear || 0;
-          return yearB - yearA; // Decrescente: 2026 primeiro
+          return yearB - yearA; // Decrescente: ano mais recente primeiro
         });
       }
       
@@ -5903,12 +6019,24 @@ function buildOpenOutputRow(runId, item, profile, fiscal, activity, meddic, ia, 
 
   const diasFunil = item.created ? Math.ceil((new Date() - item.created) / MS_PER_DAY) : 0;
   const cicloDias = (item.closed && item.created) ? Math.ceil((item.closed - item.created) / MS_PER_DAY) : 0;
+  
+  // Validar ciclo
+  const cicloValidation = validateCiclo_(cicloDias, item.created, item.closed, item.oppName);
+  if (!cicloValidation.isValid) {
+    governanceIssues.push(cicloValidation.issue);
+  }
+  const cicloFinal = cicloValidation.correctedCiclo;
+  
   const engagementQuality = ia.engagement_quality || "N/D";
+  
+  // Pré-formatar datas uma única vez
+  const closedDateFormatted = item.closed ? formatDateRobust(item.closed) : "-";
+  const lastUpdateFormatted = formatDateRobust(new Date());
 
   return [
     runId, item.oppName, item.accName, profile, item.products || "N/A", item.owner,
     item.gross, item.net, item.stage, item.forecast_sf || "-", fiscal.label,
-    item.closed ? formatDateRobust(item.closed) : "-", cicloDias, diasFunil,
+    closedDateFormatted, cicloFinal, diasFunil,
     activity.count, activity.weightedCount, activity.channelSummary, idle, engagementQuality,
     finalCat, ia.confianca || 0, ia.motivo_confianca || "-",
     meddic.score, meddicGaps, meddicEvidence, bant.score, bantGaps, bantEvidence,
@@ -5922,7 +6050,7 @@ function buildOpenOutputRow(runId, item, profile, fiscal, activity, meddic, ia, 
     item._detectionSource || "CRM", quarterRecognition.calendarType || "-",
     quarterRecognition.q1 || 0, quarterRecognition.q2 || 0,
     quarterRecognition.q3 || 0, quarterRecognition.q4 || 0,
-    new Date()  // 🕐 Última Atualização (col 54)
+    lastUpdateFormatted  // 🕐 Última Atualização (col 54)
   ];
 }
 
@@ -5943,11 +6071,23 @@ function buildClosedOutputRow(runId, mode, item, profile, fiscal, ia, labels, ac
   const sinaisAlerta = (ia.sinais_alerta || []).join(", ") || "-";
   const momentoCritico = ia.momento_critico || "-";
   const licoesAprendidas = ia.licoes_aprendidas || "-";
+  
+  // Validar ciclo (se existir)
+  if (item.ciclo && item.created && item.closed) {
+    const cicloValidation = validateCiclo_(item.ciclo, item.created, item.closed, item.oppName);
+    if (!cicloValidation.isValid) {
+      labels.push(cicloValidation.issue);
+    }
+  }
+  
+  // Pré-formatar datas uma única vez
+  const closedDateFormatted = item.closed ? formatDateRobust(item.closed) : "-";
+  const lastUpdateFormatted = formatDateRobust(new Date());
 
   return [
     runId, item.oppName, item.accName, profile, item.owner, item.gross, item.net,
     item.portfolio || "-", item.segment || "-", item.productFamily || "-",
-    status, fiscal.label, item.closed ? formatDateRobust(item.closed) : "-",
+    status, fiscal.label, closedDateFormatted,
     item.ciclo || "-", item.products || "-", resumo, causa,
     mode === 'WON' ? fatores : causasSecundarias, tipo,
     mode === 'WON' ? qualidadeEngajamento : evitavel,
@@ -5961,7 +6101,7 @@ function buildClosedOutputRow(runId, mode, item, profile, fiscal, ia, labels, ac
     detailedChanges.valueChanges || 0, detailedChanges.topFields || "-",
     detailedChanges.changePattern || "-", detailedChanges.changeFrequency || "-",
     detailedChanges.uniqueEditors || 0, labels.join(", "),
-    new Date()  // 🕐 Última Atualização (col 40)
+    lastUpdateFormatted  // 🕐 Última Atualização (col 40)
   ];
 }
 
@@ -6153,6 +6293,182 @@ function getRunId_(mode) {
 }
 
 /**
+ * Recalcula datas de fechamento para deals Won/Lost usando data da última mudança de fase
+ * @private
+ */
+function recalcularDatasFechamento_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const modes = [
+    { mode: 'WON', config: getModeConfig('WON') },
+    { mode: 'LOST', config: getModeConfig('LOST') }
+  ];
+  
+  let wonUpdated = 0;
+  let lostUpdated = 0;
+  let skipped = 0;
+  
+  for (const { mode, config } of modes) {
+    const analysisSheet = ss.getSheetByName(config.output);
+    if (!analysisSheet || analysisSheet.getLastRow() < 2) {
+      console.log(`Aba ${config.output} vazia ou inexistente, pulando`);
+      continue;
+    }
+    
+    // Carregar dados do histórico (Historico_Ganhos ou Historico_Perdidas)
+    const rawHistorico = getSheetData(config.input);
+    if (!rawHistorico || !rawHistorico.values || rawHistorico.values.length === 0) {
+      console.log(`Sem dados de histórico para ${mode}, pulando`);
+      continue;
+    }
+    
+    const historicoHeaders = rawHistorico.headers;
+    const historicoData = rawHistorico.values;
+    
+    // Encontrar colunas no histórico
+    const histOppIdx = historicoHeaders.findIndex(h => {
+      const norm = normText_(String(h));
+      return norm.includes('OPPORTUNITY') || norm.includes('OPORTUNIDADE');
+    });
+    
+    const histLastStageDateIdx = historicoHeaders.findIndex(h => {
+      const norm = normText_(String(h));
+      return norm.includes('DATA') && norm.includes('ULTIMA') && norm.includes('MUDANCA') && norm.includes('FASE');
+    });
+    
+    if (histOppIdx === -1 || histLastStageDateIdx === -1) {
+      console.log(`⚠️ Colunas não encontradas no histórico para ${mode}: oppIdx=${histOppIdx}, lastStageDateIdx=${histLastStageDateIdx}`);
+      continue;
+    }
+    
+    // Criar mapa: nome da oportunidade → data da última mudança de fase
+    const historicoMap = new Map();
+    for (let i = 0; i < historicoData.length; i++) {
+      const oppName = String(historicoData[i][histOppIdx] || '').trim();
+      const lastStageDate = historicoData[i][histLastStageDateIdx];
+      if (!oppName) continue;
+      if (lastStageDate) {
+        historicoMap.set(oppName, parseDate(lastStageDate));
+      }
+    }
+    
+    const analysisData = analysisSheet.getDataRange().getValues();
+    const analysisHeaders = analysisData[0];
+    
+    // Encontrar colunas relevantes
+    const oppIdx = analysisHeaders.findIndex(h => {
+      const norm = normText_(String(h));
+      return norm.includes('OPPORTUNITY') || norm.includes('OPORTUNIDADE');
+    });
+    
+    const closeDateIdx = analysisHeaders.findIndex(h => {
+      const norm = normText_(String(h));
+      return (norm.includes('FECHA') && norm.includes('CIERRE')) || 
+             (norm.includes('DATA') && norm.includes('FECHAMENTO'));
+    });
+    
+    const cicloIdx = analysisHeaders.findIndex(h => {
+      const norm = normText_(String(h));
+      return norm.includes('CICLO') && norm.includes('DIAS');
+    });
+    
+    const createdIdx = analysisHeaders.findIndex(h => {
+      const norm = normText_(String(h));
+      return norm.includes('CRIADO') || norm.includes('CREATED');
+    });
+    
+    if (oppIdx === -1 || closeDateIdx === -1) {
+      console.log(`⚠️ Colunas não encontradas em ${config.output}: oppIdx=${oppIdx}, closeDateIdx=${closeDateIdx}`);
+      continue;
+    }
+    
+    console.log(`📅 Processando ${mode}: oppIdx=${oppIdx}, closeDateIdx=${closeDateIdx}, cicloIdx=${cicloIdx}, createdIdx=${createdIdx}`);
+    
+    // DEBUG: Verificar primeiras 5 chaves do historicoMap
+    console.log(`🔍 Primeiras 5 chaves no historicoMap:`);
+    let debugCount = 0;
+    for (let key of historicoMap.keys()) {
+      if (debugCount++ < 5) {
+        console.log(`   - "${key}" → Data: ${formatDateRobust(historicoMap.get(key))}`);
+      } else break;
+    }
+    
+    // Processar cada linha
+    let updated = 0;
+    const updatesToWrite = [];
+    
+    for (let i = 1; i < analysisData.length; i++) {
+      const oppNameRaw = String(analysisData[i][oppIdx] || '').trim();
+      const lastStageDate = historicoMap.get(oppNameRaw);
+      
+      // DEBUG: Log primeiras 5 buscas
+      if (i <= 5) {
+        console.log(`   Linha ${i}: "${oppNameRaw}" → ${lastStageDate ? formatDateRobust(lastStageDate) : 'NÃO ENCONTRADO'}`);
+      }
+      
+      if (!lastStageDate) {
+        skipped++;
+        continue;
+      }
+      
+      // Verificar se a data atual é diferente
+      const currentDate = analysisData[i][closeDateIdx];
+      const currentDateParsed = currentDate instanceof Date ? currentDate : parseDate(currentDate);
+      
+      // Só atualiza se for diferente
+      if (!currentDateParsed || Math.abs(lastStageDate - currentDateParsed) > MS_PER_DAY) { // Diferença > 1 dia
+          updatesToWrite.push({
+            row: i + 1, // +1 porque sheets é 1-indexed
+            col: closeDateIdx + 1,
+            value: formatDateRobust(lastStageDate),
+            oppName: oppNameRaw
+          });
+          
+          // Se temos coluna de ciclo E data de criação, recalcular ciclo também
+          if (cicloIdx > -1 && createdIdx > -1) {
+            const createdDate = analysisData[i][createdIdx];
+            const createdDateParsed = createdDate instanceof Date ? createdDate : parseDate(createdDate);
+            
+            if (createdDateParsed) {
+              const newCiclo = Math.ceil((lastStageDate - createdDateParsed) / MS_PER_DAY);
+              updatesToWrite.push({
+                row: i + 1,
+                col: cicloIdx + 1,
+                value: newCiclo,
+                oppName: oppNameRaw,
+                isCiclo: true
+              });
+            }
+          }
+          
+          updated++;
+          
+          if (updated <= 3) {
+            console.log(`   📅 ${oppNameRaw}: ${currentDate ? formatDateRobust(currentDate) : 'vazio'} → ${formatDateRobust(lastStageDate)}`);
+          }
+      }
+    }
+    
+    // Aplicar atualizações em batch
+    if (updatesToWrite.length > 0) {
+      console.log(`📝 Escrevendo ${updatesToWrite.length} atualizações em ${config.output}...`);
+      updatesToWrite.forEach(update => {
+        analysisSheet.getRange(update.row, update.col).setValue(update.value);
+        if (update.isCiclo) {
+          console.log(`   🔄 Ciclo recalculado para ${update.oppName}: ${update.value} dias`);
+        }
+      });
+    }
+    
+    if (mode === 'WON') wonUpdated = updated;
+    else if (mode === 'LOST') lostUpdated = updated;
+    
+    console.log(`✅ ${mode}: ${updated} datas atualizadas`);
+  }
+  
+  return { wonUpdated, lostUpdated, skipped };
+}
+
+/**
  * Obtém o nome da sheet da fila de processamento para o modo especificado
  * @private
  */
@@ -6271,6 +6587,15 @@ function processarAnaliseCompleta_(oppName, mode, config) {
   const relatedActivities = activitiesMap.get(oppLookupKey) || [];
   const relatedChanges = changesMap.get(oppLookupKey) || [];
   
+  // CORREÇÃO: Para deals fechados (WON/LOST), usar data da última mudança de fase
+  // Para pipeline (OPEN), manter a data prevista de fechamento
+  if (mode === 'WON' || mode === 'LOST') {
+    const lastStageDate = getLastStageChangeDate(relatedChanges, changesHeaders);
+    if (lastStageDate) {
+      item.closed = lastStageDate;
+    }
+  }
+  
   const baseClients = getBaseClientsCache();
   const isBaseClient = baseClients.has(item.accName.toLowerCase());
   const clientProfile = isBaseClient ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT;
@@ -6322,7 +6647,19 @@ function processarAnaliseCompleta_(oppName, mode, config) {
       rulesApplied.push("NET ZERO");
     }
     
-    const prompt = getOpenPrompt(item, clientProfile, fiscal, activityData, meddic, auditSummary, idleDays, governanceIssues, inconsistencyCheck, govInfo);
+    // NOVAS VALIDAÇÕES: Personas, Next Step Consistency, Inactivity Gate
+    const daysInFunnel = item.created ? Math.ceil((hoje - item.created) / MS_PER_DAY) : 0;
+    const personas = extractPersonasFromActivities(activityData.fullText, item.desc);
+    const bant = calculateBANTScore_(item, activityData);
+    const nextStepCheck = validateNextStepConsistency(item.nextStep || item.stage, activityData.fullText, activityData.lastDate);
+    const inactivityGate = checkInactivityGate(idleDays, item.forecast_ia || item.probabilidad > 40 ? (item.probabilidad > 60 ? 'UPSIDE' : 'PIPELINE') : 'PIPELINE', activityData.lastDate, item.stage, daysInFunnel);
+    
+    if (inactivityGate && inactivityGate.isBlocked) {
+      governanceIssues.push("INATIVIDADE-GATE-CRÍTICO");
+      rulesApplied.push(inactivityGate.alert);
+    }
+    
+    const prompt = getOpenPrompt(item, clientProfile, fiscal, activityData, meddic, bant, personas, nextStepCheck, inactivityGate, auditSummary, idleDays, governanceIssues, inconsistencyCheck, govInfo);
     let jsonResp = { labels: [], forecast_cat: "PIPELINE" };
     
     try {
