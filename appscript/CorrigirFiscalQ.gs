@@ -139,6 +139,12 @@ function recalcularFiscalQAba_(sheetName, mode) {
   const colOportunidade = headers.findIndex(h => 
     String(h).includes('Oportunidade') || String(h).includes('Opportunity')
   );
+  const colDataCriacaoLocal = headers.findIndex(h =>
+    String(h).toLowerCase().includes('data de criação') ||
+    String(h).toLowerCase().includes('data de criacao') ||
+    String(h).toLowerCase().includes('created date') ||
+    String(h).toLowerCase().includes('create date')
+  );
   
   if (colFiscalQ === -1) {
     console.error(`   ❌ Coluna "Fiscal Q" não encontrada em ${sheetName}`);
@@ -152,6 +158,9 @@ function recalcularFiscalQAba_(sheetName, mode) {
   
   console.log(`   📊 Processando ${rows.length} linhas...`);
   console.log(`   📍 Fiscal Q: coluna ${colFiscalQ + 1} | Data: coluna ${colDataFechamento + 1} | Ciclo: coluna ${colCiclo + 1}`);
+  if (colDataCriacaoLocal >= 0 && mode === 'OPEN') {
+    console.log(`   📍 Data Criação (local): coluna ${colDataCriacaoLocal + 1}`);
+  }
   
   let atualizados = 0;
   let erros = 0;
@@ -200,9 +209,36 @@ function recalcularFiscalQAba_(sheetName, mode) {
       }
     } else {
       console.warn(`   ⚠️ Aba "${historicoSheetName}" não encontrada ou vazia`);
-    }const originalCiclo = colCiclo >= 0 ? row[colCiclo] : null;
+    }
+  }
+  
+  // Processar cada linha
+  for (let i = 0; i < rows.length; i++) {
+    try {
+      const row = rows[i];
+      const rowIndex = i + 2; // +2 porque sheet é 1-based e tem header
+      
+      let closeDate = row[colDataFechamento];
+      const oppName = colOportunidade >= 0 ? String(row[colOportunidade] || '') : '';
+      const originalCloseDate = closeDate;
+      const originalCiclo = colCiclo >= 0 ? row[colCiclo] : null;
       let dataCorrected = false;
       let dataCriacao = null;
+      
+      // Para OPEN (Pipeline): buscar data de criação da própria linha
+      if (mode === 'OPEN' && colDataCriacaoLocal >= 0) {
+        const createdDate = row[colDataCriacaoLocal];
+        if (createdDate) {
+          const parsedCreatedDate = createdDate instanceof Date ? createdDate : parseDate(createdDate);
+          if (parsedCreatedDate && !isNaN(parsedCreatedDate.getTime())) {
+            dataCriacao = parsedCreatedDate;
+            
+            if (i < 3) {
+              console.log(`   📅 [${i+1}] dataCriacao (local): ${dataCriacao.toDateString()} (${dataCriacao.getDate()}/${dataCriacao.getMonth()+1}/${dataCriacao.getFullYear()})`);
+            }
+          }
+        }
+      }
       
       // Para WON/LOST: buscar data da última mudança de fase no Historico
       if ((mode === 'WON' || mode === 'LOST') && historicoMap && oppName && colLastStageChange >= 0 && colDataCriacao >= 0) {
@@ -241,17 +277,24 @@ function recalcularFiscalQAba_(sheetName, mode) {
             const parsedCreatedDate = createdDate instanceof Date ? createdDate : parseDate(createdDate);
             if (parsedCreatedDate && !isNaN(parsedCreatedDate.getTime())) {
               dataCriacao = parsedCreatedDate;
-            }Date : parseDate(lastStageDate);
-            
-            if (parsedLastStageDate && !isNaN(parsedLastStageDate.getTime())) {
-              closeDate = parsedLastStageDate;
-              dataCorrected = true;
-              
-              if (i < 3) {
-                console.log(`   📅 [${i+1}] Data corrigida: ${formatDateRobust(originalCloseDate)} → ${formatDateRobust(parsedLastStageDate)}`);
-              }
             }
-          } else if (i < 3) {
+          }
+        }
+      }
+      
+      // Pular se não tiver data
+      if (!closeDate || closeDate === '') continue;
+      
+      // Parse da data
+      let parsedDate = closeDate;
+      if (!(parsedDate instanceof Date)) {
+        parsedDate = parseDate(closeDate);
+      }
+      
+      // Debug detalhado nas primeiras 3 linhas
+      if (i < 3) {
+        console.log(`   🔍 [${i+1}] closeDate original: ${closeDate} (tipo: ${typeof closeDate})`);
+        console.log(`   📅 [${i+1}] closeDate parsed: ${parsedDate.toDateString()} (${parsedDate.getDate()}/${parsedDate.getMonth()+1}/${parsedDate.getFullYear()})`);
         if (dataCriacao) {
           console.log(`   📅 [${i+1}] dataCriacao: ${dataCriacao.toDateString()} (${dataCriacao.getDate()}/${dataCriacao.getMonth()+1}/${dataCriacao.getFullYear()})`);
         }
@@ -267,12 +310,10 @@ function recalcularFiscalQAba_(sheetName, mode) {
       if (dataCriacao && parsedDate) {
         newCiclo = Math.ceil((parsedDate - dataCriacao) / MS_PER_DAY);
       }
-      if (!closeDate || closeDate === '') continue;
       
-      let parsedDate = closeDate;
-      if (!(parsedDate instanceof Date)) {
-        parsedDate = parseDate(closeDate);
-      }
+      // Debug nas primeiras 3 linhas
+      if (i < 3) {
+        console.log(`   📊 [${i+1}] FiscalQ: "${oldFiscalQ}" → "${newFiscalQ}" (${oldFiscalQ === newFiscalQ ? 'IGUAL' : 'DIFERENTE'})`);
         if (newCiclo !== null) {
           console.log(`   ⏱️ [${i+1}] Ciclo: ${originalCiclo} → ${newCiclo} dias`);
         }
@@ -292,39 +333,14 @@ function recalcularFiscalQAba_(sheetName, mode) {
           newCiclo: newCiclo,
           oldFiscalQ: oldFiscalQ,
           oldDataFechamento: originalCloseDate,
-          oldCiclo: originalCiclo
-      // Calcular novo Fiscal Q
-      const fiscal = calculateFiscalQuarter(parsedDate);
-      const oldFiscalQ = String(row[colFiscalQ] || '');
-      const newFiscalQ = fiscal.label;
-      
-      // Debug nas primeiras 3 linhas
-      if (i < 3) {
-        console.log(`   📊 [${i+1}] FiscalQ: "${oldFiscalQ}" → "${newFiscalQ}" (${oldFiscalQ === newFiscalQ ? 'IGUAL' : 'DIFERENTE'})`);
-      }
-      
-      // Só atualizar se mudou
-      if (oldFiscalQ !== newFiscalQ || dataCorrected) {
-        updates.push({
-          row: rowIndex,
-          colFiscalQ: colFiscalQ + 1,
-          colDataFechamento: colDataFechamento + 1,
-          newFiscalQ: newFiscalQ,
-          newDataFechamento: dataCorrected ? closeDate : null,
-          oldFiscalQ: oldFiscalQ,
-          oldDataFechamento: originalCloseDate,
+          oldCiclo: originalCiclo,
           oppName: oppName
         });
         atualizados++;
       }
       
     } catch (error) {
-      
-      // Atualizar Ciclo se calculado e coluna existe
-      if (update.newCiclo !== null && update.colCiclo > 0) {
-        sheet.getRange(update.row, update.colCiclo).setValue(update.newCiclo);
-      }
-      console.error(`   ⚠️ Erro na linha ${rowIndex}: ${error.message}`);
+      console.error(`   ⚠️ Erro na linha ${i + 2}: ${error.message}`);
       erros++;
     }
   }
@@ -335,7 +351,23 @@ function recalcularFiscalQAba_(sheetName, mode) {
     
     updates.forEach(update => {
       // Atualizar Fiscal Q
-      sheet.getRange(update.row || u.newCiclo !== null) {
+      sheet.getRange(update.row, update.colFiscalQ).setValue(update.newFiscalQ);
+      
+      // Atualizar Data Fechamento se foi corrigida
+      if (update.newDataFechamento) {
+        sheet.getRange(update.row, update.colDataFechamento).setValue(update.newDataFechamento);
+      }
+      
+      // Atualizar Ciclo se calculado e coluna existe
+      if (update.newCiclo !== null && update.colCiclo > 0) {
+        sheet.getRange(update.row, update.colCiclo).setValue(update.newCiclo);
+      }
+    });
+    
+    // Log das mudanças
+    if (updates.length <= 10) {
+      updates.forEach(u => {
+        if (u.newDataFechamento || u.newCiclo !== null) {
           console.log(`      • ${u.oppName || 'linha ' + u.row}:`);
           if (u.newDataFechamento) {
             console.log(`        Data: ${formatDateRobust(u.oldDataFechamento)} → ${formatDateRobust(u.newDataFechamento)}`);
@@ -352,20 +384,7 @@ function recalcularFiscalQAba_(sheetName, mode) {
       console.log(`      • Primeiras 5:`);
       updates.slice(0, 5).forEach(u => {
         if (u.newDataFechamento || u.newCiclo !== null) {
-          console.log(`        ${u.oppName || 'linha ' + u.row}: Data+FiscalQ+Ciclo
-        if (u.newDataFechamento) {
-          console.log(`      • ${u.oppName || 'linha ' + u.row}:`);
-          console.log(`        Data: ${formatDateRobust(u.oldDataFechamento)} → ${formatDateRobust(u.newDataFechamento)}`);
-          console.log(`        FiscalQ: ${u.oldFiscalQ} → ${u.newFiscalQ}`);
-        } else {
-          console.log(`      • ${u.oppName || 'linha ' + u.row}: FiscalQ ${u.oldFiscalQ} → ${u.newFiscalQ}`);
-        }
-      });
-    } else {
-      console.log(`      • Primeiras 5:`);
-      updates.slice(0, 5).forEach(u => {
-        if (u.newDataFechamento) {
-          console.log(`        ${u.oppName || 'linha ' + u.row}: Data+FiscalQ atualizados`);
+          console.log(`        ${u.oppName || 'linha ' + u.row}: Data+FiscalQ+Ciclo atualizados`);
         } else {
           console.log(`        ${u.oppName || 'linha ' + u.row}: ${u.oldFiscalQ} → ${u.newFiscalQ}`);
         }
