@@ -146,6 +146,26 @@ function syncToBigQueryScheduled() {
   
   console.log('🚀 Iniciando sync para BigQuery');
   console.log(`📍 Projeto: ${BQ_PROJECT} | Dataset: ${BQ_DATASET}`);
+  
+  // CRÍTICO: Aplicar locale pt_BR GLOBALMENTE antes de processar qualquer dado
+  // Isso garante que datas sejam interpretadas corretamente (DD/MM em vez de MM/DD)
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const currentLocale = ss.getSpreadsheetLocale();
+  console.log(`🌍 Locale atual do spreadsheet: ${currentLocale}`);
+  if (currentLocale !== 'pt_BR' && currentLocale !== 'pt-BR') {
+    console.log(`🔧 Alterando locale GLOBAL para pt_BR...`);
+    ss.setSpreadsheetLocale('pt_BR');
+    console.log(`✅ Locale alterado para: ${ss.getSpreadsheetLocale()}`);
+    
+    // Limpar cache de sheets após mudar locale se a função existir
+    if (typeof invalidateSheetCache_ === 'function') {
+      invalidateSheetCache_();
+      console.log(`🧹 Cache de sheets limpo após mudança de locale`);
+    }
+  } else {
+    console.log(`✅ Locale já configurado como pt_BR`);
+  }
+  
   const startTime = Date.now();
   const runId = new Date().toISOString();
   PropertiesService.getScriptProperties().setProperty('BQ_CURRENT_RUN_ID', runId);
@@ -328,73 +348,113 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
   console.log(`🔄 Usando load job para ${tableName} (suporta WRITE_TRUNCATE)...`);
   
   // Sanitizar dados (Date → yyyy-mm-dd, dd/mm/yyyy → yyyy-mm-dd)
-  const sanitizedRecords = records.map(record => {
-    const sanitized = {};
-    Object.keys(record).forEach(key => {
-      const value = record[key];
-      
-      // Detectar se o campo deve ser numérico baseado no nome
-      const numericFields = ['_dias', '_Score', '_Peso', 'Atividades', 'Mudancas', 'Editores', 'Confianca', 
-                            'Gross', 'Net', 'Total_', 'Valor_', 'Billing_', 'Booking_', 'Idle_'];
-      const isNumericField = numericFields.some(pattern => key.includes(pattern));
-      
-      // Detectar se o campo é de data baseado no nome
-      const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Date', '_Data', 'Fecha_', 'closed_date', 'created_date'];
-      const isDateField = dateFields.some(pattern => key.includes(pattern));
-      
-      if (value instanceof Date) {
-        // Date object → yyyy-mm-dd para BigQuery
-        const year = value.getFullYear();
-        const month = String(value.getMonth() + 1).padStart(2, '0');
-        const day = String(value.getDate()).padStart(2, '0');
-        sanitized[key] = `${year}-${month}-${day}`;
-      } else if (value === null || value === undefined || value === '') {
-        sanitized[key] = null;
-      } else if (typeof value === 'number' && !isFinite(value)) {
-        sanitized[key] = null; // NaN or Infinity
-      } else if (typeof value === 'number' && isDateField && value > 1000) {
-        // Número grande em campo de data: provavelmente serial date do Excel/Sheets
-        // Serial date: dias desde 30/12/1899 (Excel) ou 01/01/1900 (Sheets)
-        // Fórmula: (serial - 25569) * 86400000 = timestamp Unix
-        try {
-          const dateFromSerial = new Date((value - 25569) * 86400 * 1000);
-          if (!isNaN(dateFromSerial.getTime())) {
-            const year = dateFromSerial.getFullYear();
-            const month = String(dateFromSerial.getMonth() + 1).padStart(2, '0');
-            const day = String(dateFromSerial.getDate()).padStart(2, '0');
-            sanitized[key] = `${year}-${month}-${day}`;
-          } else {
+  const sanitizedRecords = records.map((record, idx) => {
+    try {
+      const sanitized = {};
+      Object.keys(record).forEach(key => {
+        const value = record[key];
+        
+        // Detectar se o campo deve ser numérico baseado no nome
+        const numericFields = ['_dias', '_Score', '_Peso', 'Atividades', 'Mudancas', 'Editores', 'Confianca', 
+                              'Gross', 'Net', 'Total_', 'Valor_', 'Billing_', 'Booking_', 'Idle_'];
+        const isNumericField = numericFields.some(pattern => key.includes(pattern));
+        
+        // Detectar se o campo é de data baseado no nome
+        const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Date', '_Data', 'Fecha_', 'closed_date', 'created_date'];
+        const isDateField = dateFields.some(pattern => key.includes(pattern));
+        
+        if (value instanceof Date) {
+          // Date object → yyyy-mm-dd para BigQuery
+          const year = value.getFullYear();
+          const month = String(value.getMonth() + 1).padStart(2, '0');
+          const day = String(value.getDate()).padStart(2, '0');
+          sanitized[key] = `${year}-${month}-${day}`;
+        } else if (value === null || value === undefined || value === '') {
+          sanitized[key] = null;
+        } else if (typeof value === 'number' && !isFinite(value)) {
+          sanitized[key] = null; // NaN or Infinity
+        } else if (typeof value === 'number' && isDateField && value > 1000) {
+          // Número grande em campo de data: provavelmente serial date do Excel/Sheets
+          // Serial date: dias desde 30/12/1899 (Excel) ou 01/01/1900 (Sheets)
+          // Fórmula: (serial - 25569) * 86400000 = timestamp Unix
+          try {
+            const dateFromSerial = new Date((value - 25569) * 86400 * 1000);
+            if (!isNaN(dateFromSerial.getTime())) {
+              const year = dateFromSerial.getFullYear();
+              const month = String(dateFromSerial.getMonth() + 1).padStart(2, '0');
+              const day = String(dateFromSerial.getDate()).padStart(2, '0');
+              sanitized[key] = `${year}-${month}-${day}`;
+            } else {
+              sanitized[key] = null;
+            }
+          } catch (e) {
             sanitized[key] = null;
           }
-        } catch (e) {
-          sanitized[key] = null;
-        }
-      } else if (typeof value === 'string') {
-        const strVal = String(value).trim();
-        
-        // Converter dd/mm/yyyy → yyyy-mm-dd para campos de data no BigQuery
-        // IMPORTANTE: Aceitar 1 ou 2 dígitos para dia/mês (ex: 1/02/2026 ou 01/02/2026)
-        const dateMatch = strVal.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-        if (dateMatch) {
-          const day = dateMatch[1].padStart(2, '0');
-          const month = dateMatch[2].padStart(2, '0');
-          const year = dateMatch[3];
-          sanitized[key] = `${year}-${month}-${day}`;
-        } else if (isNumericField) {
-          // Para campos numéricos, tentar converter; se falhar, usar NULL
-          const numVal = parseNumberForBQ(strVal);
-          sanitized[key] = numVal;
+        } else if (typeof value === 'string') {
+          const strVal = String(value).trim();
+          
+          // Converter dd/mm/yyyy → yyyy-mm-dd para campos de data no BigQuery
+          // IMPORTANTE: Aceitar 1 ou 2 dígitos para dia/mês (ex: 1/02/2026 ou 01/02/2026)
+          const dateMatch = strVal.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+          if (dateMatch) {
+            const day = dateMatch[1].padStart(2, '0');
+            const month = dateMatch[2].padStart(2, '0');
+            const year = dateMatch[3];
+            sanitized[key] = `${year}-${month}-${day}`;
+          } else if (isNumericField) {
+            // Para campos numéricos, tentar converter; se falhar, usar NULL
+            const numVal = parseNumberForBQ(strVal);
+            sanitized[key] = numVal;
+          } else {
+            sanitized[key] = strVal || null;
+          }
+        } else if (typeof value === 'number') {
+          // Validação rigorosa para campos numéricos
+          if (isNumericField) {
+            sanitized[key] = isFinite(value) ? value : null;
+          } else {
+            sanitized[key] = value;
+          }
         } else {
-          sanitized[key] = strVal || null;
+          sanitized[key] = value;
         }
-      } else {
-        sanitized[key] = value;
-      }
-    });
-    sanitized['Run_ID'] = sanitized['Run_ID'] || runId;
-    sanitized['data_carga'] = new Date().toISOString();
-    return sanitized;
+      });
+      sanitized['Run_ID'] = sanitized['Run_ID'] || runId;
+      sanitized['data_carga'] = new Date().toISOString();
+      return sanitized;
+    } catch (error) {
+      console.error(`❌ Erro ao sanitizar registro ${idx + 1}: ${error.message}`);
+      console.error(`   Registro problemático: ${JSON.stringify(record).substring(0, 200)}...`);
+      // Retornar registro básico para não quebrar o batch
+      return {
+        Run_ID: runId,
+        data_carga: new Date().toISOString(),
+        Oportunidade: record.Oportunidade || `ERROR_${idx}`,
+        error_message: error.message
+      };
+    }
   });
+  
+  // DEBUG: Mostrar primeiros 3 registros sanitizados para diagnóstico
+  if (sanitizedRecords.length > 0) {
+    console.log(`🔍 DEBUG: Primeiros registros sanitizados para ${tableName}:`);
+    const debugLimit = Math.min(3, sanitizedRecords.length);
+    for (let i = 0; i < debugLimit; i++) {
+      const rec = sanitizedRecords[i];
+      console.log(`   📝 Registro ${i+1}/${sanitizedRecords.length}:`);
+      
+      // Mostrar campos relevantes para debug
+      const debugFields = ['Oportunidade', 'Data_Fechamento', 'Data_Prevista', 'closed_date', 
+                          'Gross', 'Net', 'Fiscal_Q', 'Confianca', 'Ciclo_dias'];
+      debugFields.forEach(field => {
+        if (rec.hasOwnProperty(field)) {
+          const val = rec[field];
+          const valType = val === null ? 'NULL' : typeof val;
+          console.log(`      • ${field}: ${val} (${valType})`);
+        }
+      });
+    }
+  }
   
   // Converter para NDJSON
   const ndjson = sanitizedRecords.map(r => JSON.stringify(r)).join('\n');
