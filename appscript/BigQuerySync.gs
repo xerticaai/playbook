@@ -424,15 +424,10 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
             const month = dateMatch[2].padStart(2, '0');
             const year = dateMatch[3];
             sanitized[key] = `${year}-${month}-${day}`;
-          } else if (isoDateMatch && !isDateField) {
-            // Formato yyyy-mm-dd mas campo NÃO é de data → deixar NULL (erro de dados)
+          } else if ((dateMatch || isoDateMatch) && !isDateField) {
+            // String parece data mas campo NÃO é de data → deixar NULL ou tentar parse numérico
+            // Ex: Mudancas_Close_Date com valor "03/01/1900" deve ser NULL, não string
             sanitized[key] = null;
-          } else if (dateMatch || isoDateMatch) {
-            // É data mas tratamento especial pode ser necessário
-            const day = dateMatch ? dateMatch[1].padStart(2, '0') : strVal.substring(8, 10);
-            const month = dateMatch ? dateMatch[2].padStart(2, '0') : strVal.substring(5, 7);
-            const year = dateMatch ? dateMatch[3] : strVal.substring(0, 4);
-            sanitized[key] = `${year}-${month}-${day}`;
           } else if (isNumericField) {
             // Para campos numéricos, tentar converter; se falhar, usar NULL
             const numVal = parseNumberForBQ(strVal);
@@ -482,7 +477,7 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
       
       // Mostrar campos relevantes para debug
       const debugFields = ['Oportunidade', 'Data_Fechamento', 'Data_Prevista', 'closed_date', 
-                          'Gross', 'Net', 'Fiscal_Q', 'Confianca', 'Ciclo_dias'];
+                          'Gross', 'Net', 'Fiscal_Q', 'Confianca', 'Ciclo_dias', 'Mudancas_Close_Date'];
       debugFields.forEach(field => {
         if (rec.hasOwnProperty(field)) {
           const val = rec[field];
