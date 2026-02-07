@@ -59,6 +59,11 @@ function loadSheetData(sheetName) {
     const obj = {};
     uniqueHeaders.forEach((header, idx) => {
       const val = row[idx];
+      
+      // Detectar se o campo é de data baseado no nome
+      const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Date', '_Data', 'Fecha_', 'closed_date', 'created_date'];
+      const isDateField = dateFields.some(pattern => header.includes(pattern));
+      
       if (val === null || val === undefined || val === '') {
         obj[header] = null;
       } else if (val instanceof Date) {
@@ -67,6 +72,21 @@ function loadSheetData(sheetName) {
         const month = String(val.getMonth() + 1).padStart(2, '0');
         const year = val.getFullYear();
         obj[header] = `${day}/${month}/${year}`;
+      } else if (typeof val === 'number' && isDateField && val > 1000) {
+        // Número grande em campo de data: serial date do Excel/Sheets → dd/mm/yyyy
+        try {
+          const dateFromSerial = new Date((val - 25569) * 86400 * 1000);
+          if (!isNaN(dateFromSerial.getTime())) {
+            const day = String(dateFromSerial.getDate()).padStart(2, '0');
+            const month = String(dateFromSerial.getMonth() + 1).padStart(2, '0');
+            const year = dateFromSerial.getFullYear();
+            obj[header] = `${day}/${month}/${year}`;
+          } else {
+            obj[header] = null;
+          }
+        } catch (e) {
+          obj[header] = null;
+        }
       } else if (typeof val === 'number') {
         obj[header] = val;
       } else {
@@ -318,6 +338,10 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
                             'Gross', 'Net', 'Total_', 'Valor_', 'Billing_', 'Booking_', 'Idle_'];
       const isNumericField = numericFields.some(pattern => key.includes(pattern));
       
+      // Detectar se o campo é de data baseado no nome
+      const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Date', '_Data', 'Fecha_', 'closed_date', 'created_date'];
+      const isDateField = dateFields.some(pattern => key.includes(pattern));
+      
       if (value instanceof Date) {
         // Date object → yyyy-mm-dd para BigQuery
         const year = value.getFullYear();
@@ -328,14 +352,32 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
         sanitized[key] = null;
       } else if (typeof value === 'number' && !isFinite(value)) {
         sanitized[key] = null; // NaN or Infinity
+      } else if (typeof value === 'number' && isDateField && value > 1000) {
+        // Número grande em campo de data: provavelmente serial date do Excel/Sheets
+        // Serial date: dias desde 30/12/1899 (Excel) ou 01/01/1900 (Sheets)
+        // Fórmula: (serial - 25569) * 86400000 = timestamp Unix
+        try {
+          const dateFromSerial = new Date((value - 25569) * 86400 * 1000);
+          if (!isNaN(dateFromSerial.getTime())) {
+            const year = dateFromSerial.getFullYear();
+            const month = String(dateFromSerial.getMonth() + 1).padStart(2, '0');
+            const day = String(dateFromSerial.getDate()).padStart(2, '0');
+            sanitized[key] = `${year}-${month}-${day}`;
+          } else {
+            sanitized[key] = null;
+          }
+        } catch (e) {
+          sanitized[key] = null;
+        }
       } else if (typeof value === 'string') {
         const strVal = String(value).trim();
         
         // Converter dd/mm/yyyy → yyyy-mm-dd para campos de data no BigQuery
-        const dateMatch = strVal.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        // IMPORTANTE: Aceitar 1 ou 2 dígitos para dia/mês (ex: 1/02/2026 ou 01/02/2026)
+        const dateMatch = strVal.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
         if (dateMatch) {
-          const day = dateMatch[1];
-          const month = dateMatch[2];
+          const day = dateMatch[1].padStart(2, '0');
+          const month = dateMatch[2].padStart(2, '0');
           const year = dateMatch[3];
           sanitized[key] = `${year}-${month}-${day}`;
         } else if (isNumericField) {
