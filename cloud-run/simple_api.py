@@ -229,9 +229,9 @@ def get_metrics(year: Optional[int] = None, month: Optional[int] = None, seller:
           COUNT(*) as deals_count,
           ROUND(SUM(Gross), 2) as gross,
           ROUND(SUM(Net), 2) as net,
-          ROUND(AVG(SAFE_CAST(Confiana AS FLOAT64)), 1) as avg_confidence
+          ROUND(AVG(SAFE_CAST(Confianca AS FLOAT64)), 1) as avg_confidence
         FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
-        {pipeline_where} AND SAFE_CAST(Confiana AS FLOAT64) >= 50
+        {pipeline_where} AND SAFE_CAST(Confianca AS FLOAT64) >= 50
         """
         
         # Execute queries
@@ -311,7 +311,7 @@ def get_pipeline(year: Optional[int] = None, month: Optional[int] = None, seller
         query = f"""
         SELECT 
             Oportunidade, Vendedor, Fase_Atual,
-            Data_Prevista, SAFE_CAST(Confiana AS FLOAT64) as Confiana,
+            Data_Prevista, SAFE_CAST(Confianca AS FLOAT64) as Confianca,
             Gross, Net, Forecast_SF
         FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
         {where_clause}
@@ -386,20 +386,20 @@ def get_closed_lost(year: Optional[int] = None, month: Optional[int] = None, sel
 def get_actions(urgencia: Optional[str] = None, limit: int = 50):
     """Retorna ações sugeridas (baseado em pipeline)"""
     try:
-        urgency_filter = f"WHERE SAFE_CAST(Confiana AS FLOAT64) < 30" if urgencia == "ALTA" else ""
+        urgency_filter = f"WHERE SAFE_CAST(Confianca AS FLOAT64) < 30" if urgencia == "ALTA" else ""
         query = f"""
         SELECT 
             Oportunidade, Vendedor, Fase_Atual,
-            Data_Prevista, SAFE_CAST(Confiana AS FLOAT64) as Confiana,
+            Data_Prevista, SAFE_CAST(Confianca AS FLOAT64) as Confianca,
             Gross, Net,
             CASE 
-                WHEN SAFE_CAST(Confiana AS FLOAT64) < 30 THEN 'ALTA'
-                WHEN SAFE_CAST(Confiana AS FLOAT64) < 50 THEN 'MÉDIA'
+                WHEN SAFE_CAST(Confianca AS FLOAT64) < 30 THEN 'ALTA'
+                WHEN SAFE_CAST(Confianca AS FLOAT64) < 50 THEN 'MÉDIA'
                 ELSE 'BAIXA'
             END as urgencia_nivel
         FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
         {urgency_filter}
-        ORDER BY SAFE_CAST(Confiana AS FLOAT64) ASC, Gross DESC
+        ORDER BY SAFE_CAST(Confianca AS FLOAT64) ASC, Gross DESC
         LIMIT {limit}
         """
         return query_to_dict(query)
@@ -408,7 +408,13 @@ def get_actions(urgencia: Optional[str] = None, limit: int = 50):
 
 @app.get("/api/sales-specialist")
 def get_sales_specialist(year: Optional[int] = None, quarter: Optional[str] = None, seller: Optional[str] = None):
-    """Retorna dados curados pelo Sales Specialist com filtros"""
+    """Retorna dados curados pelo Sales Specialist com filtros
+    
+    IMPORTANTE: Não alterar a forma de filtragem!
+    - Filtragem por período é feita via closed_date (EXTRACT YEAR/quarter)
+    - Quarter filtering é por orquestração de filtros sobre a data
+    - Coluna fiscal_quarter pode estar NULL, filtro de quarter deve ser calculado no frontend
+    """
     try:
         filters = []
         if year:
@@ -447,11 +453,11 @@ def get_priorities(limit: int = 100):
         query = f"""
         SELECT 
             Oportunidade, Vendedor, Fase_Atual,
-            Data_Prevista, SAFE_CAST(Confiana AS FLOAT64) as Confiana,
+            Data_Prevista, SAFE_CAST(Confianca AS FLOAT64) as Confianca,
             Gross, Net, Forecast_SF,
-            (SAFE_CAST(Confiana AS FLOAT64) * Gross / 100) as prioridade_score
+            (SAFE_CAST(Confianca AS FLOAT64) * Gross / 100) as prioridade_score
         FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
-        WHERE SAFE_CAST(Confiana AS FLOAT64) >= 50
+        WHERE SAFE_CAST(Confianca AS FLOAT64) >= 50
         ORDER BY prioridade_score DESC
         LIMIT {limit}
         """
@@ -769,7 +775,7 @@ def get_dashboard(
           COUNT(*) as deals_count,
           ROUND(SUM(Gross), 2) as gross,
           ROUND(SUM(Net), 2) as net,
-          ROUND(AVG(SAFE_CAST(Confiana AS FLOAT64)), 1) as avg_confidence
+          ROUND(AVG(SAFE_CAST(Confianca AS FLOAT64)), 1) as avg_confidence
         FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
         WHERE Fase_Atual NOT IN ('Closed Won', 'Closed Lost') AND Vendedor IS NOT NULL
         GROUP BY Vendedor
@@ -782,10 +788,10 @@ def get_dashboard(
           COUNT(*) as deals_count,
           ROUND(SUM(Gross), 2) as gross,
           ROUND(SUM(Net), 2) as net,
-          ROUND(AVG(SAFE_CAST(Confiana AS FLOAT64)), 1) as avg_confidence
+          ROUND(AVG(SAFE_CAST(Confianca AS FLOAT64)), 1) as avg_confidence
         FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
         WHERE Fase_Atual NOT IN ('Closed Won', 'Closed Lost') 
-          AND SAFE_CAST(Confiana AS FLOAT64) >= 50
+          AND SAFE_CAST(Confianca AS FLOAT64) >= 50
         """)
         high_confidence = high_confidence_result[0] if high_confidence_result else {
             'deals_count': 0, 'gross': 0, 'net': 0, 'avg_confidence': 0
