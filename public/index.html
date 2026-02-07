@@ -2233,142 +2233,53 @@
         // Multi-select seller filter
         const sellerFilter = selectedSellers.length > 0 ? selectedSellers.join(',') : '';
         
-        // Se quarter estiver selecionado, converter para range de meses
-        let effectiveMonths = [];
-        if (quarterFilter) {
-          const quarterMap = {
-            'Q1': [1, 2, 3],
-            'Q2': [4, 5, 6],
-            'Q3': [7, 8, 9],
-            'Q4': [10, 11, 12]
-          };
-          effectiveMonths = quarterMap[quarterFilter] || [];
-        } else if (monthFilter) {
-          effectiveMonths = [parseInt(monthFilter)];
-        }
-        
-        // Monta query string
+        // Monta query string com suporte a quarter
         const params = new URLSearchParams();
         if (yearFilter) params.append('year', yearFilter);
-        if (monthFilter && !quarterFilter) params.append('month', monthFilter);
-        if (sellerFilter) params.append('seller', sellerFilter); // Comma-separated sellers
+        
+        // Quarter tem prioridade sobre month
+        if (quarterFilter) {
+          // Converter Q1, Q2, Q3, Q4 para 1, 2, 3, 4
+          const quarterNum = quarterFilter.replace('Q', '');
+          params.append('quarter', quarterNum);
+        } else if (monthFilter) {
+          params.append('month', monthFilter);
+        }
+        
+        if (sellerFilter) params.append('seller', sellerFilter);
         const queryString = params.toString() ? '?' + params.toString() : '';
         
-        log('[FILTERS]', { year: yearFilter, month: monthFilter, quarter: quarterFilter, sellers: selectedSellers });
+        log('[FILTERS]', { year: yearFilter, quarter: quarterFilter, month: monthFilter, sellers: selectedSellers });
+        log('[API QUERY]', queryString);
         
-        // Se quarter foi selecionado, fazer chamadas agregadas
-        let aggregatedData = null;
-        if (quarterFilter && effectiveMonths.length > 0) {
-          // Fazer chamadas para cada mês do quarter e agregar
-          const monthResults = await Promise.all(
-            effectiveMonths.map(async (month) => {
-              const monthParams = new URLSearchParams();
-              if (yearFilter) monthParams.append('year', yearFilter);
-              monthParams.append('month', month.toString());
-              if (sellerFilter) monthParams.append('seller', sellerFilter);
-              const monthQuery = '?' + monthParams.toString();
-              const monthQueryAmp = '&' + monthParams.toString(); // Para URLs que já têm params
-              
-              // Usar cache para won/lost (dados grandes e estáveis)
-              const wonUrl = `${API_BASE_URL}/api/closed/won?limit=5000${monthQueryAmp}`;
-              const lostUrl = `${API_BASE_URL}/api/closed/lost?limit=5000${monthQueryAmp}`;
-              
-              const [metricsRes, pipelineRes, wonData, lostData] = await Promise.all([
-                fetch(`${API_BASE_URL}/api/metrics${monthQuery}`),
-                fetch(`${API_BASE_URL}/api/pipeline?limit=500${monthQueryAmp}`),
-                fetchWithCache(wonUrl, `cache_won_${month}`, 10), // Cache por 10min
-                fetchWithCache(lostUrl, `cache_lost_${month}`, 10) // Cache por 10min
-              ]);
-              
-              return {
-                metrics: await metricsRes.json(),
-                pipeline: await pipelineRes.json(),
-                won: wonData,
-                lost: lostData
-              };
-            })
-          );
-          
-          // Agregar resultados
-          aggregatedData = {
-            metrics: {
-              pipeline_total: monthResults[0].metrics.pipeline_total, // Total não muda
-              pipeline_filtered: {
-                deals_count: monthResults.reduce((sum, r) => sum + (r.metrics.pipeline_filtered?.deals_count || 0), 0),
-                gross: monthResults.reduce((sum, r) => sum + (r.metrics.pipeline_filtered?.gross || 0), 0),
-                net: monthResults.reduce((sum, r) => sum + (r.metrics.pipeline_filtered?.net || 0), 0)
-              },
-              closed_won: {
-                deals_count: monthResults.reduce((sum, r) => sum + (r.metrics.closed_won?.deals_count || 0), 0),
-                gross: monthResults.reduce((sum, r) => sum + (r.metrics.closed_won?.gross || 0), 0),
-                net: monthResults.reduce((sum, r) => sum + (r.metrics.closed_won?.net || 0), 0),
-                avg_cycle_days: monthResults.reduce((sum, r) => sum + (r.metrics.closed_won?.avg_cycle_days || 0), 0) / monthResults.length
-              },
-              closed_lost: {
-                deals_count: monthResults.reduce((sum, r) => sum + (r.metrics.closed_lost?.deals_count || 0), 0),
-                gross: monthResults.reduce((sum, r) => sum + (r.metrics.closed_lost?.gross || 0), 0),
-                avg_cycle_days: monthResults.reduce((sum, r) => sum + (r.metrics.closed_lost?.avg_cycle_days || 0), 0) / monthResults.length
-              },
-              win_rate: monthResults[0].metrics.win_rate || 0,
-              high_confidence: monthResults[0].metrics.high_confidence || {}
-            },
-            pipeline: monthResults.flatMap(r => r.pipeline || []),
-            won: monthResults.flatMap(r => r.won || []),
-            lost: monthResults.flatMap(r => r.lost || [])
-          };
-        }
+        // Chamada única para a API (backend agora suporta quarter nativo)
+        const wonUrl = `${API_BASE_URL}/api/closed/won?limit=5000${queryString ? '&' + params.toString() : ''}`;
+        const lostUrl = `${API_BASE_URL}/api/closed/lost?limit=5000${queryString ? '&' + params.toString() : ''}`;
+        const cacheKey = params.toString() || 'all';
         
-        // Carregar dados da API Cloud Run (ou usar agregados do quarter)
-        let metrics, pipelineData, prioritiesData, actionsData, wonData, lostData, patternsData, salesSpecialistData;
-        
-        if (aggregatedData) {
-          // Usar dados agregados do quarter
-          metrics = aggregatedData.metrics;
-          pipelineData = aggregatedData.pipeline;
-          wonData = aggregatedData.won;
-          lostData = aggregatedData.lost;
-          
-          // Buscar priorities/actions sem filtro de month (pois já temos os deals)
-          const [prioritiesRes, actionsRes, patternsRes, salesSpecialistRes] = await Promise.all([
-            fetch(`${API_BASE_URL}/api/priorities?limit=100${queryString ? '&' + params.toString().replace(/&?month=\d+/, '') : ''}`),
-            fetch(`${API_BASE_URL}/api/actions?urgencia=ALTA&limit=50${queryString ? '&' + params.toString().replace(/&?month=\d+/, '') : ''}`),
-            fetch(`${API_BASE_URL}/api/analyze-patterns${queryString}`),
-            fetch(`${API_BASE_URL}/api/sales-specialist${queryString}`)
-          ]);
-          prioritiesData = await prioritiesRes.json();
-          actionsData = await actionsRes.json();
-          patternsData = await patternsRes.json();
-          salesSpecialistData = await salesSpecialistRes.json();
-        } else {
-          // Chamada normal sem quarter
-          const wonUrl = `${API_BASE_URL}/api/closed/won?limit=5000${queryString ? '&' + params.toString() : ''}`;
-          const lostUrl = `${API_BASE_URL}/api/closed/lost?limit=5000${queryString ? '&' + params.toString() : ''}`;
-          const cacheKey = params.toString() || 'all';
-          
-          const [metricsRes, pipelineRes, prioritiesRes, actionsRes, wonDataCached, lostDataCached, patternsRes, salesSpecialistRes] = await Promise.all([
-            fetch(`${API_BASE_URL}/api/metrics${queryString}`),
-            fetch(`${API_BASE_URL}/api/pipeline?limit=500${queryString ? '&' + params.toString() : ''}`),
-            fetch(`${API_BASE_URL}/api/priorities?limit=100${queryString ? '&' + params.toString() : ''}`),
-            fetch(`${API_BASE_URL}/api/actions?urgencia=ALTA&limit=50${queryString ? '&' + params.toString() : ''}`),
-            fetchWithCache(wonUrl, `cache_won_${cacheKey}`, queryString ? 3 : 10), // 3min com filtro, 10min sem
-            fetchWithCache(lostUrl, `cache_lost_${cacheKey}`, queryString ? 3 : 10),
-            fetch(`${API_BASE_URL}/api/analyze-patterns${queryString}`),
-            fetch(`${API_BASE_URL}/api/sales-specialist${queryString}`)
-          ]);
+        const [metricsRes, pipelineRes, prioritiesRes, actionsRes, wonDataCached, lostDataCached, patternsRes, salesSpecialistRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/api/metrics${queryString}`),
+          fetch(`${API_BASE_URL}/api/pipeline?limit=500${queryString ? '&' + params.toString() : ''}`),
+          fetch(`${API_BASE_URL}/api/priorities?limit=100${queryString ? '&' + params.toString() : ''}`),
+          fetch(`${API_BASE_URL}/api/actions?urgencia=ALTA&limit=50${queryString ? '&' + params.toString() : ''}`),
+          fetchWithCache(wonUrl, `cache_won_${cacheKey}`, queryString ? 3 : 10),
+          fetchWithCache(lostUrl, `cache_lost_${cacheKey}`, queryString ? 3 : 10),
+          fetch(`${API_BASE_URL}/api/analyze-patterns${queryString}`),
+          fetch(`${API_BASE_URL}/api/sales-specialist${queryString}`)
+        ]);
 
-          if (!metricsRes.ok || !pipelineRes.ok) {
-            throw new Error('Falha ao carregar dados do backend');
-          }
-          
-          metrics = await metricsRes.json();
-          pipelineData = await pipelineRes.json();
-          prioritiesData = await prioritiesRes.json();
-          actionsData = await actionsRes.json();
-          wonData = wonDataCached; // Já retornou do cache
-          lostData = lostDataCached; // Já retornou do cache
-          patternsData = await patternsRes.json();
-          salesSpecialistData = await salesSpecialistRes.json();
+        if (!metricsRes.ok || !pipelineRes.ok) {
+          throw new Error('Falha ao carregar dados do backend');
         }
+        
+        const metrics = await metricsRes.json();
+        const pipelineData = await pipelineRes.json();
+        const prioritiesData = await prioritiesRes.json();
+        const actionsData = await actionsRes.json();
+        const wonData = wonDataCached;
+        const lostData = lostDataCached;
+        const patternsData = await patternsRes.json();
+        const salesSpecialistData = await salesSpecialistRes.json();
         
         log('[API DATA] Metrics:', metrics);
         
