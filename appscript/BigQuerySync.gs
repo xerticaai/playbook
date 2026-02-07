@@ -61,8 +61,11 @@ function loadSheetData(sheetName) {
       const val = row[idx];
       
       // Detectar se o campo é de data baseado no nome
+      // EXCLUSÕES: Mudancas_Close_Date é INTEGER, não DATE
       const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Date', '_Data', 'Fecha_', 'closed_date', 'created_date'];
-      const isDateField = dateFields.some(pattern => header.includes(pattern));
+      const excludeFields = ['Mudancas_', 'Total_', 'Ativ_', 'Distribuicao_'];
+      const isDateField = dateFields.some(pattern => header.includes(pattern)) && 
+                         !excludeFields.some(pattern => header.startsWith(pattern));
       
       if (val === null || val === undefined || val === '') {
         obj[header] = null;
@@ -360,8 +363,11 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
         const isNumericField = numericFields.some(pattern => key.includes(pattern));
         
         // Detectar se o campo é de data baseado no nome
-        const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Date', '_Data', 'Fecha_', 'closed_date', 'created_date'];
-        const isDateField = dateFields.some(pattern => key.includes(pattern));
+        // EXCLUSÕES: Mudancas_Close_Date, Mudancas_Stage, etc são INTEGER
+        const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Data', 'Fecha_', 'closed_date', 'created_date'];
+        const excludeFields = ['Mudancas_', 'Total_', 'Ativ_', 'Distribuicao_'];
+        const isDateField = dateFields.some(pattern => key.includes(pattern)) && 
+                           !excludeFields.some(pattern => key.startsWith(pattern));
         
         if (value instanceof Date) {
           // Date object → yyyy-mm-dd para BigQuery
