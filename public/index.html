@@ -388,6 +388,133 @@
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }
+    
+    /* Multi-Select Dropdown */
+    .multi-select-container {
+      position: relative;
+      min-width: 220px;
+    }
+    .multi-select-trigger {
+      padding: 8px 34px 8px 14px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.08);
+      color: #ffffff;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 13px;
+      transition: all 0.3s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      position: relative;
+    }
+    .multi-select-trigger:hover {
+      background: rgba(255,255,255,0.12);
+      border-color: rgba(255,255,255,0.25);
+    }
+    .multi-select-trigger::after {
+      content: '▾';
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 14px;
+      transition: transform 0.3s;
+    }
+    .multi-select-trigger.open::after {
+      transform: translateY(-50%) rotate(180deg);
+    }
+    .multi-select-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      margin-top: 5px;
+      background: #1a1d29;
+      border: 1px solid rgba(0,190,255,0.3);
+      border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      max-height: 350px;
+      overflow-y: auto;
+      z-index: 1000;
+      display: none;
+    }
+    .multi-select-dropdown.open {
+      display: block;
+    }
+    .multi-select-group {
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .multi-select-group:last-child {
+      border-bottom: none;
+    }
+    .multi-select-group-title {
+      padding: 8px 16px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--primary-cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      opacity: 0.8;
+    }
+    .multi-select-option {
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 13px;
+    }
+    .multi-select-option:hover {
+      background: rgba(0,190,255,0.1);
+    }
+    .multi-select-option input[type="checkbox"] {
+      accent-color: var(--primary-cyan);
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+    .multi-select-option label {
+      cursor: pointer;
+      flex: 1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .multi-select-option-badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(0,190,255,0.2);
+      color: var(--primary-cyan);
+      font-weight: 600;
+    }
+    .multi-select-actions {
+      padding: 10px 16px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      display: flex;
+      gap: 8px;
+    }
+    .multi-select-btn {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.15);
+      background: rgba(255,255,255,0.08);
+      color: #ffffff;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      transition: all 0.2s;
+      flex: 1;
+    }
+    .multi-select-btn:hover {
+      background: rgba(0,190,255,0.2);
+      border-color: var(--primary-cyan);
+      color: var(--primary-cyan);
+    }
   </style>
 </head>
 <body>
@@ -530,15 +657,32 @@
         </select>
       </div>
       
-      <!-- Filtro por Vendedor -->
+      <!-- Filtro por Vendedor (MULTI-SELECT) -->
       <div style="display: flex; align-items: center; gap: 8px;">
         <span style="font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 6px;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
           Vendedor:
         </span>
-        <select id="rep-filter" onchange="filterByRep(this.value)" style="padding: 8px 14px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.08); color: #ffffff; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.3s; min-width: 180px;" onmouseover="this.style.background='rgba(255,255,255,0.12)'; this.style.borderColor='rgba(255,255,255,0.25)'" onmouseout="this.style.background='rgba(255,255,255,0.08)'; this.style.borderColor='rgba(255,255,255,0.15)'">
-          <option value="all" style="background: #1a1d29; color: #ffffff;">Todos os Vendedores</option>
-        </select>
+        <div class="multi-select-container" id="seller-multi-select">
+          <div class="multi-select-trigger" onclick="toggleSellerDropdown()">
+            <span id="seller-selected-text">Todos os Vendedores</span>
+          </div>
+          <div class="multi-select-dropdown" id="seller-dropdown">
+            <div class="multi-select-group" id="active-sellers-group">
+              <div class="multi-select-group-title">🟢 Vendedores Ativos</div>
+              <!-- Active sellers populated by JS -->
+            </div>
+            <div class="multi-select-group" id="historical-sellers-group">
+              <div class="multi-select-group-title">📜 Vendedores Históricos</div>
+              <!-- Historical sellers populated by JS -->
+            </div>
+            <div class="multi-select-actions">
+              <button class="multi-select-btn" onclick="selectAllSellers()">Todos</button>
+              <button class="multi-select-btn" onclick="selectActiveSellers()">Somente Ativos</button>
+              <button class="multi-select-btn" onclick="clearAllSellers()">Limpar</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Filtro por Ano -->
@@ -1818,8 +1962,161 @@
       quarterLabel: 'N/A'
     };
     
+    // Multi-select seller state
+    let availableSellers = {
+      active: [],
+      historical: []
+    };
+    let selectedSellers = [];
+    
+    /* ========================
+       MULTI-SELECT SELLERS
+       ======================== */
+    
+    async function loadSellers() {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/sellers`);
+        const data = await response.json();
+        availableSellers = data;
+        
+        log('[SELLERS] Loaded:', {
+          active: data.active.length,
+          historical: data.historical.length
+        });
+        
+        renderSellerOptions();
+      } catch (e) {
+        console.error('[SELLERS] Error loading:', e);
+      }
+    }
+    
+    function renderSellerOptions() {
+      const activeGroup = document.getElementById('active-sellers-group');
+      const historicalGroup = document.getElementById('historical-sellers-group');
+      
+      if (!activeGroup || !historicalGroup) return;
+      
+      // Clear existing options (except title)
+      activeGroup.innerHTML = '<div class="multi-select-group-title">🟢 Vendedores Ativos</div>';
+      historicalGroup.innerHTML = '<div class="multi-select-group-title">📜 Vendedores Históricos</div>';
+      
+      // Render active sellers
+      availableSellers.active.forEach(seller => {
+        const option = createSellerOption(seller.Vendedor, seller.deals_pipeline, true);
+        activeGroup.appendChild(option);
+      });
+      
+      // Render historical sellers
+      availableSellers.historical.forEach(seller => {
+        const option = createSellerOption(seller.Vendedor, seller.deals_won + seller.deals_lost, false);
+        historicalGroup.appendChild(option);
+      });
+    }
+    
+    function createSellerOption(name, dealsCount, isActive) {
+      const div = document.createElement('div');
+      div.className = 'multi-select-option';
+      
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = `seller-${name.replace(/\s/g, '-')}`;
+      checkbox.value = name;
+      checkbox.onchange = () => onSellerChange();
+      
+      const label = document.createElement('label');
+      label.setAttribute('for', checkbox.id);
+      
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = name;
+      
+      const badge = document.createElement('span');
+      badge.className = 'multi-select-option-badge';
+      badge.textContent = dealsCount;
+      
+      label.appendChild(nameSpan);
+      label.appendChild(badge);
+      
+      div.appendChild(checkbox);
+      div.appendChild(label);
+      
+      return div;
+    }
+    
+    function toggleSellerDropdown() {
+      const trigger = document.querySelector('.multi-select-trigger');
+      const dropdown = document.getElementById('seller-dropdown');
+      
+      trigger.classList.toggle('open');
+      dropdown.classList.toggle('open');
+    }
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+      const container = document.getElementById('seller-multi-select');
+      if (container && !container.contains(e.target)) {
+        const trigger = document.querySelector('.multi-select-trigger');
+        const dropdown = document.getElementById('seller-dropdown');
+        trigger?.classList.remove('open');
+        dropdown?.classList.remove('open');
+      }
+    });
+    
+    function onSellerChange() {
+      const checkboxes = document.querySelectorAll('#seller-dropdown input[type="checkbox"]');
+      selectedSellers = Array.from(checkboxes)
+        .filter(cb => cb.checked)
+        .map(cb => cb.value);
+      
+      updateSellerTriggerText();
+      
+      // Reload dashboard with selected sellers
+      reloadDashboard();
+    }
+    
+    function updateSellerTriggerText() {
+      const triggerText = document.getElementById('seller-selected-text');
+      
+      if (selectedSellers.length === 0) {
+        triggerText.textContent = 'Todos os Vendedores';
+        triggerText.style.color = '#ffffff';
+      } else if (selectedSellers.length === 1) {
+        triggerText.textContent = selectedSellers[0];
+        triggerText.style.color = 'var(--primary-cyan)';
+      } else {
+        triggerText.textContent = `${selectedSellers.length} vendedores`;
+        triggerText.style.color = 'var(--primary-cyan)';
+      }
+    }
+    
+    function selectAllSellers() {
+      const checkboxes = document.querySelectorAll('#seller-dropdown input[type="checkbox"]');
+      checkboxes.forEach(cb => cb.checked = true);
+      onSellerChange();
+    }
+    
+    function selectActiveSellers() {
+      const checkboxes = document.querySelectorAll('#seller-dropdown input[type="checkbox"]');
+      checkboxes.forEach(cb => {
+        const sellerName = cb.value;
+        const isActive = availableSellers.active.some(s => s.Vendedor === sellerName);
+        cb.checked = isActive;
+      });
+      onSellerChange();
+    }
+    
+    function clearAllSellers() {
+      const checkboxes = document.querySelectorAll('#seller-dropdown input[type="checkbox"]');
+      checkboxes.forEach(cb => cb.checked = false);
+      onSellerChange();
+    }
+    
+    /* ========================
+       END MULTI-SELECT SELLERS
+       ======================== */
+    
     // Inicialização
     document.addEventListener('DOMContentLoaded', () => {
+      loadSellers(); // Load available sellers for multi-select
       loadDashboardData();
     });
     
@@ -1932,7 +2229,9 @@
         const yearFilter = document.getElementById('year-filter')?.value || '';
         const monthFilter = document.getElementById('month-filter')?.value || '';
         const quarterFilter = document.getElementById('quarter-filter')?.value || '';
-        const sellerFilter = document.getElementById('rep-filter')?.value || 'all';
+        
+        // Multi-select seller filter
+        const sellerFilter = selectedSellers.length > 0 ? selectedSellers.join(',') : '';
         
         // Se quarter estiver selecionado, converter para range de meses
         let effectiveMonths = [];
@@ -1952,10 +2251,10 @@
         const params = new URLSearchParams();
         if (yearFilter) params.append('year', yearFilter);
         if (monthFilter && !quarterFilter) params.append('month', monthFilter);
-        if (sellerFilter && sellerFilter !== 'all') params.append('seller', sellerFilter);
+        if (sellerFilter) params.append('seller', sellerFilter); // Comma-separated sellers
         const queryString = params.toString() ? '?' + params.toString() : '';
         
-        log('[FILTERS]', { year: yearFilter, month: monthFilter, quarter: quarterFilter, seller: sellerFilter });
+        log('[FILTERS]', { year: yearFilter, month: monthFilter, quarter: quarterFilter, sellers: selectedSellers });
         
         // Se quarter foi selecionado, fazer chamadas agregadas
         let aggregatedData = null;
@@ -1966,7 +2265,7 @@
               const monthParams = new URLSearchParams();
               if (yearFilter) monthParams.append('year', yearFilter);
               monthParams.append('month', month.toString());
-              if (sellerFilter && sellerFilter !== 'all') monthParams.append('seller', sellerFilter);
+              if (sellerFilter) monthParams.append('seller', sellerFilter);
               const monthQuery = '?' + monthParams.toString();
               const monthQueryAmp = '&' + monthParams.toString(); // Para URLs que já têm params
               
