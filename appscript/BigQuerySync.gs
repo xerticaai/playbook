@@ -411,7 +411,12 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
         } else if (typeof value === 'number') {
           // Validação rigorosa para campos numéricos
           if (isNumericField) {
-            sanitized[key] = isFinite(value) ? value : null;
+            if (!isFinite(value)) {
+              sanitized[key] = null;
+            } else {
+              // Arredondar para 2 casas decimais para evitar problemas de precisão float
+              sanitized[key] = Math.round(value * 100) / 100;
+            }
           } else {
             sanitized[key] = value;
           }
@@ -456,8 +461,28 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
     }
   }
   
-  // Converter para NDJSON
-  const ndjson = sanitizedRecords.map(r => JSON.stringify(r)).join('\n');
+  // Converter para NDJSON com validação
+  const ndjsonLines = [];
+  for (let i = 0; i < sanitizedRecords.length; i++) {
+    try {
+      const jsonStr = JSON.stringify(sanitizedRecords[i]);
+      // Validar que JSON não tem valores inválidos
+      if (jsonStr.includes('null') || jsonStr.includes('NaN') || jsonStr.includes('Infinity')) {
+        // Verificação extra: re-parse para garantir validade
+        const parsed = JSON.parse(jsonStr);
+      }
+      ndjsonLines.push(jsonStr);
+    } catch (jsonError) {
+      console.error(`❌ Erro ao serializar registro ${i + 1}: ${jsonError.message}`);
+      console.error(`   Registro problemático: ${JSON.stringify(sanitizedRecords[i]).substring(0, 300)}`);
+      // Pular registro inválido
+    }
+  }
+  const ndjson = ndjsonLines.join('\n');
+  
+  if (ndjsonLines.length < sanitizedRecords.length) {
+    console.warn(`⚠️ ${sanitizedRecords.length - ndjsonLines.length} registros inválidos foram removidos`);
+  }
   
   // Criar load job com WRITE_TRUNCATE
   try {
@@ -501,6 +526,15 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
           if (jobStatus.status.errorResult) {
             const error = jobStatus.status.errorResult.message;
             console.error(`❌ Job falhou: ${error}`);
+            
+            // Tentar capturar erros detalhados
+            if (jobStatus.status.errors && jobStatus.status.errors.length > 0) {
+              console.error(`📋 Erros detalhados (${jobStatus.status.errors.length} erros):`);
+              jobStatus.status.errors.slice(0, 3).forEach((err, idx) => {
+                console.error(`   ${idx + 1}. ${JSON.stringify(err)}`);
+              });
+            }
+            
             throw new Error(`Load job failed: ${error}`);
           }
           
