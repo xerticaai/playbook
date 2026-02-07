@@ -70,11 +70,17 @@ function loadSheetData(sheetName) {
       if (val === null || val === undefined || val === '') {
         obj[header] = null;
       } else if (val instanceof Date) {
-        // Date object do Google Sheets → dd/mm/yyyy
-        const day = String(val.getDate()).padStart(2, '0');
-        const month = String(val.getMonth() + 1).padStart(2, '0');
-        const year = val.getFullYear();
-        obj[header] = `${day}/${month}/${year}`;
+        // CRITICAL: Só converter Date para string se for realmente um campo de data
+        if (isDateField) {
+          // Date object do Google Sheets → dd/mm/yyyy
+          const day = String(val.getDate()).padStart(2, '0');
+          const month = String(val.getMonth() + 1).padStart(2, '0');
+          const year = val.getFullYear();
+          obj[header] = `${day}/${month}/${year}`;
+        } else {
+          // Se não é campo de data, manter valor numérico (ex: Mudancas_Close_Date = 3)
+          obj[header] = val.getTime ? Math.floor((val - new Date(1899, 11, 30)) / 86400000) : val;
+        }
       } else if (typeof val === 'number' && isDateField && val > 1000) {
         // Número grande em campo de data: serial date do Excel/Sheets → dd/mm/yyyy
         try {
@@ -380,8 +386,10 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
             const day = String(value.getDate()).padStart(2, '0');
             sanitized[key] = `${year}-${month}-${day}`;
           } else {
-            // Se não é campo de data, extrair valor numérico ou deixar NULL
-            sanitized[key] = null;
+            // Se não é campo de data, converter Date back para serial number (ex: 3 para Mudancas_Close_Date)
+            // Serial date: dias desde 30/12/1899 (padrão Excel/Sheets)
+            const serialDate = Math.floor((value - new Date(1899, 11, 30)) / 86400000);
+            sanitized[key] = serialDate;
           }
         } else if (typeof value === 'number' && !isFinite(value)) {
           sanitized[key] = null; // NaN or Infinity
