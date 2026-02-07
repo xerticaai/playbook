@@ -148,8 +148,20 @@ def get_sellers():
 # =============================================
 
 @app.get("/api/metrics")
-def get_metrics(year: Optional[int] = None, month: Optional[int] = None, seller: Optional[str] = None):
-    """Endpoint de métricas consolidadas com dados corretos do BigQuery"""
+def get_metrics(
+    year: Optional[int] = None, 
+    quarter: Optional[int] = None,
+    month: Optional[int] = None, 
+    seller: Optional[str] = None
+):
+    """Endpoint de métricas consolidadas com dados corretos do BigQuery
+    
+    Parâmetros:
+    - year: 2024, 2025, 2026... (optional)
+    - quarter: 1-4 (Q1=jan-mar, Q2=abr-jun, Q3=jul-set, Q4=out-dez) (optional)
+    - month: 1-12 (optional) - se quarter estiver definido, month será ignorado
+    - seller: nome do vendedor ou lista separada por vírgula (optional)
+    """
     try:
         # Build filter clauses
         pipeline_filters = ["Fase_Atual NOT IN ('Closed Won', 'Closed Lost')"]
@@ -161,7 +173,22 @@ def get_metrics(year: Optional[int] = None, month: Optional[int] = None, seller:
             closed_won_filters.append(f"EXTRACT(YEAR FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) = {year}")
             closed_lost_filters.append(f"EXTRACT(YEAR FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) = {year}")
         
-        if month:
+        # Quarter tem prioridade sobre month
+        if quarter:
+            # Converter quarter para range de meses: Q1=1-3, Q2=4-6, Q3=7-9, Q4=10-12
+            quarter_months = {
+                1: (1, 3),   # Q1: Jan-Mar
+                2: (4, 6),   # Q2: Abr-Jun
+                3: (7, 9),   # Q3: Jul-Set
+                4: (10, 12)  # Q4: Out-Dez
+            }
+            if quarter in quarter_months:
+                start_month, end_month = quarter_months[quarter]
+                pipeline_filters.append(f"EXTRACT(MONTH FROM PARSE_DATE('%Y-%m-%d', Data_Prevista)) BETWEEN {start_month} AND {end_month}")
+                closed_won_filters.append(f"EXTRACT(MONTH FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) BETWEEN {start_month} AND {end_month}")
+                closed_lost_filters.append(f"EXTRACT(MONTH FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) BETWEEN {start_month} AND {end_month}")
+        elif month:
+            # Se quarter não definido, usar month
             pipeline_filters.append(f"EXTRACT(MONTH FROM PARSE_DATE('%Y-%m-%d', Data_Prevista)) = {month}")
             closed_won_filters.append(f"EXTRACT(MONTH FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) = {month}")
             closed_lost_filters.append(f"EXTRACT(MONTH FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) = {month}")
@@ -645,13 +672,15 @@ def extract_bullets(text: str) -> List[str]:
 @app.get("/api/dashboard")
 def get_dashboard(
     year: Optional[int] = None,
+    quarter: Optional[int] = None,
     month: Optional[int] = None,
     seller: Optional[str] = None
 ):
     """
     Dashboard completo com filtros dinâmicos
     - year: 2024, 2025, 2026... (optional)
-    - month: 1-12 (optional)
+    - quarter: 1-4 (Q1=jan-mar, Q2=abr-jun, Q3=jul-set, Q4=out-dez) (optional)
+    - month: 1-12 (optional) - se quarter estiver definido, month será ignorado
     - seller: nome do vendedor (optional)
     """
     try:
@@ -665,7 +694,22 @@ def get_dashboard(
             closed_filters.append(f"EXTRACT(YEAR FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) = {year}")
             specialist_filters.append(f"EXTRACT(YEAR FROM closed_date) = {year}")
         
-        if month:
+        # Quarter tem prioridade sobre month
+        if quarter:
+            # Converter quarter para range de meses: Q1=1-3, Q2=4-6, Q3=7-9, Q4=10-12
+            quarter_months = {
+                1: (1, 3),   # Q1: Jan-Mar
+                2: (4, 6),   # Q2: Abr-Jun
+                3: (7, 9),   # Q3: Jul-Set
+                4: (10, 12)  # Q4: Out-Dez
+            }
+            if quarter in quarter_months:
+                start_month, end_month = quarter_months[quarter]
+                pipeline_filters.append(f"EXTRACT(MONTH FROM PARSE_DATE('%Y-%m-%d', Data_Prevista)) BETWEEN {start_month} AND {end_month}")
+                closed_filters.append(f"EXTRACT(MONTH FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) BETWEEN {start_month} AND {end_month}")
+                specialist_filters.append(f"EXTRACT(MONTH FROM closed_date) BETWEEN {start_month} AND {end_month}")
+        elif month:
+            # Se quarter não definido, usar month
             pipeline_filters.append(f"EXTRACT(MONTH FROM PARSE_DATE('%Y-%m-%d', Data_Prevista)) = {month}")
             closed_filters.append(f"EXTRACT(MONTH FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) = {month}")
             specialist_filters.append(f"EXTRACT(MONTH FROM closed_date) = {month}")
