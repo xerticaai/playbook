@@ -369,14 +369,20 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
         const isDateField = dateFields.some(pattern => key.includes(pattern)) && 
                            !excludeFields.some(pattern => key.startsWith(pattern));
         
-        if (value instanceof Date) {
-          // Date object → yyyy-mm-dd para BigQuery
-          const year = value.getFullYear();
-          const month = String(value.getMonth() + 1).padStart(2, '0');
-          const day = String(value.getDate()).padStart(2, '0');
-          sanitized[key] = `${year}-${month}-${day}`;
-        } else if (value === null || value === undefined || value === '') {
+        if (value === null || value === undefined || value === '') {
           sanitized[key] = null;
+        } else if (value instanceof Date) {
+          // CRITICAL: Só converter Date para string se for campo de data
+          if (isDateField) {
+            // Date object → yyyy-mm-dd para BigQuery
+            const year = value.getFullYear();
+            const month = String(value.getMonth() + 1).padStart(2, '0');
+            const day = String(value.getDate()).padStart(2, '0');
+            sanitized[key] = `${year}-${month}-${day}`;
+          } else {
+            // Se não é campo de data, extrair valor numérico ou deixar NULL
+            sanitized[key] = null;
+          }
         } else if (typeof value === 'number' && !isFinite(value)) {
           sanitized[key] = null; // NaN or Infinity
         } else if (typeof value === 'number' && isDateField && value > 1000) {
@@ -399,13 +405,25 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
         } else if (typeof value === 'string') {
           const strVal = String(value).trim();
           
-          // Converter dd/mm/yyyy → yyyy-mm-dd para campos de data no BigQuery
+          // Converter dd/mm/yyyy → yyyy-mm-dd SOMENTE para campos de data
           // IMPORTANTE: Aceitar 1 ou 2 dígitos para dia/mês (ex: 1/02/2026 ou 01/02/2026)
           const dateMatch = strVal.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-          if (dateMatch) {
+          const isoDateMatch = strVal.match(/^\d{4}-\d{2}-\d{2}$/);
+          
+          if (dateMatch && isDateField) {
+            // Formato dd/mm/yyyy E campo é de data → converter para yyyy-mm-dd
             const day = dateMatch[1].padStart(2, '0');
             const month = dateMatch[2].padStart(2, '0');
             const year = dateMatch[3];
+            sanitized[key] = `${year}-${month}-${day}`;
+          } else if (isoDateMatch && !isDateField) {
+            // Formato yyyy-mm-dd mas campo NÃO é de data → deixar NULL (erro de dados)
+            sanitized[key] = null;
+          } else if (dateMatch || isoDateMatch) {
+            // É data mas tratamento especial pode ser necessário
+            const day = dateMatch ? dateMatch[1].padStart(2, '0') : strVal.substring(8, 10);
+            const month = dateMatch ? dateMatch[2].padStart(2, '0') : strVal.substring(5, 7);
+            const year = dateMatch ? dateMatch[3] : strVal.substring(0, 4);
             sanitized[key] = `${year}-${month}-${day}`;
           } else if (isNumericField) {
             // Para campos numéricos, tentar converter; se falhar, usar NULL
