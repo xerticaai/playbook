@@ -2294,12 +2294,15 @@
         log('[API DATA] Sales Specialist:', Array.isArray(salesSpecialistData) ? salesSpecialistData.length : 0);
         log('[API DATA] AI Patterns:', patternsData);
         
-        // Se não houver dados de won/lost para o período filtrado, buscar todos os dados disponíveis
+        // IMPORTANTE: Separar dados para métricas (reais/filtrados) vs. word clouds (fallback se necessário)
+        // Métricas SEMPRE usam dados filtrados (mesmo que vazios)
+        // Word clouds podem usar fallback quando filtro resulta em zero
         let wonDataForWordClouds = wonData;
         let lostDataForWordClouds = lostData;
         
+        // Fallback APENAS para word clouds (não afeta métricas)
         if ((!wonData || wonData.length === 0) && (!lostData || lostData.length === 0)) {
-          log('[FALLBACK] Buscando dados sem filtro de período para word clouds...');
+          log('[FALLBACK] Buscando dados sem filtro APENAS para word clouds (não afeta métricas)...');
           try {
             const [fallbackWonRes, fallbackLostRes] = await Promise.all([
               fetch(`${API_BASE_URL}/api/closed/won?limit=5000`),
@@ -2315,14 +2318,19 @@
         }
         
         // Converter para formato esperado pelo dashboard
+        // CRÍTICO: Métricas usam dados REAIS filtrados, word clouds podem ter fallback
         const raw = {
           status: 'success',
           metrics: metrics,
           pipeline: Array.isArray(pipelineData) ? pipelineData : [],
           priorities: Array.isArray(prioritiesData) ? prioritiesData : [],
           actions: Array.isArray(actionsData) ? actionsData : [],
-          won: Array.isArray(wonDataForWordClouds) ? wonDataForWordClouds : [],
-          lost: Array.isArray(lostDataForWordClouds) ? lostDataForWordClouds : [],
+          // MÉTRICAS: Usar dados REAIS filtrados (mesmo que vazios)
+          won: Array.isArray(wonData) ? wonData : [],
+          lost: Array.isArray(lostData) ? lostData : [],
+          // WORD CLOUDS: Dados separados para não afetar métricas
+          wonWordCloud: Array.isArray(wonDataForWordClouds) ? wonDataForWordClouds : [],
+          lostWordCloud: Array.isArray(lostDataForWordClouds) ? lostDataForWordClouds : [],
           patterns: patternsData || {},
           salesSpecialist: Array.isArray(salesSpecialistData) ? salesSpecialistData : []
         };
@@ -2377,12 +2385,17 @@
       // Dados da API
       const metrics = cloud?.metrics || {};
       const pipelineDeals = cloud?.pipeline || [];
+      // CRÍTICO: Separar dados para métricas (filtrados) vs. word clouds (com fallback)
       const wonDeals = cloud?.won || [];
       const lostDeals = cloud?.lost || [];
+      const wonDealsWordCloud = cloud?.wonWordCloud || cloud?.won || [];
+      const lostDealsWordCloud = cloud?.lostWordCloud || cloud?.lost || [];
       
       log('[NORMALIZE] Pipeline deals:', pipelineDeals.length);
-      log('[NORMALIZE] Won deals:', wonDeals.length);
-      log('[NORMALIZE] Lost deals:', lostDeals.length);
+      log('[NORMALIZE] Won deals (métricas):', wonDeals.length);
+      log('[NORMALIZE] Lost deals (métricas):', lostDeals.length);
+      log('[NORMALIZE] Won deals (word cloud):', wonDealsWordCloud.length);
+      log('[NORMALIZE] Lost deals (word cloud):', lostDealsWordCloud.length);
       
       // Agrupar pipeline por Fiscal Quarter
       const weeklyAgenda = {};
@@ -2747,8 +2760,8 @@
       };
       
       log('[WORDCLOUD] Processing word clouds from deals...');
-      log('[WORDCLOUD] Won deals:', wonDeals.length);
-      log('[WORDCLOUD] Lost deals:', lostDeals.length);
+      log('[WORDCLOUD] Won deals (word cloud):', wonDealsWordCloud.length);
+      log('[WORDCLOUD] Lost deals (word cloud):', lostDealsWordCloud.length);
       log('[WORDCLOUD] Pipeline deals:', pipelineDeals.length);
       log('[DEBUG] CloudAnalysis metrics:', {
         pipeline_total: cloudAnalysis?.pipeline_analysis?.metrics?.pipeline_total,
@@ -2756,7 +2769,7 @@
         closed_won: cloudAnalysis?.pipeline_analysis?.metrics?.closed_won,
         closed_lost: cloudAnalysis?.pipeline_analysis?.metrics?.closed_lost
       });
-      const wordClouds = processWordClouds(wonDeals, lostDeals, pipelineDeals);
+      const wordClouds = processWordClouds(wonDealsWordCloud, lostDealsWordCloud, pipelineDeals);
       log('[WORDCLOUD] Generated word clouds:', {
         winTypes: wordClouds.winTypes.length,
         winLabels: wordClouds.winLabels.length,
