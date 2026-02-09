@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Performance FSR - Xertica.ai</title>
+  <link rel="icon" type="image/png" href="https://storage.googleapis.com/etp-bucket/Logos%20Xertica.ai%20(.png)/X%20-%20simbolo/Copy%20of%20X_symbol_variation3_Blue_white.png">
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="loader.css">
+  <style>
+    :root {
+      --primary-cyan: #00BEFF;
+      --success: #C0FF7D;
+      --danger: #E14849;
+      --warning: #FFA500;
+      --bg-deep: #050a10;
+      --bg-card: #1a1d29;
+      --glass-surface: rgba(18, 28, 41, 0.65);
+      --glass-border: rgba(0, 190, 255, 0.15);
+      --text-main: #e2e8f0;
+      --text-white: #ffffff;
+      --text-gray: #b0b8c4;
+      --card-bg: #1a1d29;
+    }
+    
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Roboto', sans-serif;
+      background-color: var(--bg-deep);
+      background-image: 
+        linear-gradient(rgba(0, 190, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 190, 255, 0.03) 1px, transparent 1px),
+        radial-gradient(circle at 50% 0%, rgba(0, 190, 255, 0.15) 0%, transparent 60%);
+      background-size: 40px 40px, 40px 40px, 100% 100%;
+      color: var(--text-main);
+      padding: 40px 20px;
+    }
+    
+    .icon { width: 20px; height: 20px; display: inline-block; vertical-align: middle; margin-right: 8px; }
+    
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    
+    h3 {
+      margin-bottom: 20px;
+      color: var(--text-main);
+      font-family: 'Poppins', sans-serif;
+      font-weight: 600;
+      font-size: 20px;
+      letter-spacing: -0.5px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+      background: var(--glass-surface);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--glass-border);
+    }
+    
+    th {
+      text-align: left;
+      color: var(--text-gray);
+      font-size: 11px;
+      text-transform: uppercase;
+      padding: 12px 15px;
+      border-bottom: 2px solid rgba(255,255,255,0.1);
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    
+    td {
+      padding: 12px 15px;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      font-size: 13px;
+    }
+    
+    tr:hover {
+      background: rgba(0,190,255,0.05);
+      transition: background 0.2s ease;
+    }
+    
+    tr:last-child td { border-bottom: none; }
+    
+    .badge {
+      padding: 4px 12px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    
+    .badge-success { background: rgba(192, 255, 125, 0.1); color: var(--success); border: 1px solid rgba(192, 255, 125, 0.2); }
+    .badge-danger { background: rgba(225, 72, 73, 0.15); color: var(--danger); }
+    .badge-warning { background: rgba(255, 165, 0, 0.15); color: var(--warning); }
+    
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 40px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      background: var(--glass-surface);
+      color: var(--primary-cyan);
+      text-decoration: none;
+      border-radius: 12px;
+      border: 1px solid var(--glass-border);
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+    
+    .back-btn:hover {
+      background: rgba(0,190,255,0.1);
+      border-color: var(--primary-cyan);
+      transform: translateX(-3px);
+    }
+    
+    details {
+      margin-top: 40px;
+    }
+    
+    summary {
+      cursor: pointer;
+      color: var(--text-gray);
+      font-weight: 600;
+      padding: 10px;
+      background: var(--card-bg);
+      border-radius: 8px;
+      transition: all 0.3s ease;
+    }
+    
+    summary:hover {
+      background: rgba(0,190,255,0.1);
+      color: var(--primary-cyan);
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-gray);
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Loading Overlay -->
+  <div class="xertica-loading-overlay">
+    <div class="xertica-loading-container">
+      <div class="xertica-logo-x">
+        <img src="https://storage.googleapis.com/etp-bucket/Logos%20Xertica.ai%20(.png)/X%20-%20simbolo/Copy%20of%20X_symbol_variation3_Blue_white.png" alt="Xertica.ai">
+      </div>
+      <div class="xertica-loading-text">
+        Carregando Performance<span class="xertica-loading-dots"><span>.</span><span>.</span><span>.</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo">
+        <img src="https://storage.googleapis.com/etp-bucket/Logos%20Xertica.ai%20(.png)/X%20-%20simbolo/Copy%20of%20X_symbol_variation3_Blue_white.png" alt="Xertica" style="height: 40px; width: auto;">
+        <img src="https://storage.googleapis.com/etp-bucket/Logos%20Xertica.ai%20(.png)/xertica.ai/Copy%20of%20Logo_XERTICA_white.png" alt="Xertica.ai" style="height: 28px; width: auto;">
+      </div>
+      <a href="index.html" class="back-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+        Voltar ao Dashboard
+      </a>
+    </div>
+
+    <!-- Ranking Geral de Performance (IPV) -->
+    <h3>
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+      </svg>
+      Ranking Geral de Performance (IPV)
+    </h3>
+    <p style="color: var(--text-gray); margin-bottom: 20px;">
+      Índice de Performance do Vendedor (0-100) baseado em Resultado (40%), Eficiência (35%) e Comportamento (25%)
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Vendedor</th>
+          <th>IPV (0-100)</th>
+          <th>Resultado</th>
+          <th>Eficiência</th>
+          <th>Comportamento</th>
+          <th>Win Rate</th>
+          <th>Gross Gerado</th>
+        </tr>
+      </thead>
+      <tbody id="fsr-ipv-table">
+        <tr><td colspan="8" class="loading">Carregando dados...</td></tr>
+      </tbody>
+    </table>
+
+    <!-- Scorecard de Performance -->
+    <h3 style="margin-top: 40px;">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <path d="M9 9h6M9 15h6"/>
+      </svg>
+      Scorecard de Performance - Vendedores Ativos
+    </h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Vendedor</th>
+          <th>Win Rate</th>
+          <th>Total Ganhos</th>
+          <th>Total Perdas</th>
+          <th>Ciclo Médio (Win)</th>
+          <th>Ciclo Médio (Loss)</th>
+          <th>Ticket Médio (Gross)</th>
+          <th>Gross Gerado</th>
+          <th>Net Gerado</th>
+        </tr>
+      </thead>
+      <tbody id="fsr-performance-active-body">
+        <tr><td colspan="9" class="loading">Carregando dados...</td></tr>
+      </tbody>
+    </table>
+
+    <!-- Diagnóstico de Comportamento -->
+    <h3 style="margin-top: 40px;">Diagnóstico de Comportamento - Vendedores Ativos</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Vendedor</th>
+          <th>Ativ. Médias (Win)</th>
+          <th>Ativ. Médias (Loss)</th>
+          <th>Principal Causa de Perda</th>
+          <th>Principal Fator de Sucesso</th>
+        </tr>
+      </thead>
+      <tbody id="fsr-behavior-active-body">
+        <tr><td colspan="5" class="loading">Carregando dados...</td></tr>
+      </tbody>
+    </table>
+
+    <!-- Vendedores Inativos -->
+    <details>
+      <summary>Vendedores Inativos (<span id="inactive-count">0</span>)</summary>
+      <table style="margin-top: 20px;">
+        <thead>
+          <tr>
+            <th>Vendedor</th>
+            <th>Win Rate</th>
+            <th>Total Ganhos</th>
+            <th>Total Perdas</th>
+            <th>Revenue Gerado</th>
+          </tr>
+        </thead>
+        <tbody id="fsr-performance-inactive-body">
+          <tr><td colspan="5" class="loading">Sem vendedores inativos</td></tr>
+        </tbody>
+      </table>
+    </details>
+  </div>
+
+  <script>
+    // Configuração da API
+    const API_BASE = window.location.hostname === 'localhost' 
+      ? 'http://localhost:8080'
+      : 'https://sales-intelligence-api-j7loux7yta-uc.a.run.app';
+    
+    // Helper: Format Money
+    function formatMoney(value) {
+      if (value === null || value === undefined) return '$0';
+      return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+      }).format(value);
+    }
+    
+    // Show/Hide Loading
+    function showLoading() {
+      document.querySelector('.xertica-loading-overlay').classList.add('active');
+    }
+    
+    function hideLoading() {
+      document.querySelector('.xertica-loading-overlay').classList.remove('active');
+    }
+    
+    // Load Performance Data from API
+    async function loadPerformanceData() {
+      showLoading();
+      
+      try {
+        const response = await fetch(`${API_BASE}/api/performance`);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+          throw new Error('API returned error');
+        }
+        
+        console.log('[PERFORMANCE] Data loaded:', data);
+        
+        // Render IPV Ranking
+        renderRankingIPV(data.ranking);
+        
+        // Render Scorecard
+        renderScorecard(data.scorecard);
+        
+        // Render Comportamento
+        renderComportamento(data.comportamento);
+        
+        hideLoading();
+        
+      } catch (error) {
+        console.error('[PERFORMANCE] Error:', error);
+        hideLoading();
+        alert(`Erro ao carregar dados de performance: ${error.message}`);
+      }
+    }
+    
+    // Render IPV Ranking Table
+    function renderRankingIPV(ranking) {
+      const tbody = document.getElementById('fsr-ipv-table');
+      tbody.innerHTML = '';
+      
+      if (!ranking || ranking.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-gray)">Sem dados disponíveis</td></tr>';
+        return;
+      }
+      
+      ranking.forEach(seller => {
+        const ipv = seller.ipv || 0;
+        let ipvClass = 'badge-warning';
+        if (ipv >= 80) ipvClass = 'badge-success';
+        else if (ipv < 50) ipvClass = 'badge-danger';
+        
+        const resultClass = seller.resultado >= 70 ? 'badge-success' : 
+                            seller.resultado >= 50 ? 'badge-warning' : 'badge-danger';
+        const effClass = seller.eficiencia >= 70 ? 'badge-success' : 
+                         seller.eficiencia >= 50 ? 'badge-warning' : 'badge-danger';
+        const behavClass = seller.comportamento >= 70 ? 'badge-success' : 
+                           seller.comportamento >= 50 ? 'badge-warning' : 'badge-danger';
+        
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="font-weight:700;color:var(--primary-cyan);font-size:1.2em;">#${seller.rank}</td>
+          <td style="font-weight:600;color:#fff;">${seller.vendedor}</td>
+          <td><span class="badge ${ipvClass}" style="font-size:1.1em;padding:8px 12px;">${ipv}</span></td>
+          <td><span class="badge ${resultClass}">${seller.resultado}</span></td>
+          <td><span class="badge ${effClass}">${seller.eficiencia}</span></td>
+          <td><span class="badge ${behavClass}">${seller.comportamento}</span></td>
+          <td>${seller.winRate}%</td>
+          <td style="font-weight:600;">${formatMoney(seller.grossGerado)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+    
+    // Render Scorecard Table
+    function renderScorecard(scorecard) {
+      const tbody = document.getElementById('fsr-performance-active-body');
+      tbody.innerHTML = '';
+      
+      if (!scorecard || scorecard.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-gray)">Sem dados disponíveis</td></tr>';
+        return;
+      }
+      
+      scorecard.forEach(seller => {
+        const wr = seller.winRate || 0;
+        let winRateClass = 'badge-warning';
+        if (wr >= 80) winRateClass = 'badge-success';
+        else if (wr < 40) winRateClass = 'badge-danger';
+        
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="font-weight:600;color:#fff;">${seller.vendedor}</td>
+          <td><span class="badge ${winRateClass}">${wr}%</span></td>
+          <td>${seller.totalGanhos}</td>
+          <td>${seller.totalPerdas}</td>
+          <td style="color:var(--success);">${seller.cicloMedioWin}d</td>
+          <td style="color:var(--danger);">${seller.cicloMedioLoss}d</td>
+          <td>${formatMoney(seller.ticketMedio)}</td>
+          <td style="font-weight:600;color:var(--success);">${formatMoney(seller.grossGerado)}</td>
+          <td style="font-weight:600;color:var(--primary-cyan);">${formatMoney(seller.netGerado)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+    
+    // Render Comportamento Table
+    function renderComportamento(comportamento) {
+      const tbody = document.getElementById('fsr-behavior-active-body');
+      tbody.innerHTML = '';
+      
+      if (!comportamento || comportamento.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-gray)">Sem dados disponíveis</td></tr>';
+        return;
+      }
+      
+      comportamento.forEach(seller => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="font-weight:600;color:#fff;">${seller.vendedor}</td>
+          <td style="color:var(--success);">${seller.ativMediaWin}</td>
+          <td style="color:var(--danger);">${seller.ativMediaLoss}</td>
+          <td style="font-size:12px;color:var(--text-gray);">${seller.principalCausaPerda}</td>
+          <td style="font-size:12px;color:var(--text-gray);">${seller.principalFatorSucesso}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+    
+    // Load data on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      loadPerformanceData();
+    });
+  </script>
+</body>
+</html>

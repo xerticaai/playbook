@@ -9,7 +9,10 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
+  background:
+    radial-gradient(circle at 15% 20%, rgba(0, 190, 255, 0.18) 0%, transparent 45%),
+    radial-gradient(circle at 85% 15%, rgba(192, 255, 125, 0.16) 0%, transparent 45%),
+    linear-gradient(135deg, #060b14 0%, #0f1b2c 60%, #11192a 100%);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -17,6 +20,33 @@
   z-index: 99999;
   opacity: 1;
   transition: opacity 0.5s ease, visibility 0.5s ease;
+  overflow: hidden;
+}
+
+#loading-overlay::before,
+#loading-overlay::after {
+  content: '';
+  position: absolute;
+  width: 520px;
+  height: 520px;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+#loading-overlay::before {
+  background: rgba(0, 190, 255, 0.35);
+  top: -160px;
+  left: -140px;
+  animation: loaderOrbFloat 10s ease-in-out infinite;
+}
+
+#loading-overlay::after {
+  background: rgba(192, 255, 125, 0.28);
+  bottom: -200px;
+  right: -140px;
+  animation: loaderOrbFloat 12s ease-in-out infinite reverse;
 }
 
 #loading-overlay.hidden {
@@ -25,30 +55,122 @@
   pointer-events: none;
 }
 
-/* Logo Xertica animada */
-.xertica-logo-loader {
-  width: 120px;
-  height: 120px;
-  margin-bottom: 30px;
+#loading-overlay.loader-minimal {
+  background: #0b1220;
+}
+
+#loading-overlay.loader-minimal::before,
+#loading-overlay.loader-minimal::after {
+  opacity: 0;
+}
+
+/* Estrutura visual do loader */
+.loader-shell {
   position: relative;
-  animation: logoFloat 3s ease-in-out infinite;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
 }
 
-.xertica-logo-loader img {
-  width: 100%;
-  height: 100%;
+.loader-card {
+  width: min(480px, 90vw);
+  padding: 28px 32px 30px;
+  border-radius: 22px;
+  background: rgba(7, 15, 28, 0.82);
+  border: 1px solid rgba(0, 190, 255, 0.18);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(18px);
+}
+
+.loader-card--compact {
+  width: min(360px, 85vw);
+  padding: 20px 22px;
+  border-radius: 18px;
+}
+
+.loader-minimal .loader-card {
+  width: min(320px, 85vw);
+  padding: 18px 20px 16px;
+  border-radius: 16px;
+  background: rgba(11, 18, 32, 0.92);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35);
+}
+
+.loader-minimal .loader-subtitle,
+.loader-minimal .loader-context {
+  display: none;
+}
+
+.loader-minimal .loader-title {
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+
+.loader-minimal .loader-logo {
+  width: 48px;
+  height: 48px;
+}
+
+.loader-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.loader-brand--compact {
+  margin-bottom: 6px;
+}
+
+.loader-logo {
+  width: 52px;
+  height: 52px;
   object-fit: contain;
-  filter: drop-shadow(0 10px 30px rgba(0, 190, 255, 0.4));
-  animation: logoPulse 2s ease-in-out infinite;
+  filter: drop-shadow(0 10px 30px rgba(0, 190, 255, 0.35));
+  animation: logoPulse 2.2s ease-in-out infinite;
 }
 
-@keyframes logoFloat {
-  0%, 100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-15px);
-  }
+.loader-logo--compact {
+  width: 38px;
+  height: 38px;
+}
+
+.loader-wordmark {
+  font-family: 'Poppins', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: #e6f4ff;
+}
+
+.loader-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #e6f4ff;
+  margin-bottom: 6px;
+}
+
+.loader-title--compact {
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+
+.loader-subtitle {
+  font-size: 13px;
+  color: rgba(226, 232, 240, 0.7);
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
+
+.loader-context {
+  font-size: 12px;
+  color: rgba(148, 163, 184, 0.9);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
 }
 
 @keyframes logoPulse {
@@ -62,10 +184,15 @@
   }
 }
 
+@keyframes loaderOrbFloat {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(12px, -18px, 0); }
+}
+
 /* Texto de loading */
 .loading-text {
   font-size: 18px;
-  color: var(--text-light);
+  color: var(--text-main);
   font-weight: 500;
   margin-bottom: 20px;
   animation: textFade 2s ease-in-out infinite;
@@ -81,34 +208,39 @@
 }
 
 /* Barra de progresso */
-.loading-progress {
-  width: 250px;
-  height: 4px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
+.loading-progress,
+.loader-progress {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
   overflow: hidden;
   position: relative;
 }
 
-.loading-progress-bar {
+.loading-progress-bar,
+.loader-progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, #00beff 0%, #0066ff 100%);
-  border-radius: 10px;
-  animation: progressFlow 2s ease-in-out infinite;
-  box-shadow: 0 0 20px rgba(0, 190, 255, 0.6);
+  width: 40%;
+  background: linear-gradient(90deg, #00beff 0%, #0096ff 40%, #3b82f6 100%);
+  border-radius: 999px;
+  animation: progressFlow 2.4s ease-in-out infinite;
+  box-shadow: 0 0 20px rgba(0, 190, 255, 0.45);
+}
+
+.loader-progress--compact {
+  height: 4px;
 }
 
 @keyframes progressFlow {
   0% {
-    width: 0%;
-    transform: translateX(0);
+    transform: translateX(-40%);
   }
   50% {
-    width: 70%;
+    transform: translateX(40%);
   }
   100% {
-    width: 100%;
-    transform: translateX(100%);
+    transform: translateX(140%);
   }
 }
 
@@ -136,20 +268,41 @@
    FILTER LOADER (pequeno)
    =================================== */
 
+/* Fullscreen overlay (modais de loading) */
+.xertica-loading-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 10, 16, 0.88);
+  backdrop-filter: blur(14px);
+  z-index: 99998;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.xertica-loading-overlay.active {
+  display: flex;
+  opacity: 1;
+}
+
+.xertica-loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
 .filter-loading {
   position: fixed;
-  top: 20px;
-  right: 20px;
-  background: rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(10px);
-  padding: 15px 25px;
-  border-radius: 12px;
-  display: flex;
+  inset: 0;
+  display: none;
   align-items: center;
-  gap: 12px;
+  justify-content: center;
+  background: rgba(7, 12, 20, 0.65);
+  backdrop-filter: blur(10px);
   z-index: 9999;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  animation: slideInRight 0.3s ease;
   opacity: 0;
   visibility: hidden;
   transition: opacity 0.3s ease, visibility 0.3s ease;
@@ -182,7 +335,7 @@
 
 .filter-loading-text {
   font-size: 14px;
-  color: var(--text-light);
+  color: var(--text-main);
   font-weight: 500;
 }
 

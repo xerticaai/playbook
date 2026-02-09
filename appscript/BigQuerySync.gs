@@ -307,7 +307,7 @@ function syncToBigQueryScheduled() {
     // ETAPA 5: Carregar Sales Specialist (se existir)
     let salesSpecResult = { rowsInserted: 0, status: 'SKIPPED' };
     try {
-      const salesSpecSheet = loadSheetData('Análise Sales Specialist');
+      const salesSpecSheet = prepareSalesSpecialistData(); // Usar função especializada
       if (salesSpecSheet.length > 0) {
         salesSpecResult = loadToBigQuery(
           `${BQ_PROJECT}.${BQ_DATASET}.sales_specialist`,
@@ -513,7 +513,8 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
       
       // Mostrar campos relevantes para debug
       const debugFields = ['Oportunidade', 'Data_Fechamento', 'Data_Prevista', 'closed_date', 
-                          'Gross', 'Net', 'Fiscal_Q', 'Confianca', 'Ciclo_dias', 'Mudancas_Close_Date'];
+                          'Gross', 'Net', 'Fiscal_Q', 'Confianca', 'Ciclo_dias', 'Mudancas_Close_Date',
+                          'opportunity_name', 'booking_total_gross', 'fiscal_quarter'];
       debugFields.forEach(field => {
         if (rec.hasOwnProperty(field)) {
           const val = rec[field];
@@ -1026,27 +1027,36 @@ function prepareSalesSpecialistData() {
   
   console.log(`📋 Headers em Sales Specialist: ${normalizedHeaders.slice(0, 10).join(', ')}...`);
   
-  // Mapear colunas-chave
+  // Mapear colunas-chave (case-insensitive)
+  // IMPORTANTE: Planilha tem 2 colunas "Status" (oportunidade e forecast)
+  const statusIndexes = [];
+  normalizedHeaders.forEach((h, idx) => {
+    if (h.toLowerCase() === 'status') statusIndexes.push(idx);
+  });
+  
   const colMap = {
-    account_name: normalizedHeaders.findIndex(h => h.includes('account')),
-    perfil: normalizedHeaders.findIndex(h => h === 'perfil'),
-    opportunity_name: normalizedHeaders.findIndex(h => h.includes('opportunity')),
-    meses_fat: normalizedHeaders.findIndex(h => h.includes('meses')),
-    gtm_2026: normalizedHeaders.findIndex(h => h.includes('gtm')),
-    booking_total_gross: normalizedHeaders.findIndex(h => h.includes('booking') && h.includes('gross')),
-    booking_total_net: normalizedHeaders.findIndex(h => h.includes('booking') && h.includes('net')),
-    opportunity_status: normalizedHeaders.findIndex(h => h === 'status'),
-    vendedor: normalizedHeaders.findIndex(h => h === 'vendedor'),
-    forecast_status: normalizedHeaders.findIndex(h => h === 'status_1'),
-    billing_quarter_gross: normalizedHeaders.findIndex(h => h.includes('billing_quarter') && !h.includes('_1')),
-    billing_quarter_net: normalizedHeaders.findIndex(h => h.includes('billing_quarter') && h.includes('_1')),
-    closed_date: normalizedHeaders.findIndex(h => h.includes('closed'))
+    account_name: normalizedHeaders.findIndex(h => h.toLowerCase().includes('account')),
+    perfil: normalizedHeaders.findIndex(h => h.toLowerCase() === 'perfil'),
+    opportunity_name: normalizedHeaders.findIndex(h => h.toLowerCase().includes('opportunity')),
+    meses_fat: normalizedHeaders.findIndex(h => h.toLowerCase().includes('meses')),
+    gtm_2026: normalizedHeaders.findIndex(h => h.toLowerCase().includes('gtm')),
+    booking_total_gross: normalizedHeaders.findIndex(h => h.toLowerCase().includes('booking') && h.toLowerCase().includes('gross')),
+    booking_total_net: normalizedHeaders.findIndex(h => h.toLowerCase().includes('booking') && h.toLowerCase().includes('net')),
+    opportunity_status: statusIndexes[0] >= 0 ? statusIndexes[0] : normalizedHeaders.findIndex(h => h.toLowerCase() === 'status'),
+    vendedor: normalizedHeaders.findIndex(h => h.toLowerCase() === 'vendedor'),
+    forecast_status: statusIndexes[1] >= 0 ? statusIndexes[1] : -1, // Segunda coluna Status (UPSIDE/COMMIT)
+    billing_quarter_gross: normalizedHeaders.findIndex(h => h.toLowerCase().includes('billing') && h.toLowerCase().includes('quarter') && h.toLowerCase().includes('gross')),
+    billing_quarter_net: normalizedHeaders.findIndex(h => h.toLowerCase().includes('billing') && h.toLowerCase().includes('quarter') && h.toLowerCase().includes('net')),
+    closed_date: normalizedHeaders.findIndex(h => h.toLowerCase().includes('closed'))
   };
   
   console.log('📋 Mapeamento de colunas Sales Specialist:');
+  console.log(`   ℹ️ Colunas "Status" encontradas: ${statusIndexes.length} (indexes: ${statusIndexes.join(', ')})`);
   Object.keys(colMap).forEach(key => {
     if (colMap[key] >= 0) {
       console.log(`   • ${key}: col ${colMap[key]} (${headers[colMap[key]]})`);
+    } else {
+      console.warn(`   ⚠️ ${key}: NÃO ENCONTRADO`);
     }
   });
   
@@ -1135,6 +1145,11 @@ function prepareSalesSpecialistData() {
   console.log(`📊 Sales Specialist preparado: ${records.length} deals`);
   if (records.length > 0) {
     console.log(`   • Exemplo: ${records[0].account_name} - ${records[0].forecast_status} - $${records[0].billing_quarter_gross}`);
+    console.log(`   • Closed Date exemplo: ${records[0].closed_date || 'NULL'} → Fiscal Q: ${records[0].fiscal_quarter || 'NULL'}`);
+    
+    // Debug: contar quantos têm closed_date
+    const withDate = records.filter(r => r.closed_date).length;
+    console.log(`   • Deals com Closed Date: ${withDate}/${records.length}`);
   }
   
   return records;

@@ -25,8 +25,12 @@ if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" | grep -q
     exit 1
 fi
 
+# Change to project root directory
+cd "$(dirname "$0")/.."
+echo -e "${YELLOW}📁 Working directory: $(pwd)${NC}"
+
 echo -e "${YELLOW}📦 Building Docker image...${NC}"
-docker build -t ${IMAGE_NAME}:latest .
+docker build -f cloud-run/Dockerfile -t ${IMAGE_NAME}:latest .
 
 echo -e "${YELLOW}📤 Pushing image to Container Registry...${NC}"
 docker push ${IMAGE_NAME}:latest
@@ -45,7 +49,7 @@ gcloud run deploy ${SERVICE_NAME} \
     --min-instances 0 \
     --concurrency 80 \
     --port 8080 \
-    --set-env-vars "PROJECT_ID=${PROJECT_ID}" \
+    --set-env-vars "GCP_PROJECT=${PROJECT_ID}" \
     --service-account "operaciones-br@appspot.gserviceaccount.com"
 
 # Get service URL

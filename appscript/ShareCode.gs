@@ -153,7 +153,15 @@ const SHEETS = {
   ATIVIDADES: "Atividades",
   DICIONARIO: "📘 Dicionário de Dados",
   LOGS: "Logs_Execucao",
-  INTEGRITY_OPEN: "🔐 Snapshot Integridade OPEN"
+  INTEGRITY_OPEN: "🔐 Snapshot Integridade OPEN",
+  EVENT_LOG: "📝 Event Log",
+  INSPECTOR: "🔍 Inspector",
+  
+  // Aliases para compatibilidade (usado em diagnostic/validation)
+  ANALISE_PIPELINE: "🎯 Análise Forecast IA",
+  ANALISE_GANHAS: "📈 Análise Ganhas",
+  ANALISE_PERDIDAS: "📉 Análise Perdidas",
+  ANALYZE: "🎯 Análise Forecast IA"
 };
 
 
@@ -1015,10 +1023,21 @@ function buildOpenOutputRow(runId, item, profile, fiscal, activity, meddic, ia, 
   const diasFunil = item.created ? Math.ceil((new Date() - item.created) / MS_PER_DAY) : 0;
   
   // CICLO (dias) = CLOSE DATE - CREATED DATE (duração esperada do ciclo)
-  const cicloDias = (item.closed && item.created) ? Math.ceil((item.closed - item.created) / MS_PER_DAY) : 0;
+  let cicloDias = (item.closed && item.created) ? Math.ceil((item.closed - item.created) / MS_PER_DAY) : 0;
+  
+  // VALIDAÇÃO DE CICLO (sincronizado com SheetCode)
+  const cicloValidation = validateCiclo_(cicloDias, item.created, item.closed, item.oppName);
+  if (!cicloValidation.isValid) {
+    labels.push(cicloValidation.issue);
+  }
+  cicloDias = cicloValidation.correctedCiclo;
 
   // QUALIDADE DO ENGAJAMENTO (novo campo da IA)
   const engagementQuality = ia.engagement_quality || "N/D";
+  
+  // Pré-formatar datas uma única vez
+  const closedDateFormatted = item.closed ? formatDateRobust(item.closed) : "-";
+  const lastUpdateFormatted = formatDateRobust(new Date());
 
   return [
     runId,
@@ -1032,7 +1051,7 @@ function buildOpenOutputRow(runId, item, profile, fiscal, activity, meddic, ia, 
     item.stage,
     item.forecast_sf || "-",              
     fiscal.label,
-    item.closed ? formatDateRobust(item.closed) : "-",
+    closedDateFormatted,
     cicloDias,
     diasFunil,
     activity.count,           
@@ -1074,7 +1093,8 @@ function buildOpenOutputRow(runId, item, profile, fiscal, activity, meddic, ia, 
     quarterRecognition.q1 || 0,
     quarterRecognition.q2 || 0,
     quarterRecognition.q3 || 0,
-    quarterRecognition.q4 || 0
+    quarterRecognition.q4 || 0,
+    lastUpdateFormatted  // Col 54: Timestamp da última análise
   ];
 }
 
@@ -1091,6 +1111,18 @@ function buildClosedOutputRow(runId, mode, item, profile, fiscal, ia, labels, ac
   const sinaisAlerta = (ia.sinais_alerta || []).join(", ") || "-";
   const momentoCritico = ia.momento_critico || "-";
   const licoesAprendidas = ia.licoes_aprendidas || "-";
+  
+  // VALIDAÇÃO DE CICLO (se existir)
+  if (item.ciclo && item.created && item.closed) {
+    const cicloValidation = validateCiclo_(item.ciclo, item.created, item.closed, item.oppName);
+    if (!cicloValidation.isValid) {
+      labels.push(cicloValidation.issue);
+    }
+  }
+  
+  // Pré-formatar datas uma única vez
+  const closedDateFormatted = item.closed ? formatDateRobust(item.closed) : "-";
+  const lastUpdateFormatted = formatDateRobust(new Date());
 
   return [
     runId,
@@ -1105,7 +1137,7 @@ function buildClosedOutputRow(runId, mode, item, profile, fiscal, ia, labels, ac
     item.productFamily || "-",
     status,
     fiscal.label,
-    item.closed ? formatDateRobust(item.closed) : "-",
+    closedDateFormatted,
     item.ciclo || "-",
     item.products || "-",
     resumo,
@@ -1131,7 +1163,8 @@ function buildClosedOutputRow(runId, mode, item, profile, fiscal, ia, labels, ac
     detailedChanges.changePattern || "-",
     detailedChanges.changeFrequency || "-",
     detailedChanges.uniqueEditors || 0,
-    labels.join(", ")
+    labels.join(", "),
+    lastUpdateFormatted  // Col 40: Timestamp da última análise
   ];
 }
 
@@ -1705,7 +1738,7 @@ function getModeConfig(mode) {
  * Calendario facturación | Fecha de facturación | ¿Aplica Marketplace? | 
  * Quantidade
  * 
- * 🎯 ANÁLISE FORECAST IA (54 colunas) - SEM "Created Date"!:
+ * 🎯 ANÁLISE FORECAST IA (55 colunas) - SEM "Created Date"!:
  * Run ID | Oportunidade | Conta | Perfil | Produtos | Vendedor | Gross | Net | 
  * Fase Atual | Forecast SF | Fiscal Q | Data Prevista | Ciclo (dias) | 
  * Dias Funil | Atividades | Atividades (Peso) | Mix Atividades | 
@@ -1722,7 +1755,7 @@ function getModeConfig(mode) {
  * Valor Reconhecido Q2 | Valor Reconhecido Q3 | Valor Reconhecido Q4 | 
  * 🕐 Última Atualização
  * 
- * ✅ ANÁLISE GANHAS (39 colunas) - SEM "Created Date"!:
+ * ✅ ANÁLISE GANHAS (40 colunas) - SEM "Created Date"!:
  * Run ID | Oportunidade | Conta | Perfil Cliente | Vendedor | Gross | Net | 
  * Portfólio | Segmento | Família Produto | Status | Fiscal Q | 
  * Data Fechamento | Ciclo (dias) | Produtos | 📝 Resumo Análise | 
@@ -1734,7 +1767,7 @@ function getModeConfig(mode) {
  * Mudanças Valor | Campos + Alterados | Padrão Mudanças | Freq. Mudanças | 
  * # Editores | 🏷️ Labels | 🕐 Última Atualização
  * 
- * ❌ ANÁLISE PERDIDAS (39 colunas) - SEM "Created Date"!:
+ * ❌ ANÁLISE PERDIDAS (40 colunas) - SEM "Created Date"!:
  * Run ID | Oportunidade | Conta | Perfil Cliente | Vendedor | Gross | Net | 
  * Portfólio | Segmento | Família Produto | Status | Fiscal Q | 
  * Data Fechamento | Ciclo (dias) | Produtos | 📝 Resumo Análise | 
@@ -2802,26 +2835,37 @@ function formatMoney(v) {
 function parseDate(d) {
   if (!d) return null;
   
-  // Se já é Date nativo do Sheets, retorna direto
+  // Se já é Date nativo do Sheets, SEMPRE verificar inversão DD/MM vs MM/DD
   if (d instanceof Date) {
-    // VALIDAÇÃO: Se data está no futuro distante (>6 meses), pode ser erro de parsing
     const hoje = new Date();
-    const diffMonths = (d - hoje) / (30 * MS_PER_DAY);
+    const year = d.getFullYear();
+    const month = d.getMonth(); // 0-11 (Janeiro = 0)
+    const day = d.getDate(); // 1-31
     
-    if (diffMonths > 6) {
-      // Provável inversão mês/dia - tentar corrigir
-      const year = d.getFullYear();
-      const month = d.getMonth(); // 0-11
-      const day = d.getDate(); // 1-31
+    // DETECÇÃO AGRESSIVA: Se dia é válido como mês (1-12), pode estar invertido
+    if (day >= 1 && day <= 12) {
+      // Testa inversão: troca mês ↔ dia
+      const corrected = new Date(year, day - 1, month + 1);
       
-      // Se dia é válido como mês (1-12) e mês+1 é válido como dia (1-31)
-      if (day >= 1 && day <= 12 && month >= 0 && month <= 11) {
-        const corrected = new Date(year, day - 1, month + 1);
-        const diffMonthsCorrected = (corrected - hoje) / (30 * MS_PER_DAY);
+      // CRITÉRIOS para aplicar correção:
+      // 1. Data original está no FUTURO (mês 6-12 = Jul-Dez)
+      // 2. Data corrigida fica no PASSADO ou PRESENTE (mês 0-2 = Jan-Mar)
+      // 3. OU data corrigida fica mais próxima de hoje
+      
+      const originalInFuture = d > hoje;
+      const correctedInPast = corrected <= hoje;
+      const correctedCloser = Math.abs(corrected - hoje) < Math.abs(d - hoje);
+      
+      // SE original parece errado (futuro distante) E corrigida faz mais sentido
+      if (originalInFuture && (correctedInPast || correctedCloser)) {
+        // EXTRA: Confirmar que mês original é "suspeito" (6-12 = Jul-Dez)
+        // E mês corrigido é início do ano (0-2 = Jan-Mar)
+        const suspiciousMonth = month >= 6 && month <= 11; // Jul-Dez
+        const correctedMonth = corrected.getMonth();
+        const correctedIsEarlyYear = correctedMonth >= 0 && correctedMonth <= 2; // Jan-Mar
         
-        // Se correção traz data para passado/futuro próximo, usar corrigida
-        if (Math.abs(diffMonthsCorrected) < Math.abs(diffMonths)) {
-          console.warn(`⚠️ parseDate: Detectada inversão mês/dia - ${d.toDateString()} → ${corrected.toDateString()}`);
+        if (suspiciousMonth && correctedIsEarlyYear) {
+          console.warn(`⚠️ parseDate: Inversão DD/MM detectada - ${d.toDateString()} (mês ${month+1}) → ${corrected.toDateString()} (mês ${correctedMonth+1})`);
           return corrected;
         }
       }

@@ -9,18 +9,11 @@
 ```
 cloud-run/
 ├── app/
-│   ├── __init__.py
-│   ├── main.py                 # FastAPI application entry point
-│   ├── models/
-│   │   ├── __init__.py
-│   │   └── schemas.py          # Pydantic models for validation
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── bigquery_service.py # BigQuery data access layer
-│   │   └── ml_service.py       # BQML prediction service
-│   └── utils/
-│       ├── __init__.py
-│       └── constants.py        # Configuration constants
+│   ├── simple_api.py           # FastAPI application entry point
+│   └── api/
+│       └── endpoints/          # Endpoints modulares
+│           ├── ai_analysis.py
+│           └── performance.py
 ├── tests/
 │   └── test_endpoints.py       # API endpoint tests
 ├── bqml/                       # BigQuery ML model queries
@@ -59,7 +52,7 @@ cloud-run/
 
 3. **Run locally**:
    ```bash
-   uvicorn app.main:app --reload --port 8080
+  uvicorn simple_api:app --reload --port 8080
    ```
 
 4. **Access**:
@@ -225,13 +218,11 @@ See [/bigquery/ML_MODELS_README.md](../bigquery/ML_MODELS_README.md) for trainin
 
 ## ⚙️ Configuration
 
-All configurations in [app/utils/constants.py](app/utils/constants.py):
+Main settings live in [app/simple_api.py](app/simple_api.py):
 
-- **Project/Dataset**: `PROJECT_ID`, `DATASET_ID`
-- **Tables**: Pipeline, Won, Lost, Sales Specialist
-- **Schemas**: Full column definitions
-- **ML Models**: Model names and configs
-- **API Settings**: CORS, cache, thresholds
+- **Project/Dataset**: `GCP_PROJECT`, `DATASET_ID`
+- **CORS**: allowed origins list
+- **Gemini**: `GEMINI_API_KEY`
 
 ---
 
@@ -298,11 +289,9 @@ Logs include:
 
 ### Adding New Endpoints
 
-1. Add schema to `app/models/schemas.py`
-2. Add service method to `app/services/bigquery_service.py`
-3. Add endpoint to `app/main.py`
-4. Add tests to `tests/test_endpoints.py`
-5. Update this README
+1. Add endpoint in `app/api/endpoints/*.py`
+2. Import and include router in `app/simple_api.py`
+3. Update this README
 
 ### Code Style
 

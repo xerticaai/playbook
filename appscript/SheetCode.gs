@@ -794,9 +794,29 @@ function processQueueGeneric(mode) {
 }
 
 function runEngineBatch(mode, startIndex, batchSize, startTime) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // CRÍTICO: Aplicar locale pt_BR GLOBALMENTE ANTES de ler QUALQUER dado
+  // Isso garante que Date objects sejam criados corretamente desde o início
+  const currentLocale = ss.getSpreadsheetLocale();
+  if (currentLocale !== 'pt_BR' && currentLocale !== 'pt-BR') {
+    console.log(`🔧 [${mode}] Alterando locale GLOBAL para pt_BR (atual: ${currentLocale})...`);
+    ss.setSpreadsheetLocale('pt_BR');
+    console.log(`✅ [${mode}] Locale alterado para: ${ss.getSpreadsheetLocale()}`);
+    logToSheet("INFO", "Engine", `Locale alterado para pt_BR (era ${currentLocale})`);
+    
+    // Limpar cache de sheets após mudar locale se a função existir
+    if (typeof invalidateSheetCache_ === 'function') {
+      invalidateSheetCache_();
+      console.log(`🧹 [${mode}] Cache de sheets limpo após mudança de locale`);
+    }
+    
+    // CRÍTICO: Forçar recarga do spreadsheet após mudança de locale
+    SpreadsheetApp.flush();
+  }
+  
   logToSheet("DEBUG", "Engine", `runEngineBatch(${mode}) iniciado - startIndex=${startIndex}, batchSize=${batchSize}`);
   
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
   const config = getModeConfig(mode);
 
   const queueSheetName = getQueueSheetName_(mode);
@@ -2252,305 +2272,12 @@ function setupAnalysisSheet(mode, preserve) {
   }
 }
 
-function setupDeepAnalysisLost() {
-  setupDeepAnalysisSheet_('LOST');
-}
-
-function setupDeepAnalysisWon() {
-  setupDeepAnalysisSheet_('WON');
-}
-
-function runDeepAnalysisLost() {
-  runDeepAnalysis_('LOST');
-}
-
-function runDeepAnalysisWon() {
-  runDeepAnalysis_('WON');
-}
-
-function setupDeepAnalysisSheet_(mode) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const config = getModeConfig(mode);
-  let sheet = ss.getSheetByName(config.output);
-  if (!sheet) sheet = ss.insertSheet(config.output);
-  sheet.clear();
-
-  sheet.getRange("A1:D1").setValues([["Data Inicial (Fechamento)", "Data Final (Fechamento)", "Nome da Conta (Opcional)", "Nome da Oportunidade (Opcional)"]])
-    .setBackground("#f3f3f3").setFontWeight("bold");
-
-  const headers = [[
-    "Oportunidade", "Conta", "Vendedor", "Gross (Total Price)", "Net (Margin $)",
-    "Fase", "Ciclo (Dias)", "Qtd Atividades", "Qtd Alterações",
-    "Motivo SF", "Causa Raiz (IA)", "Fatos & Evidências (IA)", "Coerência CRM",
-    "Qualidade Gestão", "Nota", "Ação", "Veredito Final"
-  ]];
-
-  sheet.getRange("A4:Q4").setValues(headers)
-    .setBackground("#2c3e50").setFontColor("white").setFontWeight("bold");
-
-  sheet.setColumnWidth(1, 200);
-  sheet.setColumnWidth(2, 150);
-  sheet.setColumnWidth(3, 120);
-  sheet.setColumnWidth(4, 90);
-  sheet.setColumnWidth(5, 90);
-  sheet.setColumnWidth(6, 80);
-  sheet.setColumnWidth(7, 60);
-  sheet.setColumnWidth(8, 60);
-  sheet.setColumnWidth(9, 60);
-  sheet.setColumnWidth(10, 120);
-  sheet.setColumnWidth(11, 180);
-  sheet.setColumnWidth(12, 350);
-  sheet.setColumnWidth(13, 100);
-  sheet.setColumnWidth(14, 150);
-  sheet.setColumnWidth(15, 50);
-  sheet.setColumnWidth(16, 180);
-  sheet.setColumnWidth(17, 150);
-  sheet.setFrozenRows(4);
-
-  safeAlert_("Painel configurado para " + (mode === 'WON' ? "GANHOS" : "PERDAS") + ".");
-}
-
-function runDeepAnalysis_(mode) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const config = getModeConfig(mode);
-  const resSheet = ss.getSheetByName(config.output);
-  if (!resSheet) {
-    setupDeepAnalysisSheet_(mode);
-    return;
-  }
-
-  logToSheet("INFO", "START", `Iniciando análise profunda (${mode})...`);
-
-  const base = getSheetData(config.input);
-  const atividades = getSheetData(SHEETS.ATIVIDADES);
-  const alteracoes = getSheetData(config.changes);
-
-  if (!base) {
-    safeAlert_(`ERRO: Aba '${config.input}' não encontrada.`);
-    return;
-  }
-
-  const cols = {
-    p_opp: findCol_(base.headers, ["Opportunity Name", "Oportunidade"]),
-    p_acc: findCol_(base.headers, ["Account Name", "Conta"]),
-    p_reason: findCol_(base.headers, ["Razón de pérdida", "Reason", "Motivo", "Loss Reason", "Win Reason"]),
-    p_date: findCol_(base.headers, ["Close Date", "Data Fechamento"]),
-    p_desc: findCol_(base.headers, ["Description", "Descripción", "Descripción de la pérdida"]),
-    p_owner: findCol_(base.headers, ["Opportunity Owner", "Propietario", "Vendedor", "Owner"]),
-    p_gross: findCol_(base.headers, ["Total Price (converted)", "Total Price", "Amount", "Valor Total"]),
-    p_net: findCol_(base.headers, ["Margen Total $ (converted)", "Margen Total", "Margin", "Net Revenue"]),
-    p_stage: findCol_(base.headers, ["Stage", "Fase", "Etapa"]),
-    p_created: findCol_(base.headers, ["Created Date", "Data Criação", "Fecha de creación"]),
-
-    a_opp: atividades ? findCol_(atividades.headers, ["Opportunity", "Opportunity Name"]) : -1,
-    a_acc: atividades ? findCol_(atividades.headers, ["Company / Account", "Account"]) : -1,
-    a_comm: atividades ? findCol_(atividades.headers, ["Full Comments", "Comments"]) : -1,
-    a_date: atividades ? findCol_(atividades.headers, ["Date", "Data", "Created Date"]) : -1,
-
-    alt_opp: alteracoes ? findCol_(alteracoes.headers, ["Opportunity Name", "Nome da oportunidade", "Opportunity", "Oportunidade"]) : -1,
-    alt_field: alteracoes ? findCol_(alteracoes.headers, ["Field / Event", "Campo/Compromisso", "Campo / Compromisso", "Campo"]) : -1,
-    alt_old: alteracoes ? findCol_(alteracoes.headers, ["Old Value", "Valor antigo", "Valor Antigo"]) : -1,
-    alt_new: alteracoes ? findCol_(alteracoes.headers, ["New Value", "Novo valor", "Novo Valor"]) : -1,
-    alt_date: alteracoes ? findCol_(alteracoes.headers, ["Edit Date", "Data de edição", "Data de Edição", "Data Edição", "Date"]) : -1,
-    alt_editor: alteracoes ? findCol_(alteracoes.headers, ["Edited By", "Editado por", "Editado Por", "Editor"]) : -1
-  };
-
-  if (cols.p_opp === -1) {
-    safeAlert_("Erro: Coluna 'Opportunity Name' não encontrada.");
-    return;
-  }
-
-  const rawStart = resSheet.getRange("A2").getValue();
-  const rawEnd = resSheet.getRange("B2").getValue();
-  const f_start = parseDate(rawStart);
-  const f_end = parseDate(rawEnd);
-  const f_acc = String(resSheet.getRange("C2").getValue() || "").toLowerCase().trim();
-  const f_opp = String(resSheet.getRange("D2").getValue() || "").toLowerCase().trim();
-
-  if (f_start && f_end && f_start > f_end) {
-    safeAlert_("Erro: Data Inicial maior que Data Final.");
-    return;
-  }
-
-  const listaFiltrada = base.values.filter(row => {
-    const opp = String(row[cols.p_opp] || "").toLowerCase();
-    const acc = String(row[cols.p_acc] || "").toLowerCase();
-
-    if (f_start && f_end) {
-      const closeDate = parseDate(row[cols.p_date]);
-      if (!closeDate || closeDate.getTime() < f_start.getTime() || closeDate.getTime() > f_end.getTime()) return false;
-    }
-
-    let textMatch = true;
-    if (f_acc) textMatch = textMatch && acc.includes(f_acc);
-    if (f_opp) textMatch = textMatch && opp.includes(f_opp);
-
-    if (!f_start && !f_end && !f_acc && !f_opp) return false;
-    return textMatch;
-  });
-
-  if (listaFiltrada.length === 0) {
-    safeAlert_("Nenhum registro encontrado.");
-    return;
-  }
-
-  if (resSheet.getLastRow() >= 5) resSheet.getRange(5, 1, resSheet.getLastRow() - 4, 17).clearContent();
-  safeToast_(`Analisando ${listaFiltrada.length} oportunidades...`, "Sales Intel");
-
-  const allRows = [];
-  listaFiltrada.forEach((row, i) => {
-    try {
-      const oppName = String(row[cols.p_opp] || "Sem Nome").trim();
-      const accName = String(row[cols.p_acc] || "Sem Conta").trim();
-      const motivo = cols.p_reason > -1 ? row[cols.p_reason] || "N/A" : "N/A";
-      const rawDesc = cols.p_desc > -1 ? String(row[cols.p_desc] || "") : "";
-
-      const owner = cols.p_owner > -1 ? String(row[cols.p_owner]) : "N/A";
-      const stage = cols.p_stage > -1 ? String(row[cols.p_stage]) : "N/A";
-
-      const gross = parseMoney(cols.p_gross > -1 ? row[cols.p_gross] : 0);
-      const net = parseMoney(cols.p_net > -1 ? row[cols.p_net] : 0);
-
-      let cicloDias = 0;
-      const createdDate = parseDate(row[cols.p_created]);
-      const closeDate = parseDate(row[cols.p_date]);
-      if (createdDate && closeDate) {
-        const diffTime = closeDate.getTime() - createdDate.getTime();
-        cicloDias = Math.ceil(diffTime / MS_PER_DAY);
-        if (cicloDias < 0) cicloDias = 0;
-      }
-
-      logToSheet("INFO", `Analisando ${mode}`, oppName);
-
-      let logsAudit = [];
-      let countChanges = 0;
-      if (alteracoes && cols.alt_opp > -1) {
-        const edits = alteracoes.values.filter(e => String(e[cols.alt_opp] || "").trim() === oppName);
-        edits.forEach(e => {
-          const campo = String(e[cols.alt_field] || "");
-          if (["Close Date", "Amount", "Stage", "Fase", "Total Price", "Margen"].some(k => campo.includes(k))) {
-            logsAudit.push(`- ${formatDateShort_(e[cols.alt_date])}: ${campo} (${e[cols.alt_old]} -> ${e[cols.alt_new]})`);
-            countChanges++;
-          }
-        });
-      }
-      const auditText = logsAudit.length > 0 ? logsAudit.join("\n") : "(Sem histórico de alterações)";
-
-      let activities = [];
-      let activityCount = 0;
-      if (atividades && cols.a_opp > -1) {
-        let acts = atividades.values.filter(a => String(a[cols.a_opp] || "").trim() === oppName);
-        if (acts.length === 0 && cols.a_acc > -1 && accName.length > 4) {
-          acts = atividades.values.filter(a => String(a[cols.a_acc] || "").trim() === accName);
-        }
-        activityCount = acts.length;
-        activities = acts.map(a => `- ${formatDateShort_(a[cols.a_date])}: ${String(a[cols.a_comm] || "").substring(0, 300)}...`);
-      }
-      const actText = activities.length > 0 ? activities.join("\n") : "(Nenhuma atividade)";
-
-      const densidade = activityCount > 0 && cicloDias > 0 ? (cicloDias / activityCount).toFixed(1) : "N/A";
-      const stats = `Ciclo: ${cicloDias} dias. Atividades: ${activityCount}. Alterações: ${countChanges}. Média: 1 ativ a cada ${densidade} dias.`;
-
-      const prompt = mode === 'WON'
-        ? `Atue como Auditor de Vendas B2B. Analise o ganho desta oportunidade.
-DADOS: Vendedor=${owner}, Cliente=${accName}, Gross=${gross}, Net=${net}, Ciclo=${cicloDias} dias.
-MOTIVO: ${motivo}
-DESCRIÇÃO: "${rawDesc}"
-ESTATÍSTICAS: ${stats}
-
-HISTÓRICO (Atividades): ${actText}
-MUDANÇAS (Auditoria): ${auditText}
-
-TAREFA: Gere JSON.
-1. Se Gross > 0 e Net = 0, mencione "Margem Zero".
-2. Use termos corporativos sóbrios.
-3. Use a métrica de atividades (${activityCount}) para julgar a intensidade.
-
-JSON ESPERADO:
-{
-  "causa_raiz": "Resumo técnico",
-  "evidencia": "Fatos com datas",
-  "coerencia": "Alta/Média/Baixa",
-  "gestao": "Avaliação curta",
-  "nota": "0-10",
-  "acao": "Sugestão prática",
-  "veredito": "GANHO ESTRATÉGICO, GANHO TÁTICO, GANHO RELACIONAMENTO, GANHO TÉCNICO ou GANHO PRECIFICAÇÃO"
-}`
-        : `Atue como Auditor de Vendas B2B. Analise a perda desta oportunidade.
-DADOS: Vendedor=${owner}, Cliente=${accName}, Gross=${gross}, Net=${net}, Ciclo=${cicloDias} dias.
-MOTIVO: ${motivo}
-DESCRIÇÃO: "${rawDesc}"
-ESTATÍSTICAS: ${stats}
-
-HISTÓRICO (Atividades): ${actText}
-MUDANÇAS (Auditoria): ${auditText}
-
-TAREFA: Gere JSON.
-1. Se Gross > 0 e Net = 0, mencione "Margem Zero".
-2. Use termos corporativos sóbrios.
-3. Use a métrica de atividades (${activityCount}) para julgar a intensidade.
-
-JSON ESPERADO:
-{
-  "causa_raiz": "Resumo técnico",
-  "evidencia": "Fatos com datas",
-  "coerencia": "Alta/Média/Baixa",
-  "gestao": "Avaliação curta",
-  "nota": "0-10",
-  "acao": "Sugestão prática",
-  "veredito": "PERDA TÉCNICA, PREÇO, PERDA DE ENGAJAMENTO, DOCUMENTAÇÃO LIMITADA, DESQUALIFICAÇÃO CORRETA ou CONCORRÊNCIA"
-}`;
-
-      const response = callGeminiAPI(prompt);
-      let jsonResp = {
-        causa_raiz: "Erro Parser",
-        evidencia: response,
-        coerencia: "-",
-        gestao: "-",
-        nota: "0",
-        acao: "-",
-        veredito: "ERRO"
-      };
-
-      try {
-        const jsonMatch = response.match(/\{[\s\S]*\}/);
-        const cleanJson = jsonMatch ? jsonMatch[0] : response;
-        jsonResp = JSON.parse(cleanJson);
-        if (jsonResp.veredito) jsonResp.veredito = String(jsonResp.veredito).replace(/[\[\]]/g, "");
-      } catch (eJson) {
-        logToSheet("WARN", "Erro Parser JSON", response);
-        jsonResp.evidencia = "Resposta não estruturada.";
-      }
-
-      const rowData = [[
-        oppName, accName, owner, gross, net,
-        stage, cicloDias, activityCount, countChanges,
-        motivo,
-        jsonResp.causa_raiz || "",
-        jsonResp.evidencia || "",
-        jsonResp.coerencia || "",
-        jsonResp.gestao || "",
-        jsonResp.nota || "",
-        jsonResp.acao || "",
-        jsonResp.veredito || ""
-      ]];
-
-      allRows.push(rowData[0]);
-      Utilities.sleep(800);
-    } catch (eRow) {
-      resSheet.getRange(5 + i, 1).setValue("ERRO LINHA");
-      resSheet.getRange(5 + i, 17).setValue(eRow.message);
-    }
-  });
-
-  if (allRows.length > 0) {
-    resSheet.getRange(5, 1, allRows.length, 17).setValues(allRows);
-    SpreadsheetApp.flush();
-  }
-
-  safeToast_("Análise Concluída.", "Fim");
-  flushLogs_();
-}
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// FUNÇÕES DE DEEP ANALYSIS REMOVIDAS (08/02/2026)
+// Motivo: Não expostas no menu e não utilizadas no fluxo principal
+// Se necessário no futuro, podem ser restauradas do histórico Git
+// Removidas: setupDeepAnalysisSheet_() e runDeepAnalysis_() (~280 linhas total)
+// ════════════════════════════════════════════════════════════════════════════════════════════════
 
 function resetPanel() {
   const ui = SpreadsheetApp.getUi();
@@ -3053,33 +2780,12 @@ function buildAggregationSnapshot_(mode, runId) {
   logToSheet("INFO", "Snapshot", `Agregação cacheada: ${aggregatedData.length} itens em ${snapshotName}.`);
 }
 
-function setupInspector() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(SHEETS.INSPECTOR) || ss.insertSheet(SHEETS.INSPECTOR);
-  sheet.clear();
-  
-  const headers = [["Run ID", "Modo", "Status", "Start Time", "End Time", "Itens Processados", 
-                    "Taxa Sucesso (%)", "Erros API", "Tempo Médio/Item (s)"]];
-  sheet.getRange(1, 1, 1, headers[0].length).setValues(headers)
-    .setBackground("#1c4587").setFontColor("white").setFontWeight("bold");
-  sheet.setFrozenRows(1);
-  
-  sheet.setColumnWidth(1, 180);
-  sheet.setColumnWidth(2, 80);
-  sheet.setColumnWidth(3, 100);
-  sheet.setColumnWidth(4, 140);
-  sheet.setColumnWidth(5, 140);
-  sheet.setColumnWidth(6, 120);
-  sheet.setColumnWidth(7, 100);
-  sheet.setColumnWidth(8, 80);
-  sheet.setColumnWidth(9, 120);
-  
-  safeAlert_("Inspector configurado. Use 'Health Check' para análise.");
-}
-
-function runInspector() {
-  runHealthCheck();
-}
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// FUNÇÃO DO INSPECTOR REMOVIDA (08/02/2026)
+// Motivo: Não exposta no menu, funcionalidade coberta por runHealthCheck()
+// Removidas: setupInspector() e runInspector()
+// Se necessário no futuro, pode ser restaurada do histórico Git
+// ════════════════════════════════════════════════════════════════════════════════════════════════
 
 /**
  * Garante que a aba de Event Log existe e está protegida
@@ -4279,7 +3985,7 @@ function ativarAutoSync() {
     '✅ Ganhos (Won) - Histórico de vitórias\n' +
     '✅ Perdas (Lost) - Histórico de perdas\n' +
     '✅ Atividades e Alterações de todas as fontes\n\n' +
-    '⚡ Frequência: A cada 5 minutos (MODO RÁPIDO)\n' +
+    '⚡ Frequência: A cada 30 minutos\n' +
     'Processamento: Apenas dados novos (incremental)\n' +
     'Proteção: Lock anti-concorrência\n' +
     'Nunca apaga dados existentes\n\n' +
@@ -4306,13 +4012,13 @@ function ativarAutoSync() {
     
     console.log(`🗑️ Removidos ${removedSync} trigger(s) de sync`);
     
-    // Cria trigger: 15 minutos para sync
+    // Cria trigger: 30 minutos para sync
     ScriptApp.newTrigger('autoSyncPipelineExecution')
       .timeBased()
-      .everyMinutes(15)
+      .everyMinutes(30)
       .create();
     
-    console.log('✅ Trigger criado: Sync a cada 15 min');
+    console.log('✅ Trigger criado: Sync a cada 30 min');
     
     // Salva configuração
     const props = PropertiesService.getScriptProperties();
@@ -4332,7 +4038,7 @@ function ativarAutoSync() {
     ui.alert(
       '✅ Sistema Ativado com Sucesso!',
       '🤖 Auto-Sync configurado!\n\n' +
-      '⚡ Sincronização: A cada 5 MINUTOS\n' +
+      '⚡ Sincronização: A cada 30 MINUTOS\n' +
       '🔍 Monitora: Open + Won + Lost + Cache\n' +
       '🔒 Proteção anti-concorrência: ATIVA\n' +
       '⚡ Modo incremental (nunca apaga dados)\n\n' +
@@ -4340,7 +4046,7 @@ function ativarAutoSync() {
       ui.ButtonSet.OK
     );
     
-    logToSheet("INFO", "Sistema", "Auto-Sync ATIVADO (5min)");
+    logToSheet("INFO", "Sistema", "Auto-Sync ATIVADO (30min)");
     flushLogs_(); // Força escrita imediata
     
   } catch (error) {
@@ -4449,7 +4155,7 @@ function verificarStatusAutoSync() {
     mensagem = `✅ SISTEMA ATIVO\n\n` +
                `📊 TRIGGERS CONFIGURADOS:\n` +
                `   • ${syncTriggers.length} Auto-Sync (Open/Won/Lost)\n\n` +
-               `⚡ Frequência: A cada 5 MINUTOS (MODO RÁPIDO)\n` +
+               `⚡ Frequência: A cada 30 MINUTOS\n` +
                `🔒 Proteção anti-concorrência: ATIVA\n\n` +
                `📅 Ativado em: ${new Date(activatedAt).toLocaleString('pt-BR')}\n` +
                `🔄 Última execução: ${lastSync !== 'Nunca' ? new Date(lastSync).toLocaleString('pt-BR') : lastSync}\n`;
@@ -4997,7 +4703,7 @@ function simularAlteracaoOportunidade() {
 }
 
 /**
- * FUNÇÃO EXECUTADA PELO TRIGGER AUTO-SYNC (A cada 5 minutos - MODO RÁPIDO)
+ * FUNÇÃO EXECUTADA PELO TRIGGER AUTO-SYNC (A cada 30 minutos)
  * LÓGICA CORRETA: 
  * 1. Compara BASE vs ANÁLISE (por nome de oportunidade)
  * 2. Cria análises completas para oportunidades não processadas
@@ -5040,6 +4746,26 @@ function autoSyncPipelineExecution() {
     // === LOCK ADQUIRIDO - Execução pode prosseguir ===
     console.log(`🔒 [${executionId}] Lock adquirido em ${lockWaitTime}ms - Execução exclusiva garantida`);
     logToSheet("INFO", "AutoSync", `🔒 [${executionId}] Lock adquirido`);
+    
+    // === CRÍTICO: APLICAR LOCALE pt_BR ANTES DE QUALQUER PROCESSAMENTO ===
+    // Isso garante que datas sejam interpretadas corretamente (DD/MM em vez de MM/DD)
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const currentLocale = ss.getSpreadsheetLocale();
+    if (currentLocale !== 'pt_BR' && currentLocale !== 'pt-BR') {
+      console.log(`🔧 [${executionId}] Alterando locale GLOBAL para pt_BR (atual: ${currentLocale})...`);
+      ss.setSpreadsheetLocale('pt_BR');
+      console.log(`✅ [${executionId}] Locale alterado para: ${ss.getSpreadsheetLocale()}`);
+      logToSheet("INFO", "AutoSync", `Locale alterado para pt_BR (era ${currentLocale})`);
+      
+      // Limpar cache de sheets após mudar locale
+      if (typeof invalidateSheetCache_ === 'function') {
+        invalidateSheetCache_();
+        console.log(`🧹 [${executionId}] Cache de sheets limpo após mudança de locale`);
+      }
+      
+      // Forçar recarga do spreadsheet
+      SpreadsheetApp.flush();
+    }
     
     // === 2. VERIFICAR FLAGS E CONFIGURAÇÃO ===
     const props = PropertiesService.getScriptProperties();
@@ -5100,7 +4826,6 @@ function autoSyncPipelineExecution() {
     console.log(`⏰ Timestamp: ${startTime.toISOString()}`);
     flushLogs_(); // Força escrita imediata
     
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
     let totalCreated = 0;
     let totalUpdated = 0;
     
@@ -5590,14 +5315,24 @@ function syncBaseToAnalysis_(mode) {
         const product = String(baseData[i][cols.p_prod] || '').trim();
         
         if (!baseAggregated.has(normName)) {
+          // === PADRONIZAÇÃO FORÇADA DE DATAS PARA DD/MM/AAAA ===
           // Capturar data de criação da BASE
           const createdDateRaw = cols.p_created > -1 ? baseData[i][cols.p_created] : null;
-          const createdParsed = createdDateRaw instanceof Date ? createdDateRaw : parseDate(createdDateRaw);
+          const closeDateRaw = baseData[i][cols.p_date];
+          const predictedDateRaw = cols.p_predicted_date > -1 ? baseData[i][cols.p_predicted_date] : null;
           
-          // LOG DEBUG: mostrar RAW e PARSED (apenas primeiros 3)
-          if (baseAggregated.size < 3 && createdDateRaw) {
-            const createdStr = createdParsed ? Utilities.formatDate(createdParsed, 'America/Sao_Paulo', 'dd/MM/yyyy') : 'NULL';
-            console.log(`  📅 DEBUG ${oppName}: Created RAW="${createdDateRaw}" → PARSED="${createdStr}"`);
+          // PADRONIZAR: Converter TODAS as datas para string DD/MM/AAAA
+          // Isso evita que Google Sheets interprete como MM/DD/AAAA
+          const createdDateStd = createdDateRaw ? formatDateRobust(createdDateRaw) : null;
+          const closeDateStd = closeDateRaw ? formatDateRobust(closeDateRaw) : null;
+          const predictedDateStd = predictedDateRaw ? formatDateRobust(predictedDateRaw) : null;
+          
+          // LOG DEBUG: mostrar RAW → PADRONIZADO (apenas primeiros 3)
+          if (baseAggregated.size < 3) {
+            console.log(`  📅 PADRONIZAÇÃO ${oppName}:`);
+            if (createdDateRaw) console.log(`     Created: "${createdDateRaw}" → "${createdDateStd}"`);
+            if (closeDateRaw) console.log(`     Close: "${closeDateRaw}" → "${closeDateStd}"`);
+            if (predictedDateRaw) console.log(`     Predicted: "${predictedDateRaw}" → "${predictedDateStd}"`);
           }
           
           baseAggregated.set(normName, {
@@ -5606,9 +5341,9 @@ function syncBaseToAnalysis_(mode) {
             net: 0,
             products: [],
             status: String(baseData[i][cols.p_stage] || '').trim(),
-            closeDate: baseData[i][cols.p_date],
-            predictedDate: cols.p_predicted_date > -1 ? baseData[i][cols.p_predicted_date] : null,
-            createdDate: createdParsed,
+            closeDate: closeDateStd,  // ✅ PADRONIZADO DD/MM/AAAA
+            predictedDate: predictedDateStd,  // ✅ PADRONIZADO DD/MM/AAAA
+            createdDate: createdDateStd,  // ✅ PADRONIZADO DD/MM/AAAA
             owner: String(baseData[i][cols.p_owner] || '').trim(),
             account: String(baseData[i][cols.p_acc] || '').trim(),
             portfolio: String(baseData[i][cols.p_portfolio] || '').trim(),
@@ -6001,109 +5736,11 @@ function syncBaseToAnalysis_(mode) {
  * Constrói linha de output para OPEN (53 colunas)
  * Inclui: MEDDIC, BANT, Forecast IA, Velocity, Anomalias, Território, Q1-Q4
  */
-function buildOpenOutputRow(runId, item, profile, fiscal, activity, meddic, ia, labels, overrideCat, idle, inconsistency, forcedAction, rulesApplied, detailedChanges, isCorrectTerritory, designatedSeller, quarterRecognition) {
-  const finalCat = overrideCat || mapEnum(ia.forecast_cat, ENUMS.FORECAST_IA, ENUMS.FORECAST_IA.PIPELINE);
-  const finalActionCode = forcedAction || ia.acao_code || "AUDITORIA-CRM";
-  const perguntas = Array.isArray(ia.perguntas_auditoria) ? ia.perguntas_auditoria.join(" | ") : "Gerar perguntas na próxima revisão.";
-  const gaps = (ia.gaps_identificados && ia.gaps_identificados.length > 0) ? ia.gaps_identificados.join(", ") : meddic.gaps.join(", ");
-  const bant = calculateBANTScore_(item, activity);
-  const bantGaps = bant.gaps.length ? bant.gaps.join(", ") : "OK";
-  const bantEvidence = bant.hits.length ? bant.hits.join(", ") : "-";
-  const meddicGaps = meddic.gaps.length ? meddic.gaps.join(", ") : "OK";
-  const meddicEvidence = (meddic.hits && meddic.hits.length) ? meddic.hits.join(", ") : "-";
-
-  const velSummary = item._velocityMetrics ? 
-    `${item._velocityMetrics.prediction} (Risco:${item._velocityMetrics.riskScore}%)` : "-";
-  const velDetails = item._velocityMetrics ? 
-    `Fase:${item._velocityMetrics.stageVelocity}d | Valor:${item._velocityMetrics.valueVelocity}%/d | Ativ:${item._velocityMetrics.activityMomentum}%` : "-";
-
-  const diasFunil = item.created ? Math.ceil((new Date() - item.created) / MS_PER_DAY) : 0;
-  const cicloDias = (item.closed && item.created) ? Math.ceil((item.closed - item.created) / MS_PER_DAY) : 0;
-  
-  // Validar ciclo
-  const cicloValidation = validateCiclo_(cicloDias, item.created, item.closed, item.oppName);
-  if (!cicloValidation.isValid) {
-    governanceIssues.push(cicloValidation.issue);
-  }
-  const cicloFinal = cicloValidation.correctedCiclo;
-  
-  const engagementQuality = ia.engagement_quality || "N/D";
-  
-  // Pré-formatar datas uma única vez
-  const closedDateFormatted = item.closed ? formatDateRobust(item.closed) : "-";
-  const lastUpdateFormatted = formatDateRobust(new Date());
-
-  return [
-    runId, item.oppName, item.accName, profile, item.products || "N/A", item.owner,
-    item.gross, item.net, item.stage, item.forecast_sf || "-", fiscal.label,
-    closedDateFormatted, cicloFinal, diasFunil,
-    activity.count, activity.weightedCount, activity.channelSummary, idle, engagementQuality,
-    finalCat, ia.confianca || 0, ia.motivo_confianca || "-",
-    meddic.score, meddicGaps, meddicEvidence, bant.score, bantGaps, bantEvidence,
-    ia.justificativa || "-", rulesApplied, inconsistency, perguntas, labels.join(", "), gaps,
-    finalActionCode, ia.acao_desc || "-", ia.risco_principal || "-",
-    detailedChanges.totalChanges || 0, detailedChanges.criticalChanges || 0,
-    detailedChanges.closeDateChanges || 0, detailedChanges.stageChanges || 0,
-    detailedChanges.valueChanges || 0, detailedChanges.anomalies || "OK",
-    velSummary, velDetails, isCorrectTerritory ? "Sim" : "NÃO", designatedSeller,
-    item._detectedLocation || item.billingState || item.billingCity || "-",
-    item._detectionSource || "CRM", quarterRecognition.calendarType || "-",
-    quarterRecognition.q1 || 0, quarterRecognition.q2 || 0,
-    quarterRecognition.q3 || 0, quarterRecognition.q4 || 0,
-    lastUpdateFormatted  // 🕐 Última Atualização (col 54)
-  ];
-}
-
-/**
- * Constrói linha de output para WON/LOST (39 colunas)
- * Inclui: Análise retrospectiva, causas, lições, atividades, change tracking
- */
-function buildClosedOutputRow(runId, mode, item, profile, fiscal, ia, labels, activityData, detailedChanges, activityBreakdown) {
-  const status = (mode === 'WON') ? "GANHO" : "PERDA";
-  const resumo = ia.resumo || ia.justificativa || "-";
-  const causa = ia.causa_raiz || "-";
-  const tipo = ia.tipo_resultado || "-";
-  const fatores = (ia.fatores_sucesso || []).join(", ") || "-";
-  const causasSecundarias = (ia.causas_secundarias || []).join(", ") || "-";
-  const qualidadeEngajamento = ia.qualidade_engajamento || "-";
-  const gestaoOpp = ia.gestao_oportunidade || "-";
-  const evitavel = ia.evitavel || "-";
-  const sinaisAlerta = (ia.sinais_alerta || []).join(", ") || "-";
-  const momentoCritico = ia.momento_critico || "-";
-  const licoesAprendidas = ia.licoes_aprendidas || "-";
-  
-  // Validar ciclo (se existir)
-  if (item.ciclo && item.created && item.closed) {
-    const cicloValidation = validateCiclo_(item.ciclo, item.created, item.closed, item.oppName);
-    if (!cicloValidation.isValid) {
-      labels.push(cicloValidation.issue);
-    }
-  }
-  
-  // Pré-formatar datas uma única vez
-  const closedDateFormatted = item.closed ? formatDateRobust(item.closed) : "-";
-  const lastUpdateFormatted = formatDateRobust(new Date());
-
-  return [
-    runId, item.oppName, item.accName, profile, item.owner, item.gross, item.net,
-    item.portfolio || "-", item.segment || "-", item.productFamily || "-",
-    status, fiscal.label, closedDateFormatted,
-    item.ciclo || "-", item.products || "-", resumo, causa,
-    mode === 'WON' ? fatores : causasSecundarias, tipo,
-    mode === 'WON' ? qualidadeEngajamento : evitavel,
-    mode === 'WON' ? gestaoOpp : sinaisAlerta,
-    mode === 'WON' ? "-" : momentoCritico, licoesAprendidas,
-    activityData.count || 0, activityBreakdown.last7Days || 0,
-    activityBreakdown.last30Days || 0, activityBreakdown.typeDistribution || "-",
-    activityBreakdown.peakPeriod || "-", activityBreakdown.avgCadence || "-",
-    detailedChanges.totalChanges || 0, detailedChanges.criticalChanges || 0,
-    detailedChanges.closeDateChanges || 0, detailedChanges.stageChanges || 0,
-    detailedChanges.valueChanges || 0, detailedChanges.topFields || "-",
-    detailedChanges.changePattern || "-", detailedChanges.changeFrequency || "-",
-    detailedChanges.uniqueEditors || 0, labels.join(", "),
-    lastUpdateFormatted  // 🕐 Última Atualização (col 40)
-  ];
-}
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// buildOpenOutputRow() e buildClosedOutputRow() estão definidas em ShareCode.gs
+// NÃO CRIAR DUPLICATAS AQUI - usar as funções centralizadas de ShareCode.gs
+// Historicamente, houve duplicação que causou inconsistências (corrigido em 08/02/2026)
+// ════════════════════════════════════════════════════════════════════════════════════════════════
 
 // ================================================================================
 // FUNÇÕES AUTOSYNC: INTEGRAÇÃO COM MOTOR DE ANÁLISE IA
@@ -6472,10 +6109,6 @@ function recalcularDatasFechamento_() {
  * Obtém o nome da sheet da fila de processamento para o modo especificado
  * @private
  */
-function getQueueSheetName_(mode) {
-  return PropertiesService.getScriptProperties().getProperty(`QUEUE_SHEET_${mode}`) || "";
-}
-
 /**
  * Adiciona timestamp retroativo em análises que não têm
  * @param {string} mode - OPEN, WON ou LOST
@@ -6587,14 +6220,9 @@ function processarAnaliseCompleta_(oppName, mode, config) {
   const relatedActivities = activitiesMap.get(oppLookupKey) || [];
   const relatedChanges = changesMap.get(oppLookupKey) || [];
   
-  // CORREÇÃO: Para deals fechados (WON/LOST), usar data da última mudança de fase
-  // Para pipeline (OPEN), manter a data prevista de fechamento
-  if (mode === 'WON' || mode === 'LOST') {
-    const lastStageDate = getLastStageChangeDate(relatedChanges, changesHeaders);
-    if (lastStageDate) {
-      item.closed = lastStageDate;
-    }
-  }
+  // CRÍTICO: Aplicar correção de data de fechamento (usa data da última mudança de fase para WON/LOST)
+  // IMPORTANTE: applyClosedDateCorrection_ também recalcula o ciclo automaticamente
+  applyClosedDateCorrection_(item, mode, relatedChanges, changesHeaders);
   
   const baseClients = getBaseClientsCache();
   const isBaseClient = baseClients.has(item.accName.toLowerCase());
