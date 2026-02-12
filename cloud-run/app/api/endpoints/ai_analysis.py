@@ -9,9 +9,10 @@ import os
 
 router = APIRouter()
 
-# Gemini Configuration
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyBwgc9nHAtgUiabpGJDwrMBd3dJTBE5ee4")
-genai.configure(api_key=GEMINI_API_KEY)
+# Gemini Configuration (optional)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 class DealAnalysisRequest(BaseModel):
     won_deals: List[Dict[str, Any]]

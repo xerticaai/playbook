@@ -22,6 +22,7 @@ from api.endpoints.weekly_agenda import router as weekly_agenda_router
 # War Room REMOVED - functionality merged into Weekly Agenda
 # from api.endpoints.war_room import router as war_room_router
 from api.endpoints.export import router as export_router
+from api.endpoints.ml_predictions import router as ml_predictions_router
 
 app = FastAPI(
     title="Sales Intelligence API",
@@ -54,14 +55,16 @@ app.include_router(weekly_agenda_router, prefix="/api", tags=["Weekly Agenda"])
 # War Room REMOVED - functionality merged into Weekly Agenda
 # app.include_router(war_room_router, prefix="/api", tags=["War Room"])
 app.include_router(export_router, prefix="/api", tags=["Export"])
+app.include_router(ml_predictions_router, prefix="/api", tags=["ML Predictions"])
 
 # BigQuery
 PROJECT_ID = os.getenv("GCP_PROJECT", "operaciones-br")
 DATASET_ID = "sales_intelligence"
 
-# Gemini Configuration (legacy - mantido para compatibilidade)
-GEMINI_API_KEY = "AIzaSyBwgc9nHAtgUiabpGJDwrMBd3dJTBE5ee4"
-genai.configure(api_key=GEMINI_API_KEY)
+# Gemini Configuration (optional)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)  # type: ignore[attr-defined]
 
 # Short-lived in-memory cache (per Cloud Run instance)
 CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "120"))
@@ -164,7 +167,7 @@ async def root():
                 "/api/insights-rag",
                 "/api/ai-analysis",
                 "/api/weekly-agenda",
-                "/api/war-room"
+                "/api/export/pauta-semanal-csv"
             ]
         }
 
@@ -319,7 +322,7 @@ def get_metrics(
                 pipeline_filters.append(f"Vendedor IN ('{sellers_quoted}')")
                 closed_won_filters.append(f"Vendedor IN ('{sellers_quoted}')")
                 closed_lost_filters.append(f"Vendedor IN ('{sellers_quoted}')")
-        
+
         pipeline_where = "WHERE " + " AND ".join(pipeline_filters)
         won_where = "WHERE " + " AND ".join(closed_won_filters) if closed_won_filters else ""
         lost_where = "WHERE " + " AND ".join(closed_lost_filters) if closed_lost_filters else ""
@@ -327,15 +330,15 @@ def get_metrics(
         # Pipeline metrics (com idle days, scores MEDDIC/BANT e avg_confidence)
         pipeline_query = f"""
         SELECT 
-          COUNT(*) as deals_count,
-          ROUND(SUM(Gross), 2) as gross,
-          ROUND(SUM(Net), 2) as net,
-          ROUND(AVG(SAFE_CAST(Idle_Dias AS FLOAT64)), 1) as avg_idle_days,
-          ROUND(AVG(SAFE_CAST(MEDDIC_Score AS FLOAT64)), 1) as avg_meddic,
-          ROUND(AVG(SAFE_CAST(BANT_Score AS FLOAT64)), 1) as avg_bant,
-          ROUND(AVG(SAFE_CAST(Confianca AS FLOAT64)), 1) as avg_confidence,
-          COUNTIF(SAFE_CAST(Idle_Dias AS FLOAT64) > 30) as high_risk_idle,
-          COUNTIF(SAFE_CAST(Idle_Dias AS FLOAT64) BETWEEN 15 AND 30) as medium_risk_idle
+            COUNT(*) as deals_count,
+            ROUND(SUM(Gross), 2) as gross,
+            ROUND(SUM(Net), 2) as net,
+            ROUND(AVG(SAFE_CAST(Idle_Dias AS FLOAT64)), 1) as avg_idle_days,
+            ROUND(AVG(SAFE_CAST(MEDDIC_Score AS FLOAT64)), 1) as avg_meddic,
+            ROUND(AVG(SAFE_CAST(BANT_Score AS FLOAT64)), 1) as avg_bant,
+            ROUND(AVG(SAFE_CAST(Confianca AS FLOAT64)), 1) as avg_confidence,
+            COUNTIF(SAFE_CAST(Idle_Dias AS FLOAT64) > 30) as high_risk_idle,
+            COUNTIF(SAFE_CAST(Idle_Dias AS FLOAT64) BETWEEN 15 AND 30) as medium_risk_idle
         FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
         {pipeline_where}
         """
@@ -368,10 +371,10 @@ def get_metrics(
         # High confidence deals (>=50%)
         high_confidence_query = f"""
         SELECT 
-          COUNT(*) as deals_count,
-          ROUND(SUM(Gross), 2) as gross,
-          ROUND(SUM(Net), 2) as net,
-          ROUND(AVG(SAFE_CAST(Confianca AS FLOAT64)), 1) as avg_confidence
+            COUNT(*) as deals_count,
+            ROUND(SUM(Gross), 2) as gross,
+            ROUND(SUM(Net), 2) as net,
+            ROUND(AVG(SAFE_CAST(Confianca AS FLOAT64)), 1) as avg_confidence
         FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
         {pipeline_where} AND SAFE_CAST(Confianca AS FLOAT64) >= 50
         """
@@ -791,6 +794,18 @@ def analyze_patterns(year: Optional[int] = None, quarter: Optional[int] = None, 
     Análise avançada de padrões de vitória e perda usando Gemini API
     """
     try:
+        if not GEMINI_API_KEY:
+            return {
+                "win_insights": "Análise temporariamente indisponível.",
+                "loss_insights": "Análise temporariamente indisponível.",
+                "recommendations": [
+                    "Focar em qualificação MEDDIC rigorosa",
+                    "Engajar champions cedo no ciclo",
+                    "Criar cadência de follow-up estruturada",
+                ],
+                "status": "disabled",
+            }
+
         client = bigquery.Client(project=PROJECT_ID)
         
         # Filtros
@@ -894,7 +909,7 @@ Responda APENAS com o JSON, sem markdown ou texto adicional.
 """
         
         # Chamar Gemini API (usando modelo especificado pelo usuário)
-        model = genai.GenerativeModel('gemini-2.5-flash-preview-09-2025')
+        model = genai.GenerativeModel('gemini-2.5-flash-preview-09-2025')  # type: ignore[attr-defined]
         response = model.generate_content(prompt)
         
         # Parse response
@@ -924,7 +939,7 @@ Responda APENAS com o JSON, sem markdown ou texto adicional.
     except Exception as e:
         # Fallback em caso de erro
         return {
-            "win_insights": f"Análise temporariamente indisponível. Erro: {str(e)[:100]}",
+            "win_insights": "Análise temporariamente indisponível.",
             "loss_insights": "Análise temporariamente indisponível.",
             "recommendations": [
                 "Focar em qualificação MEDDIC rigorosa",
@@ -932,7 +947,6 @@ Responda APENAS com o JSON, sem markdown ou texto adicional.
                 "Criar cadência de follow-up estruturada"
             ],
             "status": "error",
-            "error_detail": str(e)[:200]
         }
 
 def format_deals_for_gemini(deals_list: List[Dict]) -> str:

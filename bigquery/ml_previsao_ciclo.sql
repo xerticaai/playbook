@@ -1,173 +1,326 @@
--- ============================================================================
--- MODELO 1: PREVISÃO DE CICLO DE VENDAS
--- ============================================================================
--- Tipo: BOOSTED_TREE_REGRESSOR
--- Objetivo: Prever quantos dias faltam para fechar um deal
--- Output: dias_previstos, velocidade_prevista (RÁPIDO/NORMAL/LENTO/MUITO_LENTO)
---
--- Deploy:
---   bq query --use_legacy_sql=false < bigquery/ml_previsao_ciclo.sql
+-- ==========================================================================
+-- MODELO 1: Previsão de Ciclo de Vendas (REGRESSION)
+-- ==========================================================================
+-- Objetivo: prever o tempo de ciclo (Ciclo_dias) com base no histórico de
+--           closed_deals_won + closed_deals_lost e aplicar no pipeline aberto.
+-- Saídas consumidas pelo dashboard/API:
+--   - MODEL:  sales_intelligence.ml_previsao_ciclo
+--   - TABLE:  sales_intelligence.pipeline_previsao_ciclo
 -- ============================================================================
 
--- 1. Criar tabela de treino (deals FECHADOS com ciclo conhecido)
-CREATE OR REPLACE TABLE `sales_intelligence.treino_previsao_ciclo` AS
-SELECT
-  opportunity_name AS opportunity,
-  Gross_Value,
-  Net_Value,
-  Vendedor,
-  Segmento,
-  Stage AS Fase_Atual,
-  Fiscal_Q AS Fiscal_Quarter,
-  
-  -- Features numéricas
-  CAST(Confidence AS FLOAT64) AS confidence_num,
-  CAST(MEDDIC_Score AS FLOAT64) AS meddic_score,
-  CAST(BANT_Score AS FLOAT64) AS bant_score,
-  CAST(Idle_Days AS INT64) AS idle_days,
-  CAST(Atividades AS INT64) AS atividades,
-  CAST(Qtd_Produtos AS INT64) AS qtd_produtos,
-  CAST(Qtd_Reunioes AS INT64) AS qtd_reunioes,
-  CAST(Red_Flags AS INT64) AS red_flags,
-  CAST(Yellow_Flags AS INT64) AS yellow_flags,
-  
-  -- Target: ciclo real (dias entre criação e fechamento)
-  CAST(Cycle_Days AS INT64) AS ciclo_real_dias
-  
-FROM `sales_intelligence.closed_deals`
-WHERE 
-  outcome = 'WON'
-  AND Cycle_Days IS NOT NULL
-  AND CAST(Cycle_Days AS INT64) > 0
-  AND CAST(Cycle_Days AS INT64) < 730  -- Máximo 2 anos
-  AND Data_Created IS NOT NULL
-  AND Close_Date IS NOT NULL;
-
--- 2. Treinar modelo BOOSTED_TREE_REGRESSOR
-CREATE OR REPLACE MODEL `sales_intelligence.modelo_previsao_ciclo`
+-- 1) Treinar modelo (histórico WON + LOST)
+CREATE OR REPLACE MODEL `sales_intelligence.ml_previsao_ciclo`
 OPTIONS(
   model_type='BOOSTED_TREE_REGRESSOR',
-  input_label_cols=['ciclo_real_dias'],
-  max_iterations=100,
+  input_label_cols=['Ciclo_dias'],
+  data_split_method='AUTO_SPLIT',
+  max_iterations=50,
   learn_rate=0.1,
   early_stop=TRUE,
-  min_rel_progress=0.001,
+  min_rel_progress=0.01,
   l1_reg=0.1,
-  l2_reg=0.1,
-  max_tree_depth=10,
-  subsample=0.8,
-  data_split_method='AUTO_SPLIT',
-  data_split_eval_fraction=0.2
+  l2_reg=0.1
 ) AS
-SELECT
-  -- Features
-  Gross_Value,
-  Net_Value,
-  Vendedor,
-  Segmento,
-  Fase_Atual,
-  Fiscal_Quarter,
-  confidence_num,
-  meddic_score,
-  bant_score,
-  idle_days,
-  atividades,
-  qtd_produtos,
-  qtd_reunioes,
-  red_flags,
-  yellow_flags,
-  
-  -- Target
-  ciclo_real_dias
-FROM `sales_intelligence.treino_previsao_ciclo`;
+WITH all_closed_deals AS (
+  SELECT
+    Oportunidade,
+    Vendedor,
+    SAFE_CAST(Gross AS FLOAT64) AS Gross,
+    SAFE_CAST(Net AS FLOAT64) AS Net,
+    Fiscal_Q,
+    SAFE_CAST(Ciclo_dias AS INT64) AS Ciclo_dias,
 
--- 3. Avaliar modelo (métricas)
-SELECT
-  'PREVISAO_CICLO' AS modelo,
-  mean_absolute_error,
-  mean_squared_error,
-  mean_squared_log_error,
-  median_absolute_error,
-  r2_score,
-  explained_variance
-FROM ML.EVALUATE(MODEL `sales_intelligence.modelo_previsao_ciclo`);
+    -- Métricas (podem ser NULL dependendo do sheet)
+    SAFE_CAST(Atividades AS INT64) AS Atividades,
+    SAFE_CAST(Ativ_7d AS INT64) AS Ativ_7d,
+    SAFE_CAST(Ativ_30d AS INT64) AS Ativ_30d,
+    SAFE_CAST(Cadencia_Media_dias AS FLOAT64) AS Cadencia_Media_dias,
 
--- 4. Criar tabela de predições para pipeline ATIVO
+    SAFE_CAST(Total_Mudancas AS INT64) AS Total_Mudancas,
+    SAFE_CAST(Mudancas_Criticas AS INT64) AS Mudancas_Criticas,
+    SAFE_CAST(Mudancas_Close_Date AS INT64) AS Mudancas_Close_Date,
+    SAFE_CAST(Mudancas_Stage AS INT64) AS Mudancas_Stage,
+    SAFE_CAST(Mudancas_Valor AS INT64) AS Mudancas_Valor,
+
+    -- Scores
+    CAST(NULL AS INT64) AS MEDDIC_Score,
+    CAST(NULL AS INT64) AS BANT_Score,
+
+    -- Categóricas
+    Perfil_Cliente,
+    Segmento,
+    Portfolio,
+    Familia_Produto,
+    Qualidade_Engajamento,
+    Gestao_Oportunidade,
+
+    'WON' AS outcome
+  FROM `sales_intelligence.closed_deals_won`
+  WHERE SAFE_CAST(Ciclo_dias AS INT64) IS NOT NULL
+
+  UNION ALL
+
+  SELECT
+    Oportunidade,
+    Vendedor,
+    SAFE_CAST(Gross AS FLOAT64) AS Gross,
+    SAFE_CAST(Net AS FLOAT64) AS Net,
+    Fiscal_Q,
+    SAFE_CAST(Ciclo_dias AS INT64) AS Ciclo_dias,
+
+    SAFE_CAST(Atividades AS INT64) AS Atividades,
+    SAFE_CAST(Ativ_7d AS INT64) AS Ativ_7d,
+    SAFE_CAST(Ativ_30d AS INT64) AS Ativ_30d,
+    SAFE_CAST(Cadencia_Media_dias AS FLOAT64) AS Cadencia_Media_dias,
+
+    SAFE_CAST(Total_Mudancas AS INT64) AS Total_Mudancas,
+    SAFE_CAST(Mudancas_Criticas AS INT64) AS Mudancas_Criticas,
+    SAFE_CAST(Mudancas_Close_Date AS INT64) AS Mudancas_Close_Date,
+    SAFE_CAST(Mudancas_Stage AS INT64) AS Mudancas_Stage,
+    SAFE_CAST(Mudancas_Valor AS INT64) AS Mudancas_Valor,
+
+    CAST(NULL AS INT64) AS MEDDIC_Score,
+    CAST(NULL AS INT64) AS BANT_Score,
+
+    Perfil_Cliente,
+    Segmento,
+    Portfolio,
+    Familia_Produto,
+    Qualidade_Engajamento,
+    Gestao_Oportunidade,
+
+    'LOST' AS outcome
+  FROM `sales_intelligence.closed_deals_lost`
+  WHERE SAFE_CAST(Ciclo_dias AS INT64) IS NOT NULL
+),
+filtered AS (
+  SELECT
+    *
+  FROM all_closed_deals
+  WHERE Ciclo_dias IS NOT NULL
+    AND Ciclo_dias > 0
+    AND Ciclo_dias < 730
+    AND Gross IS NOT NULL
+),
+vendedor_stats AS (
+  SELECT
+    Vendedor,
+    COUNT(*) AS vendedor_total_deals,
+    AVG(Ciclo_dias) AS vendedor_avg_ciclo,
+    AVG(Atividades) AS vendedor_avg_atividades,
+    SAFE_DIVIDE(SUM(CASE WHEN outcome='WON' THEN 1 ELSE 0 END), COUNT(*)) AS vendedor_win_rate
+  FROM filtered
+  GROUP BY Vendedor
+),
+segmento_stats AS (
+  SELECT
+    Segmento,
+    COUNT(*) AS segmento_total_deals,
+    AVG(Ciclo_dias) AS segmento_avg_ciclo,
+    AVG(Gross) AS segmento_avg_gross,
+    SAFE_DIVIDE(SUM(CASE WHEN outcome='WON' THEN 1 ELSE 0 END), COUNT(*)) AS segmento_win_rate
+  FROM filtered
+  GROUP BY Segmento
+)
+SELECT
+  -- LABEL
+  f.Ciclo_dias,
+
+  -- Numéricas
+  f.Gross,
+  f.Net,
+  COALESCE(f.Atividades, 0) AS Atividades,
+  COALESCE(f.Ativ_7d, 0) AS Ativ_7d,
+  COALESCE(f.Ativ_30d, 0) AS Ativ_30d,
+  COALESCE(f.Cadencia_Media_dias, 0) AS Cadencia_Media_dias,
+  COALESCE(f.Total_Mudancas, 0) AS Total_Mudancas,
+  COALESCE(f.Mudancas_Criticas, 0) AS Mudancas_Criticas,
+  COALESCE(f.Mudancas_Close_Date, 0) AS Mudancas_Close_Date,
+  COALESCE(f.Mudancas_Stage, 0) AS Mudancas_Stage,
+  COALESCE(f.Mudancas_Valor, 0) AS Mudancas_Valor,
+  COALESCE(f.MEDDIC_Score, 0) AS MEDDIC_Score,
+  COALESCE(f.BANT_Score, 0) AS BANT_Score,
+
+  -- Categóricas
+  f.Fiscal_Q,
+  f.Perfil_Cliente,
+  f.Segmento,
+  f.Portfolio,
+  f.Familia_Produto,
+  f.Qualidade_Engajamento,
+  f.Gestao_Oportunidade,
+
+  -- Agregações
+  COALESCE(vs.vendedor_total_deals, 0) AS vendedor_total_deals,
+  COALESCE(vs.vendedor_avg_ciclo, 0) AS vendedor_avg_ciclo,
+  COALESCE(vs.vendedor_avg_atividades, 0) AS vendedor_avg_atividades,
+  COALESCE(vs.vendedor_win_rate, 0) AS vendedor_win_rate,
+
+  COALESCE(ss.segmento_total_deals, 0) AS segmento_total_deals,
+  COALESCE(ss.segmento_avg_ciclo, 0) AS segmento_avg_ciclo,
+  COALESCE(ss.segmento_avg_gross, 0) AS segmento_avg_gross,
+  COALESCE(ss.segmento_win_rate, 0) AS segmento_win_rate
+
+FROM filtered f
+LEFT JOIN vendedor_stats vs ON f.Vendedor = vs.Vendedor
+LEFT JOIN segmento_stats ss ON f.Segmento = ss.Segmento;
+
+
+-- 2) Aplicar o modelo no pipeline aberto (materializa para o dashboard)
 CREATE OR REPLACE TABLE `sales_intelligence.pipeline_previsao_ciclo` AS
+WITH pipeline_base AS (
+  SELECT
+    p.Oportunidade AS opportunity,
+    p.Vendedor,
+    SAFE_CAST(p.Gross AS FLOAT64) AS Gross,
+    SAFE_CAST(p.Net AS FLOAT64) AS Net,
+    p.Fiscal_Q,
+
+    COALESCE(SAFE_CAST(p.Atividades AS INT64), 0) AS Atividades,
+    CAST(NULL AS INT64) AS Ativ_7d,
+    CAST(NULL AS INT64) AS Ativ_30d,
+    CAST(NULL AS FLOAT64) AS Cadencia_Media_dias,
+
+    CAST(NULL AS INT64) AS Total_Mudancas,
+    CAST(NULL AS INT64) AS Mudancas_Criticas,
+    CAST(NULL AS INT64) AS Mudancas_Close_Date,
+    CAST(NULL AS INT64) AS Mudancas_Stage,
+    CAST(NULL AS INT64) AS Mudancas_Valor,
+
+    COALESCE(SAFE_CAST(p.MEDDIC_Score AS INT64), 0) AS MEDDIC_Score,
+    COALESCE(SAFE_CAST(p.BANT_Score AS INT64), 0) AS BANT_Score,
+
+    -- Categóricas: pipeline nem sempre tem todas
+    p.Perfil AS Perfil_Cliente,
+    p.Produtos AS Segmento,
+    CAST(NULL AS STRING) AS Portfolio,
+    CAST(NULL AS STRING) AS Familia_Produto,
+    p.Qualidade_Engajamento,
+    CAST(NULL AS STRING) AS Gestao_Oportunidade,
+
+    -- Campos esperados pelo backend/dashboard
+    SAFE_CAST(p.Confianca AS FLOAT64) AS Confianca_pct,
+    SAFE_CAST(p.Idle_Dias AS INT64) AS Idle_Dias,
+    SAFE_CAST(p.ultima_atualizacao AS TIMESTAMP) AS Ultima_Atualizacao
+
+  FROM `sales_intelligence.pipeline` p
+  WHERE p.Fase_Atual NOT IN ('Closed Won', 'Closed Lost')
+),
+vendedor_stats AS (
+  SELECT
+    Vendedor,
+    COUNT(*) AS vendedor_total_deals,
+    AVG(SAFE_CAST(Ciclo_dias AS INT64)) AS vendedor_avg_ciclo,
+    AVG(SAFE_CAST(Atividades AS INT64)) AS vendedor_avg_atividades,
+    SAFE_DIVIDE(SUM(CASE WHEN src='WON' THEN 1 ELSE 0 END), COUNT(*)) AS vendedor_win_rate
+  FROM (
+    SELECT Vendedor, Ciclo_dias, Atividades, 'WON' AS src FROM `sales_intelligence.closed_deals_won`
+    UNION ALL
+    SELECT Vendedor, Ciclo_dias, Atividades, 'LOST' AS src FROM `sales_intelligence.closed_deals_lost`
+  )
+  WHERE Vendedor IS NOT NULL AND SAFE_CAST(Ciclo_dias AS INT64) IS NOT NULL
+  GROUP BY Vendedor
+),
+segmento_stats AS (
+  SELECT
+    Segmento,
+    COUNT(*) AS segmento_total_deals,
+    AVG(SAFE_CAST(Ciclo_dias AS INT64)) AS segmento_avg_ciclo,
+    AVG(SAFE_CAST(Gross AS FLOAT64)) AS segmento_avg_gross,
+    SAFE_DIVIDE(SUM(CASE WHEN src='WON' THEN 1 ELSE 0 END), COUNT(*)) AS segmento_win_rate
+  FROM (
+    SELECT Segmento, Ciclo_dias, Gross, 'WON' AS src FROM `sales_intelligence.closed_deals_won`
+    UNION ALL
+    SELECT Segmento, Ciclo_dias, Gross, 'LOST' AS src FROM `sales_intelligence.closed_deals_lost`
+  )
+  WHERE Segmento IS NOT NULL AND SAFE_CAST(Ciclo_dias AS INT64) IS NOT NULL
+  GROUP BY Segmento
+),
+features AS (
+  SELECT
+    pb.*,
+    COALESCE(vs.vendedor_total_deals, 0) AS vendedor_total_deals,
+    COALESCE(vs.vendedor_avg_ciclo, 0) AS vendedor_avg_ciclo,
+    COALESCE(vs.vendedor_avg_atividades, 0) AS vendedor_avg_atividades,
+    COALESCE(vs.vendedor_win_rate, 0) AS vendedor_win_rate,
+
+    COALESCE(ss.segmento_total_deals, 0) AS segmento_total_deals,
+    COALESCE(ss.segmento_avg_ciclo, 0) AS segmento_avg_ciclo,
+    COALESCE(ss.segmento_avg_gross, 0) AS segmento_avg_gross,
+    COALESCE(ss.segmento_win_rate, 0) AS segmento_win_rate
+  FROM pipeline_base pb
+  LEFT JOIN vendedor_stats vs ON pb.Vendedor = vs.Vendedor
+  LEFT JOIN segmento_stats ss ON pb.Segmento = ss.Segmento
+)
 SELECT
-  p.opportunity_name AS opportunity,
-  p.Gross_Value,
-  p.Vendedor,
-  p.Segmento,
-  p.Stage AS Fase_Atual,
-  p.Fiscal_Q AS Fiscal_Quarter,
-  
-  -- Predição do modelo
-  CAST(pred.predicted_ciclo_real_dias AS INT64) AS dias_previstos,
-  
-  -- Classificação de velocidade
+  opportunity,
+  Gross,
+  Net,
+  Vendedor,
+  Fiscal_Q,
+
+  CAST(predicted_Ciclo_dias AS INT64) AS dias_previstos,
+
   CASE
-    WHEN pred.predicted_ciclo_real_dias <= 30 THEN 'RÁPIDO'
-    WHEN pred.predicted_ciclo_real_dias <= 60 THEN 'NORMAL'
-    WHEN pred.predicted_ciclo_real_dias <= 120 THEN 'LENTO'
+    WHEN predicted_Ciclo_dias <= 30 THEN 'RÁPIDO'
+    WHEN predicted_Ciclo_dias <= 60 THEN 'NORMAL'
+    WHEN predicted_Ciclo_dias <= 120 THEN 'LENTO'
     ELSE 'MUITO_LENTO'
   END AS velocidade_prevista,
-  
-  -- Contexto para análise
-  CAST(p.Confidence AS FLOAT64) AS confidence_num,
-  CAST(p.MEDDIC_Score AS FLOAT64) AS meddic_score,
-  CAST(p.BANT_Score AS FLOAT64) AS bant_score,
-  CAST(p.Idle_Days AS INT64) AS idle_days,
-  CAST(p.Atividades AS INT64) AS Atividades_Peso
-  
-FROM `sales_intelligence.pipeline` p
-JOIN ML.PREDICT(
-  MODEL `sales_intelligence.modelo_previsao_ciclo`,
+
+  -- Contexto para UI/API
+  Confianca_pct,
+  Atividades,
+  SAFE_CAST(MEDDIC_Score AS FLOAT64) AS MEDDIC_Score,
+  SAFE_CAST(BANT_Score AS FLOAT64) AS BANT_Score,
+  Idle_Dias,
+  Ultima_Atualizacao
+
+FROM ML.PREDICT(
+  MODEL `sales_intelligence.ml_previsao_ciclo`,
   (
     SELECT
-      Gross_Value,
-      Net_Value,
+      -- chaves/colunas pass-through
+      opportunity,
+      Gross,
+      Net,
       Vendedor,
+      Fiscal_Q,
+
+      -- features
+      Atividades,
+      Ativ_7d,
+      Ativ_30d,
+      Cadencia_Media_dias,
+      Total_Mudancas,
+      Mudancas_Criticas,
+      Mudancas_Close_Date,
+      Mudancas_Stage,
+      Mudancas_Valor,
+      MEDDIC_Score,
+      BANT_Score,
+
+      Perfil_Cliente,
       Segmento,
-      Stage AS Fase_Atual,
-      Fiscal_Q AS Fiscal_Quarter,
-      CAST(Confidence AS FLOAT64) AS confidence_num,
-      CAST(MEDDIC_Score AS FLOAT64) AS meddic_score,
-      CAST(BANT_Score AS FLOAT64) AS bant_score,
-      CAST(Idle_Days AS INT64) AS idle_days,
-      CAST(Atividades AS INT64) AS atividades,
-      CAST(Qtd_Produtos AS INT64) AS qtd_produtos,
-      CAST(Qtd_Reunioes AS INT64) AS qtd_reunioes,
-      CAST(Red_Flags AS INT64) AS red_flags,
-      CAST(Yellow_Flags AS INT64) AS yellow_flags
-    FROM `sales_intelligence.pipeline`
+      Portfolio,
+      Familia_Produto,
+      Qualidade_Engajamento,
+      Gestao_Oportunidade,
+
+      vendedor_total_deals,
+      vendedor_avg_ciclo,
+      vendedor_avg_atividades,
+      vendedor_win_rate,
+      segmento_total_deals,
+      segmento_avg_ciclo,
+      segmento_avg_gross,
+      segmento_win_rate,
+
+      -- contexto
+      Confianca_pct,
+      Idle_Dias,
+      Ultima_Atualizacao
+
+    FROM features
   )
-) pred
-ON TRUE;
-
--- 5. Análise de importância das features
-SELECT
-  feature,
-  importance,
-  RANK() OVER (ORDER BY importance DESC) AS rank
-FROM ML.FEATURE_IMPORTANCE(MODEL `sales_intelligence.modelo_previsao_ciclo`)
-ORDER BY importance DESC
-LIMIT 20;
-
--- 6. Estatísticas das predições
-SELECT
-  velocidade_prevista,
-  COUNT(*) AS deals_count,
-  AVG(dias_previstos) AS avg_dias,
-  MIN(dias_previstos) AS min_dias,
-  MAX(dias_previstos) AS max_dias,
-  SUM(Gross_Value) AS total_value
-FROM `sales_intelligence.pipeline_previsao_ciclo`
-GROUP BY velocidade_prevista
-ORDER BY 
-  CASE velocidade_prevista
-    WHEN 'RÁPIDO' THEN 1
-    WHEN 'NORMAL' THEN 2
-    WHEN 'LENTO' THEN 3
-    WHEN 'MUITO_LENTO' THEN 4
-  END;
+);

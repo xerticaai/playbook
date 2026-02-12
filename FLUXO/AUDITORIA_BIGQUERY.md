@@ -39,19 +39,19 @@ bq rm -f operaciones-br:sales_intelligence.closed_deals
 
 | View | Tipo | Descrição | Status |
 |------|------|-----------|--------|
-| `ml_prioridade_deal_v2` | SQL puro | Calcula priority_score com fórmulas | ✅ **FUNCIONAL** |
-| `ml_proxima_acao_v2` | SQL puro | Gera ações recomendadas com CASE WHEN | ✅ **FUNCIONAL** |
+| `pipeline_prioridade_deals` | SQL + ML outputs | Calcula `priority_score` e nível | ✅ **FUNCIONAL** |
+| `pipeline_proxima_acao` | SQL puro | Gera ações recomendadas com CASE WHEN | ✅ **FUNCIONAL** |
 
 **Descoberta importante**: 🎯 **Essas VIEWs NÃO usam Machine Learning real!**
 
-São **heurísticas SQL inteligentes**:
-- `ml_prioridade_deal_v2`: Calcula priority score baseado em:
+São **heurísticas SQL inteligentes** (com enriquecimento por outputs de modelos quando disponível):
+- `pipeline_prioridade_deals`: Calcula priority score baseado em:
   - Valor normalizado (30%)
   - Urgência por data (30%)
   - Risco estimado (40%)
   - Fórmula: `(valor_norm * 0.3) + (urgencia * 0.3) + (risco * 0.4)`
 
-- `ml_proxima_acao_v2`: Recomenda ações baseado em:
+- `pipeline_proxima_acao`: Recomenda ações baseado em:
   - Atividades < 2 + dias > 30 → "REATIVAR_URGENTE"
   - Close em 7 dias + risco alto → "FECHAR_URGENTE"
   - Valor > $100K → "PRIORIZAR_RECURSOS"
@@ -70,7 +70,7 @@ SELECT
   priority_level,
   nivel_risco,
   justificativa_prioridade
-FROM `operaciones-br.sales_intelligence.ml_prioridade_deal_v2`
+FROM `operaciones-br.sales_intelligence.pipeline_prioridade_deals`
 ORDER BY priority_score DESC
 LIMIT 10;
 ```
@@ -147,36 +147,26 @@ cloud-run/app/
 
 ### ⚠️ **Modelos ML v1** (Não treinar)
 
-**Arquivos para IGNORAR**:
-```
-ml_classificador_perda.sql       # v1 antiga
-ml_performance_vendedor.sql      # v1 antiga
-ml_previsao_ciclo.sql            # v1 antiga
-ml_prioridade_deal.sql           # v1 antiga
-ml_proxima_acao.sql              # v1 antiga
-ml_risco_abandono.sql            # v1 antiga
-```
-
-**Status**: 🔸 **IGNORAR** (usar v2 quando necessário)
+**Status**: 🔸 **LEGADO** (artefatos antigos removidos do repo)
 
 ---
 
-### 🤖 **Modelos ML v2** (Treinar DEPOIS)
+### 🤖 **Modelos/Views canônicos** (usar no Dashboard)
 
 **Arquivos**:
 ```
-ml_classificador_perda_v2.sql    # Classificar perdas evitáveis
-ml_performance_vendedor_v2.sql   # Avaliar performance
-ml_previsao_ciclo_v2.sql         # Prever duração ciclo
-ml_prioridade_deal_v2.sql        # Priorizar deals (já é VIEW!)
-ml_proxima_acao_v2.sql           # Recomendar ações (já é VIEW!)
-ml_risco_abandono_v2.sql         # Detectar abandono
-ml_win_loss_model.sql            # Prever Win/Loss
+deploy_ml.sh
+ml_classificador_perda.sql
+ml_performance_vendedor.sql
+ml_previsao_ciclo.sql
+ml_risco_abandono.sql
+ml_prioridade_deal.sql           # cria VIEW pipeline_prioridade_deals
+ml_proxima_acao.sql              # cria VIEW pipeline_proxima_acao
 ```
 
-**Status**: 🟡 **TREINAR DEPOIS** (quando conectar Dashboard)
+**Status**: 🟢 **USAR** (rodar 1x/dia após o BigQuerySync)
 
-**Motivo**: As VIEWs SQL já fornecem resultados bons. Treinar ML é otimização futura.
+**Motivo**: Produz as 6 saídas (tabelas/views `pipeline_*`) consumidas pelo Dashboard/API.
 
 ---
 
@@ -245,19 +235,18 @@ ml_win_loss_model.sql            # Prever Win/Loss
 
 **Modelos a treinar**:
 1. `ml_win_loss_model` - Prever probabilidade de ganho
-2. `ml_risco_abandono_v2` - Detectar deals em risco
-3. `ml_classificador_perda_v2` - Classificar perdas evitáveis
-4. `ml_previsao_ciclo_v2` - Prever duração do ciclo
+2. `ml_risco_abandono` - Detectar deals em risco
+3. `ml_classificador_perda` - Classificar perdas evitáveis
+4. `ml_previsao_ciclo` - Prever duração do ciclo
 
 **Passos**:
 ```bash
 cd /workspaces/playbook/bigquery
-./deploy_ml_v2.sh  # Treina todos os modelos
+./deploy_ml.sh  # Atualiza modelos + saídas do dashboard
 ```
 
-**Substituir VIEWs SQL por modelos BQML**:
-- `ml_prioridade_deal_v2` → Usar `ML.PREDICT` do modelo treinado
-- `ml_proxima_acao_v2` → Usar `ML.PREDICT` do modelo treinado
+**Observação**:
+- `pipeline_prioridade_deals` e `pipeline_proxima_acao` são views/tabelas de saída e podem evoluir com novas regras sem mudar a API.
 
 ---
 

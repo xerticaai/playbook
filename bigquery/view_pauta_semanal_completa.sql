@@ -39,12 +39,12 @@ WITH pipeline_ativo AS (
     ss.Confianca_Especialista,
     
     -- Enriquecimento: ML Prioridade
-    ml_prior.prioridade_score as Prioridade_ML,
-    ml_prior.categoria as Categoria_ML,
+    ml_prior.priority_score as Prioridade_ML,
+    ml_prior.priority_level as Categoria_ML,
     
     -- Enriquecimento: ML Próxima Ação
-    ml_acao.proxima_acao as Proxima_Acao_ML,
-    ml_acao.confidence as Confianca_ML_Acao,
+    ml_acao.acao_recomendada as Proxima_Acao_ML,
+    CAST(NULL AS FLOAT64) as Confianca_ML_Acao,
     
     -- Calcular semana no quarter
     DATE_DIFF(CURRENT_DATE(), DATE_TRUNC(CURRENT_DATE(), QUARTER), WEEK) + 1 as Semana_Quarter,
@@ -57,11 +57,11 @@ WITH pipeline_ativo AS (
   LEFT JOIN `operaciones-br.sales_intelligence.sales_specialist` ss
     ON p.Oportunidade = ss.opportunity_name
   
-  LEFT JOIN `operaciones-br.sales_intelligence.ml_prioridade_deal_v2` ml_prior
-    ON p.Oportunidade = ml_prior.opportunity_id
+  LEFT JOIN `operaciones-br.sales_intelligence.pipeline_prioridade_deals` ml_prior
+    ON p.Oportunidade = ml_prior.opportunity
   
-  LEFT JOIN `operaciones-br.sales_intelligence.ml_proxima_acao_v2` ml_acao
-    ON p.Oportunidade = ml_acao.opportunity_id
+  LEFT JOIN `operaciones-br.sales_intelligence.pipeline_proxima_acao` ml_acao
+    ON p.Oportunidade = ml_acao.opportunity
 ),
 
 deals_com_risco AS (

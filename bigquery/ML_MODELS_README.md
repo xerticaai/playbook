@@ -2,7 +2,7 @@
 
 **Status:** ✅ Modelos criados, prontos para deploy  
 **Data:** 2026-02-05  
-**Total de modelos:** 6 (4 ML + 2 Views calculadas)
+**Total de modelos:** 9 (7 ML + 2 Views calculadas)
 
 ---
 
@@ -16,13 +16,16 @@
 | 2 | **Classificador de Perda** | BOOSTED_TREE_CLASSIFIER | Classificar causa de perda | `causa_prevista` (5 categorias), `confiança` | [ml_classificador_perda.sql](ml_classificador_perda.sql) |
 | 3 | **Risco de Abandono** | BOOSTED_TREE_CLASSIFIER | Predizer churn risk | `nivel_risco`, `prob_abandono`, `fatores_risco` | [ml_risco_abandono.sql](ml_risco_abandono.sql) |
 | 4 | **Performance Vendedor** | LINEAR_REG | Prever win rate | `win_rate_previsto`, `delta_performance`, `ranking` | [ml_performance_vendedor.sql](ml_performance_vendedor.sql) |
+| 5 | **Previsibilidade (Win Prob)** | BOOSTED_TREE_CLASSIFIER | Prever probabilidade de ganho | `prob_win`, `expected_gross` | [ml_previsibilidade.sql](ml_previsibilidade.sql) |
+| 6 | **Recomendação Produtos** | MATRIX_FACTORIZATION | Recomendar portfolio por vendedor | `recomendacao_produto`, `score` | [ml_recomendacao_produtos.sql](ml_recomendacao_produtos.sql) |
+| 7 | **Detecção de Anomalias** | KMEANS | Sinais fora do padrão no pipeline | `anomaly_score`, `severidade` | [ml_deteccao_anomalias.sql](ml_deteccao_anomalias.sql) |
 
 ### Views Calculadas (Rule-Based)
 
 | # | View | Tipo | Objetivo | Output | Arquivo |
 |---|------|------|----------|--------|---------|
-| 5 | **Priorização de Deals** | VIEW | Ranquear por prioridade | `priority_score`, `priority_level`, `ranking` | [ml_prioridade_deal.sql](ml_prioridade_deal.sql) |
-| 6 | **Próxima Ação** | VIEW | Recomendar ação | `categoria_acao`, `urgencia`, `checklist` | [ml_proxima_acao.sql](ml_proxima_acao.sql) |
+| 6 | **Priorização de Deals** | VIEW | Ranquear por prioridade | `priority_score`, `priority_level`, `ranking` | [ml_prioridade_deal.sql](ml_prioridade_deal.sql) |
+| 7 | **Próxima Ação** | VIEW | Recomendar ação | `categoria_acao`, `urgencia`, `checklist` | [ml_proxima_acao.sql](ml_proxima_acao.sql) |
 
 ---
 
@@ -39,7 +42,8 @@ bq show sales-intelligence-444219:sales_intelligence
 
 # 3. Verificar tabelas base existem
 bq show sales-intelligence-444219:sales_intelligence.pipeline
-bq show sales-intelligence-444219:sales_intelligence.closed_deals
+bq show sales-intelligence-444219:sales_intelligence.closed_deals_won
+bq show sales-intelligence-444219:sales_intelligence.closed_deals_lost
 ```
 
 ### 2. Executar Deploy
@@ -47,16 +51,16 @@ bq show sales-intelligence-444219:sales_intelligence.closed_deals
 ```bash
 cd /workspaces/playbook/bigquery
 
-# Deploy TODOS os modelos (15-20 minutos)
-./deploy_ml_models.sh
+# Deploy canônico (modelos + views) — recomendado rodar 1x/dia após o BigQuerySync
+./deploy_ml.sh
 ```
 
 **Resultado esperado:**
 ```
 🎉 DEPLOY COMPLETO!
-✅ 4 modelos ML treinados
+✅ 7 modelos ML treinados
 ✅ 2 views calculadas criadas
-✅ 6 tabelas de predições geradas
+✅ 9 saídas (tabelas/views pipeline_*) atualizadas
 ```
 
 ### 3. Deploy Individual (opcional)
@@ -67,6 +71,9 @@ bq query --use_legacy_sql=false < bigquery/ml_previsao_ciclo.sql
 bq query --use_legacy_sql=false < bigquery/ml_classificador_perda.sql
 bq query --use_legacy_sql=false < bigquery/ml_risco_abandono.sql
 bq query --use_legacy_sql=false < bigquery/ml_performance_vendedor.sql
+bq query --use_legacy_sql=false < bigquery/ml_previsibilidade.sql
+bq query --use_legacy_sql=false < bigquery/ml_recomendacao_produtos.sql
+bq query --use_legacy_sql=false < bigquery/ml_deteccao_anomalias.sql
 bq query --use_legacy_sql=false < bigquery/ml_prioridade_deal.sql
 bq query --use_legacy_sql=false < bigquery/ml_proxima_acao.sql
 ```
@@ -187,7 +194,35 @@ ORDER BY ranking ASC;
 
 ---
 
-### 5️⃣ Priorização de Deals (281 linhas - VIEW)
+### 5️⃣ Previsibilidade (Win Prob) (330+ linhas)
+
+**Objetivo:** estimar probabilidade de ganho por deal e gerar valor esperado.
+
+**Output (pipeline):**
+```sql
+SELECT
+  opportunity,
+  Vendedor,
+  prob_win,
+  expected_gross,
+  previsibilidade
+FROM `sales_intelligence.pipeline_previsibilidade`
+ORDER BY expected_gross DESC
+LIMIT 10;
+```
+
+**Output (backtest fechados):**
+```sql
+SELECT
+  outcome,
+  AVG(prob_win) AS avg_prob_win
+FROM `sales_intelligence.closed_previsibilidade`
+GROUP BY outcome;
+```
+
+---
+
+### 6️⃣ Priorização de Deals (281 linhas - VIEW)
 
 **Fórmula de prioridade:**
 ```
@@ -225,7 +260,7 @@ LIMIT 20;
 
 ---
 
-### 6️⃣ Próxima Ação (402 linhas - VIEW)
+### 7️⃣ Próxima Ação (402 linhas - VIEW)
 
 **10 regras de recomendação:**
 
@@ -320,7 +355,7 @@ GROUP BY urgencia;
 **Como retreinar:**
 ```bash
 # Re-executar deploy (modelos são recriados)
-./deploy_ml_models.sh
+./deploy_ml.sh
 
 # Ou retreinar modelo específico
 bq query --use_legacy_sql=false < bigquery/ml_previsao_ciclo.sql
@@ -330,27 +365,18 @@ bq query --use_legacy_sql=false < bigquery/ml_previsao_ciclo.sql
 
 ---
 
-## 🔗 INTEGRAÇÃO COM CLOUD FUNCTION
+## 🔗 INTEGRAÇÃO COM CLOUD RUN
 
-Os 6 endpoints ML já estão implementados em [main.py](../cloud-function/main.py):
+O endpoint do Dashboard está implementado em [cloud-run/app/api/endpoints/ml_predictions.py](../cloud-run/app/api/endpoints/ml_predictions.py).
 
-```python
-# Endpoints disponíveis
-def get_previsao_ciclo(filters: dict) -> pd.DataFrame
-def get_classificador_perda(filters: dict) -> pd.DataFrame
-def get_risco_abandono(filters: dict) -> pd.DataFrame
-def get_performance_vendedor(filters: dict) -> pd.DataFrame
-def get_prioridade_deals(filters: dict) -> pd.DataFrame
-def get_proxima_acao(filters: dict) -> pd.DataFrame
-```
-
-**Chamar via Cloud Function:**
+**Chamar via Cloud Run:**
 ```bash
-curl -X POST https://REGION-PROJECT.cloudfunctions.net/ml_intelligence \
+curl -X POST https://YOUR-CLOUD-RUN-URL/api/ml/predictions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "all",
-    "filters": {"quarter": "FY26-Q1"}
+    "year": 2026,
+    "quarter": 1,
+    "seller": "Alex Araujo"
   }'
 ```
 
@@ -367,10 +393,9 @@ curl -X POST https://REGION-PROJECT.cloudfunctions.net/ml_intelligence \
 5. ✅ Feature importance análise
 
 **Próximos passos:**
-1. Deploy dos modelos: `./deploy_ml_models.sh`
-2. Testar Cloud Function ML: `python3 test_local.py --ml`
-3. Adicionar aba "ML Insights" no Dashboard
-4. Configurar retreinamento mensal
+1. Deploy dos modelos/saídas: `./deploy_ml.sh`
+2. Validar resposta do endpoint: `POST /api/ml/predictions`
+3. Configurar execução diária após o BigQuerySync
 
 ---
 

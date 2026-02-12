@@ -40,9 +40,10 @@ app.include_router(performance_router, prefix="/api", tags=["Performance"])
 PROJECT_ID = os.getenv("GCP_PROJECT", "operaciones-br")
 DATASET_ID = "sales_intelligence"
 
-# Gemini Configuration (legacy - mantido para compatibilidade)
-GEMINI_API_KEY = "AIzaSyBwgc9nHAtgUiabpGJDwrMBd3dJTBE5ee4"
-genai.configure(api_key=GEMINI_API_KEY)
+# Gemini Configuration (optional)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)  # type: ignore[attr-defined]
 
 def get_bq_client():
     return bigquery.Client(project=PROJECT_ID)

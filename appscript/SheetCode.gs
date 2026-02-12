@@ -929,16 +929,24 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
         idleDays = item.inactiveDays;
     }
     
-    // VALIDAÇÃO: Verificar datas negativas
+    // VALIDAÇÃO: Verificar datas invertidas (created > closed)
+    // IMPORTANTE: Não "consertar" no parseDate; só tentar correção quando a inconsistência é real.
     if (item.created && item.closed) {
       const createdDate = item.created instanceof Date ? item.created : parseDate(item.created);
       const closedDate = item.closed instanceof Date ? item.closed : parseDate(item.closed);
       
       if (createdDate && closedDate && closedDate < createdDate) {
-        console.warn(`⚠️ ${item.oppName}: Datas invertidas! Close (${closedDate.toDateString()}) < Created (${createdDate.toDateString()})`);
-        logToSheet("WARN", "Validação", `Datas invertidas em ${item.oppName} - usando Close como referência`);
-        // Usa Close como referência e inverte criada para 1 dia antes
-        item.created = new Date(closedDate.getTime() - MS_PER_DAY);
+        const fix = tryFixInvertedDates_(createdDate, closedDate);
+        if (fix.fixed) {
+          console.warn(`⚠️ ${item.oppName}: Datas invertidas detectadas; correção aplicada via inversão (ciclo=${fix.ciclo})`);
+          logToSheet("WARN", "Validação", `Datas invertidas em ${item.oppName} - inversão DD/MM↔MM/DD aplicada`, { oportunidade: item.oppName, aba: mode });
+          item.created = fix.created;
+          item.closed = fix.closed;
+          if (typeof fix.ciclo === 'number') item.ciclo = fix.ciclo;
+        } else {
+          console.warn(`⚠️ ${item.oppName}: Datas invertidas! Close (${closedDate.toDateString()}) < Created (${createdDate.toDateString()})`);
+          logToSheet("WARN", "Validação", `Datas invertidas em ${item.oppName} - sem correção automática`, { oportunidade: item.oppName, aba: mode });
+        }
       }
     }
     
@@ -5971,20 +5979,32 @@ function recalcularDatasFechamento_() {
       const norm = normText_(String(h));
       return norm.includes('DATA') && norm.includes('ULTIMA') && norm.includes('MUDANCA') && norm.includes('FASE');
     });
+
+    const histCreatedIdx = historicoHeaders.findIndex(h => {
+      const norm = normText_(String(h));
+      return norm.includes('CREATED') || norm.includes('CRIAC') || norm.includes('CREAC');
+    });
     
     if (histOppIdx === -1 || histLastStageDateIdx === -1) {
       console.log(`⚠️ Colunas não encontradas no histórico para ${mode}: oppIdx=${histOppIdx}, lastStageDateIdx=${histLastStageDateIdx}`);
       continue;
     }
     
-    // Criar mapa: nome da oportunidade → data da última mudança de fase
+    // Criar mapa: oportunidade(normalizada) → { lastStageDate, createdDate }
     const historicoMap = new Map();
     for (let i = 0; i < historicoData.length; i++) {
       const oppName = String(historicoData[i][histOppIdx] || '').trim();
+      const oppKey = normText_(oppName);
       const lastStageDate = historicoData[i][histLastStageDateIdx];
       if (!oppName) continue;
-      if (lastStageDate) {
-        historicoMap.set(oppName, parseDate(lastStageDate));
+
+      const createdRaw = histCreatedIdx > -1 ? historicoData[i][histCreatedIdx] : null;
+      const createdParsed = createdRaw ? (createdRaw instanceof Date ? createdRaw : parseDate(createdRaw)) : null;
+      const lastStageParsed = lastStageDate ? (lastStageDate instanceof Date ? lastStageDate : parseDate(lastStageDate)) : null;
+
+      // Mesmo que falte um dos dois, guarda o que tiver (ajuda em diagnóstico)
+      if (lastStageParsed || createdParsed) {
+        historicoMap.set(oppKey, { lastStageDate: lastStageParsed, createdDate: createdParsed });
       }
     }
     
@@ -6035,7 +6055,9 @@ function recalcularDatasFechamento_() {
     
     for (let i = 1; i < analysisData.length; i++) {
       const oppNameRaw = String(analysisData[i][oppIdx] || '').trim();
-      const lastStageDate = historicoMap.get(oppNameRaw);
+      const oppKey = normText_(oppNameRaw);
+      const histEntry = historicoMap.get(oppKey);
+      const lastStageDate = histEntry ? histEntry.lastStageDate : null;
       
       // DEBUG: Log primeiras 5 buscas
       if (i <= 5) {
@@ -6051,37 +6073,73 @@ function recalcularDatasFechamento_() {
       const currentDate = analysisData[i][closeDateIdx];
       const currentDateParsed = currentDate instanceof Date ? currentDate : parseDate(currentDate);
       
-      // Só atualiza se for diferente
-      if (!currentDateParsed || Math.abs(lastStageDate - currentDateParsed) > MS_PER_DAY) { // Diferença > 1 dia
-          updatesToWrite.push({
-            row: i + 1, // +1 porque sheets é 1-indexed
-            col: closeDateIdx + 1,
-            value: formatDateRobust(lastStageDate),
-            oppName: oppNameRaw
-          });
-          
-          // Se temos coluna de ciclo E data de criação, recalcular ciclo também
-          if (cicloIdx > -1 && createdIdx > -1) {
-            const createdDate = analysisData[i][createdIdx];
-            const createdDateParsed = createdDate instanceof Date ? createdDate : parseDate(createdDate);
-            
-            if (createdDateParsed) {
-              const newCiclo = Math.ceil((lastStageDate - createdDateParsed) / MS_PER_DAY);
-              updatesToWrite.push({
-                row: i + 1,
-                col: cicloIdx + 1,
-                value: newCiclo,
-                oppName: oppNameRaw,
-                isCiclo: true
-              });
+      // Determinar target close date e ciclo (com correção estilo CorrigirFiscalQ apenas se inconsistente)
+      let targetCloseDate = lastStageDate;
+      let targetCiclo = null;
+
+      if (cicloIdx > -1) {
+        // Created date: preferir a coluna na análise; se não existir, usar histórico
+        let createdDateParsed = null;
+        if (createdIdx > -1) {
+          const createdDateCell = analysisData[i][createdIdx];
+          createdDateParsed = createdDateCell instanceof Date ? createdDateCell : parseDate(createdDateCell);
+        }
+        if (!createdDateParsed && histEntry && histEntry.createdDate) {
+          createdDateParsed = histEntry.createdDate instanceof Date ? histEntry.createdDate : parseDate(histEntry.createdDate);
+        }
+
+        if (createdDateParsed) {
+          const computed = Math.ceil((targetCloseDate - createdDateParsed) / MS_PER_DAY);
+          if (computed < 0) {
+            const fix = tryFixInvertedDates_(createdDateParsed, targetCloseDate);
+            if (fix.fixed) {
+              targetCloseDate = fix.closed;
+              targetCiclo = fix.ciclo;
+              logToSheet(
+                'WARN',
+                'DateFix',
+                `Ciclo negativo detectado em recalcularDatasFechamento_; inversão aplicada (ciclo=${computed} → ${fix.ciclo})`,
+                { oportunidade: oppNameRaw, aba: mode }
+              );
+            } else {
+              logToSheet(
+                'WARN',
+                'DateFix',
+                `Ciclo negativo detectado em recalcularDatasFechamento_; sem correção automática (ciclo=${computed})`,
+                { oportunidade: oppNameRaw, aba: mode }
+              );
+              targetCiclo = computed;
             }
+          } else {
+            targetCiclo = computed;
           }
-          
-          updated++;
-          
-          if (updated <= 3) {
-            console.log(`   📅 ${oppNameRaw}: ${currentDate ? formatDateRobust(currentDate) : 'vazio'} → ${formatDateRobust(lastStageDate)}`);
-          }
+        }
+      }
+
+      // Só atualiza Close Date se for diferente
+      if (!currentDateParsed || Math.abs(targetCloseDate - currentDateParsed) > MS_PER_DAY) { // Diferença > 1 dia
+        updatesToWrite.push({
+          row: i + 1,
+          col: closeDateIdx + 1,
+          value: formatDateRobust(targetCloseDate),
+          oppName: oppNameRaw
+        });
+
+        if (cicloIdx > -1 && typeof targetCiclo === 'number' && isFinite(targetCiclo)) {
+          updatesToWrite.push({
+            row: i + 1,
+            col: cicloIdx + 1,
+            value: targetCiclo,
+            oppName: oppNameRaw,
+            isCiclo: true
+          });
+        }
+
+        updated++;
+
+        if (updated <= 3) {
+          console.log(`   📅 ${oppNameRaw}: ${currentDate ? formatDateRobust(currentDate) : 'vazio'} → ${formatDateRobust(targetCloseDate)}`);
+        }
       }
     }
     

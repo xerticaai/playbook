@@ -64,8 +64,10 @@ function loadSheetData(sheetName) {
       // EXCLUSÕES: Mudancas_Close_Date é INTEGER, não DATE
       const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Date', '_Data', 'Fecha_', 'closed_date', 'created_date'];
       const excludeFields = ['Mudancas_', 'Total_', 'Ativ_', 'Distribuicao_'];
-      const isDateField = dateFields.some(pattern => header.includes(pattern)) && 
-                         !excludeFields.some(pattern => header.startsWith(pattern));
+      const isDateField = (header === 'Data') || (
+             dateFields.some(pattern => header.includes(pattern)) && 
+             !excludeFields.some(pattern => header.startsWith(pattern))
+             );
       
       if (val === null || val === undefined || val === '') {
         obj[header] = null;
@@ -184,104 +186,55 @@ function syncToBigQueryScheduled() {
     const pipelineRaw = loadSheetData('🎯 Análise Forecast IA');
     const wonRaw = loadSheetData('📈 Análise Ganhas');
     const lostRaw = loadSheetData('📉 Análise Perdidas');
+    const atividadesRaw = loadSheetData('Atividades');
     
     console.log(`📊 Dados carregados do Sheet:`);
     console.log(`   • Pipeline: ${pipelineRaw.length} deals`);
     console.log(`   • Won: ${wonRaw.length} deals`);
     console.log(`   • Lost: ${lostRaw.length} deals`);
+    console.log(`   • Atividades: ${atividadesRaw.length} registros`);
     
     if (pipelineRaw.length === 0 && wonRaw.length === 0 && lostRaw.length === 0) {
       throw new Error('Nenhum dado encontrado nas abas de análise');
     }
     
-    // ETAPA 2: Filtrar deals fechados com data futura (não devem existir)
+    // ETAPA 2: NÃO corrigir nem filtrar datas aqui.
+    // Motivo: este sync deve ser não-destrutivo. Qualquer correção de datas deve
+    // acontecer nas rotinas de governança do Sheet (ex: corrigirDatasFechamentoClosedDeals),
+    // evitando reinterpretação DD/MM como MM/DD e remoção de linhas.
     const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0); // Zerar horas para comparação de data
-    
-    const wonFiltered = wonRaw.filter(deal => {
-      const dataFechamento = deal.Data_Fechamento;
-      if (!dataFechamento) return true; // Manter deals sem data
-      
-      // Tentar parsear data em formato dd/mm/yyyy
-      const match = String(dataFechamento).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-      if (match) {
-        let dia = parseInt(match[1]);
-        let mes = parseInt(match[2]) - 1; // Meses começam em 0
-        const ano = parseInt(match[3]);
-        let data = new Date(ano, mes, dia);
-        data.setHours(0, 0, 0, 0);
-        
-        // Se data é futura, pode estar invertida (MM/DD em vez de DD/MM)
-        // Tentar inverter e verificar se fica no passado
-        if (data > hoje && dia <= 12) { // Só inverter se dia <= 12 (pode ser mês)
-          const dataInvertida = new Date(ano, dia - 1, mes + 1); // Inverter dia/mês
-          dataInvertida.setHours(0, 0, 0, 0);
-          
-          if (dataInvertida <= hoje) {
-            // Data invertida é válida e está no passado! Usar ela
-            console.warn(`🔧 Data corrigida de ${dataFechamento} (futuro) para ${String(mes + 1).padStart(2, '0')}/${String(dia).padStart(2, '0')}/${ano} (passado)`);
-            // Atualizar o deal com a data correta
-            deal.Data_Fechamento = `${String(mes + 1).padStart(2, '0')}/${String(dia).padStart(2, '0')}/${ano}`;
-            return true; // Manter deal com data corrigida
-          } else {
-            // Mesmo invertida continua futura: realmente é futura
-            console.warn(`⚠️ Deal WON com data futura removido: ${dataFechamento} (Gross: ${deal.Gross})`);
-            return false; // Filtrar deal com data futura
-          }
-        } else if (data > hoje) {
-          // Data futura mas dia > 12: não pode inverter, realmente é futura
-          console.warn(`⚠️ Deal WON com data futura removido: ${dataFechamento} (Gross: ${deal.Gross})`);
-          return false;
-        }
+    hoje.setHours(0, 0, 0, 0);
+
+    const parsePtBrDate_ = (val) => {
+      if (!val) return null;
+      if (val instanceof Date) {
+        const d = new Date(val.getFullYear(), val.getMonth(), val.getDate());
+        d.setHours(0, 0, 0, 0);
+        return d;
       }
-      return true; // Manter deal
-    });
-    
-    const lostFiltered = lostRaw.filter(deal => {
-      const dataFechamento = deal.Data_Fechamento;
-      if (!dataFechamento) return true; // Manter deals sem data
-      
-      // Tentar parsear data em formato dd/mm/yyyy
-      const match = String(dataFechamento).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-      if (match) {
-        let dia = parseInt(match[1]);
-        let mes = parseInt(match[2]) - 1;
-        const ano = parseInt(match[3]);
-        let data = new Date(ano, mes, dia);
-        data.setHours(0, 0, 0, 0);
-        
-        // Se data é futura, pode estar invertida (MM/DD em vez de DD/MM)
-        // Tentar inverter e verificar se fica no passado
-        if (data > hoje && dia <= 12) { // Só inverter se dia <= 12 (pode ser mês)
-          const dataInvertida = new Date(ano, dia - 1, mes + 1); // Inverter dia/mês
-          dataInvertida.setHours(0, 0, 0, 0);
-          
-          if (dataInvertida <= hoje) {
-            // Data invertida é válida e está no passado! Usar ela
-            console.warn(`🔧 Data corrigida de ${dataFechamento} (futuro) para ${String(mes + 1).padStart(2, '0')}/${String(dia).padStart(2, '0')}/${ano} (passado)`);
-            // Atualizar o deal com a data correta
-            deal.Data_Fechamento = `${String(mes + 1).padStart(2, '0')}/${String(dia).padStart(2, '0')}/${ano}`;
-            return true; // Manter deal com data corrigida
-          } else {
-            // Mesmo invertida continua futura: realmente é futura
-            console.warn(`⚠️ Deal LOST com data futura removido: ${dataFechamento} (Gross: ${deal.Gross})`);
-            return false; // Filtrar deal com data futura
-          }
-        } else if (data > hoje) {
-          // Data futura mas dia > 12: não pode inverter, realmente é futura
-          console.warn(`⚠️ Deal LOST com data futura removido: ${dataFechamento} (Gross: ${deal.Gross})`);
-          return false;
-        }
-      }
-      return true; // Manter deal
-    });
-    
-    const wonRemoved = wonRaw.length - wonFiltered.length;
-    const lostRemoved = lostRaw.length - lostFiltered.length;
-    
-    if (wonRemoved > 0 || lostRemoved > 0) {
-      console.log(`🔧 Filtrados ${wonRemoved} deals WON e ${lostRemoved} deals LOST com data futura`);
+      const match = String(val).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (!match) return null;
+      const dia = parseInt(match[1], 10);
+      const mes = parseInt(match[2], 10) - 1;
+      const ano = parseInt(match[3], 10);
+      const d = new Date(ano, mes, dia);
+      d.setHours(0, 0, 0, 0);
+      return isNaN(d.getTime()) ? null : d;
+    };
+
+    const countFuture_ = (rows) => rows.reduce((acc, deal) => {
+      const d = parsePtBrDate_(deal && deal.Data_Fechamento);
+      return d && d > hoje ? acc + 1 : acc;
+    }, 0);
+
+    const wonFuture = countFuture_(wonRaw);
+    const lostFuture = countFuture_(lostRaw);
+    if (wonFuture > 0 || lostFuture > 0) {
+      console.warn(`⚠️ Existem deals com Data_Fechamento futura (sem filtro no sync): WON=${wonFuture}, LOST=${lostFuture}`);
     }
+
+    const wonFiltered = wonRaw;
+    const lostFiltered = lostRaw;
     
     // ETAPA 3: Carregar para BigQuery
     console.log('📤 Sincronizando com BigQuery (WRITE_TRUNCATE para evitar duplicação)...');
@@ -301,6 +254,12 @@ function syncToBigQueryScheduled() {
     const lostResult = loadToBigQuery(
       `${BQ_PROJECT}.${BQ_DATASET}.closed_deals_lost`,
       lostFiltered, // Usar dados filtrados
+      'WRITE_TRUNCATE'
+    );
+
+    const atividadesResult = loadToBigQuery(
+      `${BQ_PROJECT}.${BQ_DATASET}.atividades`,
+      atividadesRaw,
       'WRITE_TRUNCATE'
     );
     
@@ -325,6 +284,7 @@ function syncToBigQueryScheduled() {
     console.log(`   • Pipeline: ${pipelineResult.rowsInserted} linhas`);
     console.log(`   • Closed Won: ${wonResult.rowsInserted} linhas`);
     console.log(`   • Closed Lost: ${lostResult.rowsInserted} linhas`);
+    console.log(`   • Atividades: ${atividadesResult.rowsInserted} linhas`);
     console.log(`   • Sales Specialist: ${salesSpecResult.rowsInserted} linhas`);
     
     // Salvar timestamp da última sync
@@ -338,6 +298,7 @@ function syncToBigQueryScheduled() {
       pipelineRows: pipelineResult.rowsInserted,
       wonRows: wonResult.rowsInserted,
       lostRows: lostResult.rowsInserted,
+      atividadesRows: atividadesResult.rowsInserted,
       salesSpecRows: salesSpecResult.rowsInserted,
       duration: duration
     };
@@ -391,6 +352,61 @@ function loadToBigQuery(tableId, records, writeDisposition) {
  */
 function loadUsingJob(projectId, datasetId, tableName, records, runId) {
   console.log(`🔄 Usando load job para ${tableName} (suporta WRITE_TRUNCATE)...`);
+
+  // Normaliza strings de data para ISO (YYYY-MM-DD), suportando formatos com "/" ou "-".
+  // Regra para formatos ambíguos:
+  // - Com "/" ou ".": assume DD/MM/YYYY (pt_BR)
+  // - Com "-": assume MM-DD-YYYY, a menos que o dia > 12.
+  const normalizeDateStringToIso_ = (raw) => {
+    if (raw === null || raw === undefined) return null;
+    const s = String(raw).trim();
+    if (!s) return null;
+
+    // YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+    // DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY (ou MM-DD-YYYY etc)
+    // Captura o separador para decidir regra (pt_BR vs ambíguo).
+    const m = s.match(/^(\d{1,2})([\/\-\.])(\d{1,2})\2(\d{4})$/);
+    if (!m) return null;
+
+    const p1 = parseInt(m[1], 10);
+    const sep = m[2];
+    const p2 = parseInt(m[3], 10);
+    const year = parseInt(m[4], 10);
+    if (!year || year < 1900 || year > 2100) return null;
+
+    let day;
+    let month;
+
+    if (sep === '/' || sep === '.') {
+      // pt_BR: DD/MM/YYYY
+      day = p1;
+      month = p2;
+    } else {
+      // "-" pode ser ambíguo.
+      // Se um dos lados > 12, dá para inferir.
+      if (p1 > 12 && p2 >= 1 && p2 <= 12) {
+        day = p1;
+        month = p2;
+      } else if (p2 > 12 && p1 >= 1 && p1 <= 12) {
+        // MM-DD-YYYY
+        month = p1;
+        day = p2;
+      } else {
+        // Ambíguo: assume MM-DD-YYYY (compatível com exemplos 02-17-2025)
+        month = p1;
+        day = p2;
+      }
+    }
+
+    if (month < 1 || month > 12) return null;
+    if (day < 1 || day > 31) return null;
+
+    const mm = String(month).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
+    return `${year}-${mm}-${dd}`;
+  };
   
   // Sanitizar dados (Date → yyyy-mm-dd, dd/mm/yyyy → yyyy-mm-dd)
   const sanitizedRecords = records.map((record, idx) => {
@@ -408,8 +424,10 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
         // EXCLUSÕES: Mudancas_Close_Date, Mudancas_Stage, etc são INTEGER
         const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Data', 'Fecha_', 'closed_date', 'created_date'];
         const excludeFields = ['Mudancas_', 'Total_', 'Ativ_', 'Distribuicao_'];
-        const isDateField = dateFields.some(pattern => key.includes(pattern)) && 
-                           !excludeFields.some(pattern => key.startsWith(pattern));
+        const isDateField = (key === 'Data') || (
+               dateFields.some(pattern => key.includes(pattern)) && 
+               !excludeFields.some(pattern => key.startsWith(pattern))
+               );
         
         if (value === null || value === undefined || value === '') {
           sanitized[key] = null;
@@ -449,20 +467,13 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
         } else if (typeof value === 'string') {
           const strVal = String(value).trim();
           
-          // Converter dd/mm/yyyy → yyyy-mm-dd SOMENTE para campos de data
-          // IMPORTANTE: Aceitar 1 ou 2 dígitos para dia/mês (ex: 1/02/2026 ou 01/02/2026)
-          const dateMatch = strVal.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-          const isoDateMatch = strVal.match(/^\d{4}-\d{2}-\d{2}$/);
-          
-          if (dateMatch && isDateField) {
-            // Formato dd/mm/yyyy E campo é de data → converter para yyyy-mm-dd
-            const day = dateMatch[1].padStart(2, '0');
-            const month = dateMatch[2].padStart(2, '0');
-            const year = dateMatch[3];
-            sanitized[key] = `${year}-${month}-${day}`;
-          } else if ((dateMatch || isoDateMatch) && !isDateField) {
-            // String parece data mas campo NÃO é de data → deixar NULL ou tentar parse numérico
-            // Ex: Mudancas_Close_Date com valor "03/01/1900" deve ser NULL, não string
+          const isoMaybe = normalizeDateStringToIso_(strVal);
+
+          if (isDateField) {
+            // Campo é de data: converter para ISO ou null (evita falha no load)
+            sanitized[key] = isoMaybe;
+          } else if (isoMaybe) {
+            // String parece data mas campo NÃO é de data → deixar NULL
             sanitized[key] = null;
           } else if (isNumericField) {
             // Para campos numéricos, tentar converter; se falhar, usar NULL

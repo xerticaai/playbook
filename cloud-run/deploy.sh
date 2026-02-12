@@ -25,12 +25,12 @@ if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" | grep -q
     exit 1
 fi
 
-# Change to project root directory
-cd "$(dirname "$0")/.."
+# Change to cloud-run directory (Docker build context must include app/ and requirements.txt)
+cd "$(dirname "$0")"
 echo -e "${YELLOW}📁 Working directory: $(pwd)${NC}"
 
 echo -e "${YELLOW}📦 Building Docker image...${NC}"
-docker build -f cloud-run/Dockerfile -t ${IMAGE_NAME}:latest .
+docker build -t ${IMAGE_NAME}:latest .
 
 echo -e "${YELLOW}📤 Pushing image to Container Registry...${NC}"
 docker push ${IMAGE_NAME}:latest

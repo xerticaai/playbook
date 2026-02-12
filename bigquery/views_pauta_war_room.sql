@@ -11,7 +11,57 @@
 -- =====================================================================
 
 CREATE OR REPLACE VIEW `operaciones-br.sales_intelligence.pauta_semanal_enriquecida` AS
-WITH pipeline_ativo AS (
+WITH
+pipeline_dedup AS (
+  -- Garantir 1 linha por Oportunidade mesmo se o snapshot vier duplicado
+  SELECT p.*
+  FROM `operaciones-br.sales_intelligence.pipeline` p
+  WHERE p.Oportunidade IS NOT NULL
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY p.Oportunidade
+    ORDER BY SAFE.PARSE_TIMESTAMP(
+      '%Y-%m-%dT%H:%M:%E*S%Ez',
+      REGEXP_REPLACE(CAST(p.data_carga AS STRING), r'Z$', '+00:00')
+    ) DESC, p.Run_ID DESC
+  ) = 1
+),
+
+sales_specialist_dedup AS (
+  -- Garantir 1 linha por Oportunidade no join (evita multiplicação 1:N)
+  SELECT ss.*
+  FROM `operaciones-br.sales_intelligence.sales_specialist` ss
+  WHERE ss.opportunity_name IS NOT NULL
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY ss.opportunity_name
+    ORDER BY SAFE.PARSE_TIMESTAMP(
+      '%Y-%m-%dT%H:%M:%E*S%Ez',
+      REGEXP_REPLACE(CAST(ss.data_carga AS STRING), r'Z$', '+00:00')
+    ) DESC
+  ) = 1
+),
+
+ml_prioridade_dedup AS (
+  -- Views de ML podem duplicar se a fonte tiver duplicidade
+  SELECT mp.*
+  FROM `operaciones-br.sales_intelligence.pipeline_prioridade_deals` mp
+  WHERE mp.Oportunidade IS NOT NULL
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY mp.Oportunidade
+    ORDER BY SAFE_CAST(mp.priority_score AS FLOAT64) DESC
+  ) = 1
+),
+
+ml_acao_dedup AS (
+  SELECT ma.*
+  FROM `operaciones-br.sales_intelligence.pipeline_proxima_acao` ma
+  WHERE ma.Oportunidade IS NOT NULL
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY ma.Oportunidade
+    ORDER BY SAFE_CAST(ma.priority_score AS FLOAT64) DESC
+  ) = 1
+),
+
+pipeline_ativo AS (
   SELECT 
     p.Oportunidade,
     p.Vendedor,
@@ -23,20 +73,34 @@ WITH pipeline_ativo AS (
     CAST(NULL AS STRING) as Familia_Produto,
     p.Gross,
     p.Net,
+    p.Fase_Atual,
     p.Fiscal_Q,
+    p.Data_Prevista,
     CAST(NULL AS DATE) as Data_Criacao,
     p.Ultima_Atualizacao,
     p.Ciclo_dias,
+    p.Idle_Dias,
     p.Atividades,
     p.Confianca,
     p.Forecast_SF,
+    p.Forecast_IA,
+    p.MEDDIC_Score,
+    p.BANT_Score,
     p.Dias_Funil,
     p.Territorio_Correto as Territorio,
     p.Flags_de_Risco,
+    p.Risco_Principal,
+    p.Acao_Sugerida as Proxima_Acao_Pipeline,
+    p.Cod_Acao,
+    p.Justificativa_IA,
+    p.Perguntas_de_Auditoria_IA,
+    p.Regras_Aplicadas,
+    p.Incoerencia_Detectada,
+    p.Gaps_Identificados,
+    p.Motivo_Confianca,
     p.Qualidade_Engajamento as Status_Engajamento,
     CAST(NULL AS FLOAT64) as Health_Score,
     CAST(NULL AS STRING) as Risco_Abandono,
-    p.Acao_Sugerida as Proxima_Acao_Pipeline,
     
     -- Enriquecimento: Sales Specialist
     ss.Status as Status_Especialista,
@@ -55,17 +119,19 @@ WITH pipeline_ativo AS (
     DATE_DIFF(CURRENT_DATE(), DATE_TRUNC(CURRENT_DATE(), QUARTER), WEEK) + 1 as Semana_Quarter,
     
     -- Metadados
-    CURRENT_DATE() as Data_Calculo
+    CURRENT_DATE() as Data_Calculo,
+    p.Run_ID,
+    p.data_carga
     
-  FROM `operaciones-br.sales_intelligence.pipeline` p
+  FROM pipeline_dedup p
   
-  LEFT JOIN `operaciones-br.sales_intelligence.sales_specialist` ss
+  LEFT JOIN sales_specialist_dedup ss
     ON p.Oportunidade = ss.opportunity_name
-  
-  LEFT JOIN `operaciones-br.sales_intelligence.ml_prioridade_deal_v2` ml_prior
+
+  LEFT JOIN ml_prioridade_dedup ml_prior
     ON p.Oportunidade = ml_prior.Oportunidade
-  
-  LEFT JOIN `operaciones-br.sales_intelligence.ml_proxima_acao_v2` ml_acao
+
+  LEFT JOIN ml_acao_dedup ml_acao
     ON p.Oportunidade = ml_acao.Oportunidade
 ),
 
@@ -174,13 +240,13 @@ dados_unificados AS (
   -- UNION ALL: Pipeline + Won + Lost
   SELECT 
     Vendedor,
-    Gross,
-    Net,
+    CAST(Gross AS FLOAT64) as Gross,
+    CAST(Net AS FLOAT64) as Net,
     Fiscal_Q,
     'pipeline' as source,
-    Atividades,
-    Territorio,
-    Dias_Funil,
+    SAFE_CAST(Atividades AS INT64) as Atividades,
+    Territorio_Correto as Territorio,
+    SAFE_CAST(Dias_Funil AS INT64) as Dias_Funil,
     NULL as Data_Fechamento
   FROM `operaciones-br.sales_intelligence.pipeline`
   
@@ -188,11 +254,11 @@ dados_unificados AS (
   
   SELECT 
     Vendedor,
-    Gross,
-    Net,
+    CAST(Gross AS FLOAT64) as Gross,
+    CAST(Net AS FLOAT64) as Net,
     Fiscal_Q,
     'won' as source,
-    Atividades,
+    SAFE_CAST(Atividades AS INT64) as Atividades,
     NULL as Territorio,
     NULL as Dias_Funil,
     Data_Fechamento
@@ -202,11 +268,11 @@ dados_unificados AS (
   
   SELECT 
     Vendedor,
-    Gross,
-    Net,
+    CAST(Gross AS FLOAT64) as Gross,
+    CAST(Net AS FLOAT64) as Net,
     Fiscal_Q,
     'lost' as source,
-    Atividades,
+    SAFE_CAST(Atividades AS INT64) as Atividades,
     NULL as Territorio,
     NULL as Dias_Funil,
     Data_Fechamento

@@ -210,7 +210,7 @@ FROM `sales_intelligence.closed_deals_*`
 ```
 **Objetivo**: Prever probabilidade de ganhar deal
 
-#### 2. **Classificador de Perda** (`ml_classificador_perda_v2.sql`)
+#### 2. **Classificador de Perda** (`ml_classificador_perda.sql`)
 ```sql
 CREATE OR REPLACE MODEL `sales_intelligence.classificador_perda`
 OPTIONS(
@@ -221,7 +221,7 @@ FROM `sales_intelligence.closed_deals_lost`
 ```
 **Objetivo**: Identificar perdas evitáveis
 
-#### 3. **Risco de Abandono** (`ml_risco_abandono_v2.sql`)
+#### 3. **Risco de Abandono** (`ml_risco_abandono.sql`)
 ```sql
 CREATE OR REPLACE MODEL `sales_intelligence.risco_abandono`
 OPTIONS(
@@ -230,7 +230,7 @@ OPTIONS(
 ```
 **Objetivo**: Detectar deals em risco
 
-#### 4. **Próxima Ação** (`ml_proxima_acao_v2.sql`)
+#### 4. **Próxima Ação** (`ml_proxima_acao.sql`)
 ```sql
 CREATE OR REPLACE MODEL `sales_intelligence.proxima_acao`
 OPTIONS(
@@ -240,7 +240,7 @@ OPTIONS(
 ```
 **Objetivo**: Recomendar próximos passos
 
-#### 5. **Prioridade Deal** (`ml_prioridade_deal_v2.sql`)
+#### 5. **Prioridade Deal** (`ml_prioridade_deal.sql`)
 ```sql
 CREATE OR REPLACE MODEL `sales_intelligence.prioridade_deal`
 OPTIONS(
@@ -250,7 +250,7 @@ OPTIONS(
 ```
 **Objetivo**: Ranquear opportunities por valor potencial
 
-#### 6. **Performance Vendedor** (`ml_performance_vendedor_v2.sql`)
+#### 6. **Performance Vendedor** (`ml_performance_vendedor.sql`)
 ```sql
 CREATE OR REPLACE MODEL `sales_intelligence.performance_vendedor`
 OPTIONS(
@@ -262,7 +262,8 @@ OPTIONS(
 **Deploy**:
 ```bash
 cd /workspaces/playbook/bigquery
-./deploy_ml_v2.sh  # Treina todos os modelos
+./deploy_ml.sh  # Atualiza modelos + saídas do dashboard
+
 ```
 
 **Status**: 🔧 **Modelos criados, aguardando treinamento**
@@ -491,7 +492,7 @@ async function loadForecast() {
 ### **Fase 1: Treinar Modelos BQML** 🤖
 ```bash
 cd /workspaces/playbook/bigquery
-./deploy_ml_v2.sh
+./deploy_ml.sh
 ```
 - [ ] Treinar 6 modelos de ML
 - [ ] Validar acurácia (target: >80%)

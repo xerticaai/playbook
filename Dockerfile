@@ -29,7 +29,6 @@ EXPOSE 8080
 ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
 ENV GCP_PROJECT=operaciones-br
-ENV GEMINI_API_KEY=AIzaSyBwgc9nHAtgUiabpGJDwrMBd3dJTBE5ee4
 
 # Run the application
 CMD ["uvicorn", "simple_api:app", "--host", "0.0.0.0", "--port", "8080"]

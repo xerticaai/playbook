@@ -32,6 +32,7 @@ from google.cloud import bigquery
 from typing import Optional, Dict, Any, List
 import os
 from datetime import datetime
+import re
 
 router = APIRouter()
 
@@ -42,6 +43,28 @@ DATASET_ID = "sales_intelligence"
 def get_bq_client():
     return bigquery.Client(project=PROJECT_ID)
 
+def normalize_quarter(quarter: Optional[str]) -> Optional[str]:
+    """Normalize quarter input to a digit string '1'..'4'.
+
+    Accepts examples: '1', 'Q1', 'q1', 'FY26-Q1', 'FY2026-Q1'.
+    Returns None when quarter is None/empty.
+    """
+    if quarter is None:
+        return None
+
+    q = str(quarter).strip()
+    if not q:
+        return None
+
+    match = re.search(r"\bQ\s*([1-4])\b", q, flags=re.IGNORECASE)
+    if match:
+        return match.group(1)
+
+    if q in {"1", "2", "3", "4"}:
+        return q
+
+    return q
+
 def build_fiscal_filter(year: Optional[str], quarter: Optional[str]) -> str:
     """
     Constrói filtro Fiscal_Q para tabelas won/lost.
@@ -51,9 +74,11 @@ def build_fiscal_filter(year: Optional[str], quarter: Optional[str]) -> str:
     - year=2026, quarter=None -> Fiscal_Q LIKE 'FY26-%'
     - year=None -> '1=1' (sem filtro)
     """
-    if year and quarter:
+    quarter_norm = normalize_quarter(quarter)
+
+    if year and quarter_norm:
         # FY26-Q1, FY26-Q2, etc
-        fiscal_q = f"FY{year[-2:]}-Q{quarter}"
+        fiscal_q = f"FY{year[-2:]}-Q{quarter_norm}"
         return f"Fiscal_Q = '{fiscal_q}'"
     elif year:
         # Todos os quarters do ano
@@ -434,7 +459,7 @@ async def get_performance(
                     'pipeline': 'pipeline (ticket_medio de deals ativos)'
                 },
                 'filters_applied': {
-                    'fiscal_q': f"FY{year[-2:]}-Q{quarter}" if year and quarter else (f"FY{year[-2:]}-%" if year else "Todos"),
+                    'fiscal_q': f"FY{year[-2:]}-Q{normalize_quarter(quarter)}" if year and quarter else (f"FY{year[-2:]}-%" if year else "Todos"),
                     'seller': seller if seller else "Todos"
                 }
             }

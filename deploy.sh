@@ -10,7 +10,7 @@ set -e  # Exit on error
 PROJECT_ID="operaciones-br"
 REGION="us-central1"
 SERVICE_NAME="sales-intelligence-api"
-APP_DIR="$(dirname "$0")/cloud-run/app"
+APP_DIR="$(dirname "$0")/cloud-run"
 
 echo "🚀 INICIANDO DEPLOY - Sales Intelligence API"
 echo "============================================="
@@ -73,7 +73,7 @@ gcloud run deploy $SERVICE_NAME \
   --timeout 300 \
   --max-instances 10 \
   --min-instances 0 \
-  --set-env-vars "GCP_PROJECT=$PROJECT_ID,GEMINI_API_KEY=AIzaSyBwgc9nHAtgUiabpGJDwrMBd3dJTBE5ee4"
+    --update-env-vars "GCP_PROJECT=$PROJECT_ID"
 
 # Get service URL
 SERVICE_URL=$(gcloud run services describe $SERVICE_NAME --platform managed --region $REGION --project $PROJECT_ID --format="value(status.url)")
@@ -87,9 +87,7 @@ echo "🌐 URL do Serviço: $SERVICE_URL"
 echo ""
 echo "📋 Endpoints disponíveis:"
 echo "   - $SERVICE_URL/health"
-echo "   - $SERVICE_URL/api/war-room"
 echo "   - $SERVICE_URL/api/weekly-agenda"
-echo "   - $SERVICE_URL/api/export/war-room-csv"
 echo "   - $SERVICE_URL/api/export/pauta-semanal-csv"
 echo ""
 echo "🧪 Testando API..."

@@ -2,7 +2,7 @@
 # Script de validação completa do deploy
 # Execute: chmod +x test-frontend.sh && ./test-frontend.sh
 
-BASE_URL="https://sales-intelligence-api-j7loux7yta-uc.a.run.app"
+BASE_URL="https://x-gtm.web.app"
 
 echo "================================================"
 echo "🧪 VALIDAÇÃO COMPLETA DO FRONTEND + APIs"
@@ -57,11 +57,11 @@ echo ""
 
 # Test 4: Weekly Agenda API
 echo "4️⃣  Testing Weekly Agenda API..."
-STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/api/weekly-agenda?top_n=3")
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/api/weekly-agenda?top_n=3&include_rag=false")
 if [ "$STATUS" -eq 200 ]; then
     echo "   ✅ Weekly Agenda: OK (HTTP $STATUS)"
     # Verificar se retorna JSON válido
-    DEALS=$(curl -s "$BASE_URL/api/weekly-agenda?top_n=3" | python3 -c "import json,sys; data=json.load(sys.stdin); print(data['summary']['total_deals'])" 2>/dev/null)
+    DEALS=$(curl -s "$BASE_URL/api/weekly-agenda?top_n=3&include_rag=false" | python3 -c "import json,sys; data=json.load(sys.stdin); print(data['summary']['total_deals'])" 2>/dev/null)
     if [ ! -z "$DEALS" ]; then
         echo "   ✅ Response: $DEALS deals retornados"
     fi
@@ -71,31 +71,12 @@ else
 fi
 echo ""
 
-# Test 5: War Room API
-echo "5️⃣  Testing War Room API..."
-STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/api/war-room?top_sellers=3&include_ai_insights=true")
-if [ "$STATUS" -eq 200 ]; then
-    echo "   ✅ War Room: OK (HTTP $STATUS)"
-    # Verificar se AI insights estão presentes
-    HAS_INSIGHTS=$(curl -s "$BASE_URL/api/war-room?top_sellers=3&include_ai_insights=true" | python3 -c "import json,sys; data=json.load(sys.stdin); print('yes' if 'ai_insights' in data and len(data['ai_insights'].get('attention_points', [])) > 0 else 'no')" 2>/dev/null)
-    if [ "$HAS_INSIGHTS" == "yes" ]; then
-        echo "   ✅ AI Insights: Gemini gerando insights"
-    else
-        echo "   ⚠️  AI Insights: Não encontrados"
-    fi
-else
-    echo "   ❌ War Room: FAILED (HTTP $STATUS)"
-    exit 1
-fi
-echo ""
-
-# Test 6: Export CSV
-echo "6️⃣  Testing CSV Export..."
-STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/api/export/war-room-csv")
+# Test 5: Export CSV (Pauta Semanal)
+echo "5️⃣  Testing CSV Export (Pauta Semanal)..."
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/api/export/pauta-semanal-csv")
 if [ "$STATUS" -eq 200 ]; then
     echo "   ✅ CSV Export: OK (HTTP $STATUS)"
-    # Verificar content-type
-    CONTENT_TYPE=$(curl -s -I "$BASE_URL/api/export/war-room-csv" | grep -i "content-type" | cut -d: -f2 | tr -d '[:space:]')
+    CONTENT_TYPE=$(curl -s -I "$BASE_URL/api/export/pauta-semanal-csv" | grep -i "content-type" | cut -d: -f2 | tr -d '[:space:]')
     if [[ "$CONTENT_TYPE" == *"text/csv"* ]]; then
         echo "   ✅ Media Type: text/csv"
     fi
@@ -108,7 +89,6 @@ echo ""
 # Test 7: BigQuery Views
 echo "7️⃣  Testing BigQuery Views..."
 PAUTA_EXISTS=$(bq ls --format=json sales_intelligence 2>/dev/null | jq -r '.[] | select(.tableReference.tableId == "pauta_semanal_enriquecida") | .tableReference.tableId')
-WAR_EXISTS=$(bq ls --format=json sales_intelligence 2>/dev/null | jq -r '.[] | select(.tableReference.tableId == "war_room_metrics") | .tableReference.tableId')
 
 if [ "$PAUTA_EXISTS" == "pauta_semanal_enriquecida" ]; then
     echo "   ✅ BigQuery VIEW: pauta_semanal_enriquecida existe"
@@ -116,11 +96,7 @@ else
     echo "   ⚠️  BigQuery VIEW: pauta_semanal_enriquecida não encontrada"
 fi
 
-if [ "$WAR_EXISTS" == "war_room_metrics" ]; then
-    echo "   ✅ BigQuery VIEW: war_room_metrics existe"
-else
-    echo "   ⚠️  BigQuery VIEW: war_room_metrics não encontrada"
-fi
+echo "   ℹ️  war_room_metrics: removido (War Room removido)"
 echo ""
 
 # Summary

@@ -6,7 +6,7 @@
 - [x] **Tabelas Fonte:** pipeline, closed_deals_won, closed_deals_lost, sales_specialist
 - [x] **RAG Ativo:** deal_embeddings com 2848 registros
 - [x] **Vertex AI Connection:** `operaciones-br.us-central1.vertex_ai_conn` configurada
-- [x] **Gemini API Key:** Disponível (AIzaSyBwgc9nHAtgUiabpGJDwrMBd3dJTBE5ee4)
+- [x] **Gemini API Key:** Disponível (definir via variável de ambiente `GEMINI_API_KEY`)
 - [x] **Cloud Run:** API existente rodando em `sales-intelligence-api`
 - [ ] **Acesso GCP:** Permissões Owner ou Editor no projeto `operaciones-br`
 - [ ] **Ambiente Local:** VS Code + Docker (Dev Container)
@@ -190,7 +190,7 @@ docker build -t sales-intelligence-api:test .
 # Testar container local
 docker run -d -p 8080:8080 \
   -e GCP_PROJECT=operaciones-br \
-  -e GEMINI_API_KEY=AIzaSyBwgc9nHAtgUiabpGJDwrMBd3dJTBE5ee4 \
+  -e GEMINI_API_KEY=$GEMINI_API_KEY \
   --name test-api \
   sales-intelligence-api:test
 
@@ -225,7 +225,7 @@ gcloud run deploy sales-intelligence-api \
   --max-instances 10 \
   --memory 1Gi \
   --timeout 60 \
-  --set-env-vars GCP_PROJECT=operaciones-br,GEMINI_API_KEY=AIzaSyBwgc9nHAtgUiabpGJDwrMBd3dJTBE5ee4
+  --set-env-vars GCP_PROJECT=operaciones-br,GEMINI_API_KEY=$GEMINI_API_KEY
 
 # Aguardar deploy (2-3 min)
 ```

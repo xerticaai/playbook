@@ -22,21 +22,12 @@ function diagnosticarTodasDatas() {
   
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
-  // Lista de todas as abas a diagnosticar
-  const abasDiagnostico = [
-    'Historico_Alteracoes_Ganhos',
-    'Historico_Ganhos',
-    'Historico_Perdidas',
-    'Pipeline_Aberto',
-    'Alteracoes_Oportunidades',
-    'Atividades',
-    '🎯 Análise Forecast IA',
-    '📉 Análise Perdidas',
-    '📈 Análise Ganhas',
-    'Análise Sales Specialist'
-  ];
+  // Diagnosticar TODAS as abas da base
+  const abasDiagnostico = ss.getSheets().map(sheet => sheet.getName());
   
   const relatorio = [];
+  const violacoes = [];
+  const today = normalizeDateToNoon_(new Date());
   
   for (const abaNome of abasDiagnostico) {
     const sheet = ss.getSheetByName(abaNome);
@@ -78,7 +69,7 @@ function diagnosticarTodasDatas() {
       
       console.log(`   🔍 Coluna [${idx + 1}]: "${nome}"`);
       
-      const diagnostico = diagnosticarColuna_(rows, displayRows, idx, nome);
+      const diagnostico = diagnosticarColuna_(rows, displayRows, idx, nome, abaNome, today);
       
       console.log(`      📊 Total valores: ${diagnostico.total}`);
       console.log(`      📊 Vazios: ${diagnostico.vazios}`);
@@ -109,7 +100,18 @@ function diagnosticarTodasDatas() {
         indice: idx + 1,
         diagnostico: diagnostico
       });
+
+      if (diagnostico.violacoes && diagnostico.violacoes.length > 0) {
+        violacoes.push(...diagnostico.violacoes);
+      }
     }
+  }
+
+  if (violacoes.length > 0) {
+    writeDateDiagnosticsReport_(violacoes);
+    console.log(`✅ Relatorio de violacoes gerado: ${violacoes.length} registros`);
+  } else {
+    console.log('✅ Nenhuma violacao de formato ou data futura encontrada');
   }
   
   console.log('\n✅ ========================================');
@@ -117,6 +119,230 @@ function diagnosticarTodasDatas() {
   console.log('✅ ========================================\n');
   
   return relatorio;
+}
+
+/**
+ * Normaliza datas em todas as abas (sem recalcular Fiscal Q)
+ * Uso recomendado para trigger periódico
+ */
+function normalizarDatasTodasAbas() {
+  console.log('\n🧹 ========================================');
+  console.log('🧹 NORMALIZAÇÃO GLOBAL DE DATAS');
+  console.log('🧹 ========================================\n');
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const originalLocale = ss.getSpreadsheetLocale();
+  let localeChanged = false;
+
+  console.log(`🌍 Locale atual global: ${originalLocale}`);
+  if (originalLocale !== 'pt_BR' && originalLocale !== 'pt-BR') {
+    console.log('🔧 Alterando locale GLOBAL para pt_BR...');
+    ss.setSpreadsheetLocale('pt_BR');
+    localeChanged = true;
+    if (typeof invalidateSheetCache_ === 'function') {
+      invalidateSheetCache_();
+      console.log('🧹 Cache de sheets limpo após mudança de locale');
+    }
+  }
+
+  try {
+    const sheets = ss.getSheets();
+    const resumo = [];
+    let totalDatas = 0;
+    let totalAbas = 0;
+
+    sheets.forEach(sheet => {
+      const sheetName = sheet.getName();
+      const lastRow = sheet.getLastRow();
+      if (lastRow <= 1) {
+        console.log(`⚠️ Aba "${sheetName}" vazia ou só com header - PULANDO`);
+        return;
+      }
+
+      const result = normalizarDatasAba_(sheet);
+      if (result) {
+        totalAbas++;
+        totalDatas += result.datasPadronizadas;
+        resumo.push(result);
+      }
+    });
+
+    console.log('\n✅ ========================================');
+    console.log(`✅ Normalização concluída: ${totalDatas} datas padronizadas em ${totalAbas} abas`);
+    console.log('✅ ========================================\n');
+
+    return resumo;
+  } finally {
+    if (localeChanged) {
+      console.log(`↩️ Restaurando locale para ${originalLocale}...`);
+      ss.setSpreadsheetLocale(originalLocale);
+      if (typeof invalidateSheetCache_ === 'function') {
+        invalidateSheetCache_();
+        console.log('🧹 Cache de sheets limpo após restaurar locale');
+      }
+    }
+  }
+}
+
+/**
+ * Normaliza datas em uma aba específica
+ * @param {Sheet} sheet - Aba do Google Sheets
+ * @return {Object|null} Resultado com métricas
+ */
+function normalizarDatasAba_(sheet) {
+  const sheetName = sheet.getName();
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return null;
+
+  const headers = data[0];
+  const rows = data.slice(1);
+  const dateColumns = identificarColunasDatas_(headers);
+
+  console.log(`\n📋 ==================== ${sheetName} ====================`);
+  console.log(`   📊 Total de colunas: ${headers.length}`);
+  console.log(`   📅 Colunas de data identificadas: ${dateColumns.length}`);
+
+  if (dateColumns.length === 0) return null;
+
+  dateColumns.forEach(col => {
+    const colLetter = columnToLetter_(col.idx + 1);
+    const range = sheet.getRange(`${colLetter}2:${colLetter}${rows.length + 1}`);
+    const hasTime = rows.some(row => {
+      const val = row[col.idx];
+      return val instanceof Date && (val.getHours() || val.getMinutes() || val.getSeconds());
+    });
+    range.setNumberFormat(hasTime ? 'dd/mm/yyyy hh:mm' : 'dd/mm/yyyy');
+  });
+  SpreadsheetApp.flush();
+
+  let datasPadronizadas = 0;
+  const columnBuffers = dateColumns.map(col => ({
+    idx: col.idx,
+    name: col.name,
+    values: [],
+    changed: false
+  }));
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const rowIndex = i + 2;
+
+    columnBuffers.forEach(buf => {
+      const cellValue = row[buf.idx];
+      if (!cellValue || cellValue === '') {
+        buf.values.push(cellValue);
+        return;
+      }
+
+      try {
+        let newValue = null;
+
+        if (typeof cellValue === 'number' && cellValue < 1000) {
+          return; // Provavelmente contador, nao data
+        }
+
+        if (cellValue instanceof Date) {
+          newValue = normalizeDateToNoon_(cellValue);
+        } else if (typeof cellValue === 'string') {
+          const cleanValue = String(cellValue).replace(/^['"]/, '');
+          const parsed = parseDate(cleanValue);
+          if (parsed && !isNaN(parsed.getTime())) {
+            newValue = normalizeDateToNoon_(parsed);
+          }
+        } else if (typeof cellValue === 'number') {
+          const dateFromSerial = new Date((cellValue - 25569) * 86400 * 1000);
+          if (!isNaN(dateFromSerial.getTime())) {
+            newValue = normalizeDateToNoon_(dateFromSerial);
+          }
+        }
+
+        if (newValue) {
+          const originalTs = cellValue instanceof Date ? cellValue.getTime() : null;
+          if (originalTs === null || originalTs !== newValue.getTime()) {
+            buf.changed = true;
+          }
+          buf.values.push(newValue);
+          datasPadronizadas++;
+        } else {
+          buf.values.push(cellValue);
+        }
+      } catch (error) {
+        console.error(`   ⚠️ Erro ao padronizar [${sheetName}] L${rowIndex} ${buf.name}: ${error.message}`);
+        buf.values.push(cellValue);
+      }
+    });
+  }
+
+  let anyWrites = false;
+  columnBuffers.forEach(buf => {
+    if (!buf.changed) return;
+    const range = sheet.getRange(2, buf.idx + 1, rows.length, 1);
+    range.setValues(buf.values.map(v => [v]));
+    anyWrites = true;
+  });
+  if (anyWrites) SpreadsheetApp.flush();
+
+  console.log(`   ✅ ${datasPadronizadas} datas padronizadas`);
+  return {
+    aba: sheetName,
+    datasPadronizadas: datasPadronizadas,
+    colunasData: dateColumns.length
+  };
+}
+
+/**
+ * Configura trigger para normalizacao de datas a cada 2 horas
+ */
+function configurarNormalizacaoDatasAutomatica() {
+  const ui = SpreadsheetApp.getUi();
+
+  const response = ui.alert(
+    '🧹 Normalizacao Automatica de Datas',
+    'Deseja ativar a normalizacao automatica de datas?\n\n' +
+    '⏰ Frequencia: a cada 2 horas\n' +
+    '📋 Abrange todas as abas da base\n\n' +
+    'Continuar?',
+    ui.ButtonSet.YES_NO
+  );
+
+  if (response !== ui.Button.YES) return;
+
+  clearTriggersByHandler_('normalizarDatasTodasAbas');
+
+  ScriptApp.newTrigger('normalizarDatasTodasAbas')
+    .timeBased()
+    .everyHours(2)
+    .create();
+
+  ui.alert(
+    '✅ Normalizacao Automatica Ativada',
+    'Trigger criado para normalizar datas a cada 2 horas.',
+    ui.ButtonSet.OK
+  );
+}
+
+/**
+ * Desativa trigger automatico de normalizacao de datas
+ */
+function desativarNormalizacaoDatasAutomatica() {
+  const ui = SpreadsheetApp.getUi();
+
+  const response = ui.alert(
+    '🛑 Desativar Normalizacao Automatica',
+    'Remover trigger de normalizacao automatica de datas?\n\n' +
+    'Continuar?',
+    ui.ButtonSet.YES_NO
+  );
+
+  if (response !== ui.Button.YES) return;
+
+  clearTriggersByHandler_('normalizarDatasTodasAbas');
+
+  ui.alert(
+    '✅ Normalizacao Automatica Desativada',
+    'Trigger removido com sucesso.',
+    ui.ButtonSet.OK
+  );
 }
 
 /**
@@ -169,7 +395,7 @@ function identificarColunasDatas_(headers) {
 /**
  * Diagnosticar uma coluna específica
  */
-function diagnosticarColuna_(rows, displayRows, idx, nome) {
+function diagnosticarColuna_(rows, displayRows, idx, nome, sheetName, today) {
   const resultado = {
     total: rows.length,
     vazios: 0,
@@ -178,12 +404,13 @@ function diagnosticarColuna_(rows, displayRows, idx, nome) {
     numbers: 0,
     numbersSmall: 0,
     formatosString: new Map(),
-    amostras: []
+    amostras: [],
+    violacoes: []
   };
   
   let amostraCount = 0;
   
-  for (let i = 0; i < rows.length && amostraCount < 5; i++) {
+  for (let i = 0; i < rows.length; i++) {
     const raw = rows[i][idx];
     const display = displayRows[i][idx];
     
@@ -208,12 +435,65 @@ function diagnosticarColuna_(rows, displayRows, idx, nome) {
       if (formato) {
         resultado.formatosString.set(formato, (resultado.formatosString.get(formato) || 0) + 1);
       }
+
+      if (!isValidDateStringFormat_(raw)) {
+        resultado.violacoes.push({
+          aba: sheetName || '',
+          coluna: nome,
+          linha: i + 2,
+          valor_raw: raw,
+          valor_display: display,
+          tipo: tipo,
+          problema: 'Formato invalido (nao dd/mm/aaaa ou dd-mm-aaaa)',
+          formato_detectado: formato || 'Outro'
+        });
+      }
     } else if (typeof raw === 'number') {
       resultado.numbers++;
       tipo = 'number';
       
       if (raw < 1000) {
         resultado.numbersSmall++;
+      }
+
+      resultado.violacoes.push({
+        aba: sheetName || '',
+        coluna: nome,
+        linha: i + 2,
+        valor_raw: raw,
+        valor_display: display,
+        tipo: tipo,
+        problema: 'Numero em coluna de data',
+        formato_detectado: 'Numero'
+      });
+    }
+
+    if (display && !isValidDateDisplayFormat_(display)) {
+      resultado.violacoes.push({
+        aba: sheetName || '',
+        coluna: nome,
+        linha: i + 2,
+        valor_raw: raw,
+        valor_display: display,
+        tipo: tipo,
+        problema: 'Display fora do padrao (dd/mm/aaaa ou dd-mm-aaaa)',
+        formato_detectado: detectarFormatoDisplay_(display)
+      });
+    }
+
+    if (isAtividadesCreationColumn_(sheetName, nome)) {
+      const parsed = parseDateValueForCompare_(raw || display);
+      if (parsed && today && parsed.getTime() > today.getTime()) {
+        resultado.violacoes.push({
+          aba: sheetName || '',
+          coluna: nome,
+          linha: i + 2,
+          valor_raw: raw,
+          valor_display: display,
+          tipo: tipo,
+          problema: 'Data de criacao maior que hoje (Atividades)',
+          formato_detectado: tipo === 'string' ? detectarFormatoData_(raw) : tipo
+        });
       }
     }
     
@@ -227,6 +507,11 @@ function diagnosticarColuna_(rows, displayRows, idx, nome) {
       amostraCount++;
     }
   }
+
+  resultado.formatosStringObj = {};
+  resultado.formatosString.forEach((count, formato) => {
+    resultado.formatosStringObj[formato] = count;
+  });
   
   return resultado;
 }
@@ -263,6 +548,88 @@ function detectarFormatoData_(str) {
   }
   
   return 'Outro';
+}
+
+function isValidDateStringFormat_(str) {
+  const s = String(str).trim();
+  return /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s) || /^\d{1,2}-\d{1,2}-\d{4}$/.test(s);
+}
+
+function isValidDateDisplayFormat_(str) {
+  const s = String(str).trim();
+  return /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s) || /^\d{1,2}-\d{1,2}-\d{4}$/.test(s);
+}
+
+function detectarFormatoDisplay_(str) {
+  const s = String(str).trim();
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) return 'DD/MM/AAAA';
+  if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(s)) return 'DD-MM-AAAA';
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}/.test(s)) return 'DD/MM/AAAA HH:MM';
+  if (/^\d{1,2}-\d{1,2}-\d{4}\s+\d{1,2}:\d{2}/.test(s)) return 'DD-MM-AAAA HH:MM';
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}\s*(AM|PM)$/i.test(s)) return 'MM/DD/AAAA HH:MM AM/PM';
+  if (/^\d{1,2}-\d{1,2}-\d{4}\s+\d{1,2}:\d{2}\s*(AM|PM)$/i.test(s)) return 'MM-DD-AAAA HH:MM AM/PM';
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)) return 'AAAA-MM-DD';
+  return 'Outro';
+}
+
+function isAtividadesCreationColumn_(sheetName, columnName) {
+  if (!sheetName || !columnName) return false;
+  if (String(sheetName).toLowerCase() !== 'atividades') return false;
+  const name = String(columnName).toLowerCase();
+  return name.includes('data de criação') ||
+    name.includes('data de criacao') ||
+    name.includes('created date');
+}
+
+function parseDateValueForCompare_(raw) {
+  if (!raw || raw === '') return null;
+  if (raw instanceof Date) return normalizeDateToNoon_(raw);
+  if (typeof raw === 'string') {
+    const parsed = parseDate(raw);
+    return parsed ? normalizeDateToNoon_(parsed) : null;
+  }
+  if (typeof raw === 'number' && isFinite(raw) && raw > 1000) {
+    return normalizeDateToNoon_(new Date((raw - 25569) * 86400 * 1000));
+  }
+  return null;
+}
+
+function writeDateDiagnosticsReport_(violacoes) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetName = 'Diagnostico_Datas';
+  let sheet = ss.getSheetByName(sheetName);
+  if (!sheet) sheet = ss.insertSheet(sheetName);
+
+  sheet.clearContents();
+
+  const header = [
+    'Aba',
+    'Coluna',
+    'Linha',
+    'Valor Raw',
+    'Valor Display',
+    'Tipo',
+    'Problema',
+    'Formato Detectado'
+  ];
+
+  const rows = violacoes.map(v => [
+    v.aba || '',
+    v.coluna || '',
+    v.linha || '',
+    v.valor_raw === undefined ? '' : v.valor_raw,
+    v.valor_display === undefined ? '' : v.valor_display,
+    v.tipo || '',
+    v.problema || '',
+    v.formato_detectado || ''
+  ]);
+
+  sheet.getRange(1, 1, 1, header.length).setValues([header]);
+  if (rows.length > 0) {
+    sheet.getRange(2, 1, rows.length, header.length).setValues(rows);
+  }
+
+  sheet.setFrozenRows(1);
 }
 
 /**
@@ -311,35 +678,37 @@ function recalcularFiscalQTodasAnalises() {
   // Isso garante que quando o código carregar Historico_Ganhos/Historico_Perdidas,
   // as datas já estarão interpretadas corretamente (DD/MM em vez de MM/DD)
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const currentLocale = ss.getSpreadsheetLocale();
-  console.log(`🌍 Locale atual global: ${currentLocale}`);
-  if (currentLocale !== 'pt_BR' && currentLocale !== 'pt-BR') {
-    console.log(`🔧 Alterando locale GLOBAL para pt_BR...`);
+  const originalLocale = ss.getSpreadsheetLocale();
+  let localeChanged = false;
+  console.log(`🌍 Locale atual global: ${originalLocale}`);
+  if (originalLocale !== 'pt_BR' && originalLocale !== 'pt-BR') {
+    console.log('🔧 Alterando locale GLOBAL para pt_BR...');
     ss.setSpreadsheetLocale('pt_BR');
+    localeChanged = true;
     console.log(`✅ Locale alterado para: ${ss.getSpreadsheetLocale()}`);
     
     // CRÍTICO: Limpar cache de sheets após mudar locale
     // Caso contrário, dados cached ainda terão datas interpretadas no formato antigo
     if (typeof invalidateSheetCache_ === 'function') {
       invalidateSheetCache_();
-      console.log(`🧹 Cache de sheets limpo após mudança de locale`);
+      console.log('🧹 Cache de sheets limpo após mudança de locale');
     }
   } else {
-    console.log(`✅ Locale já configurado como pt_BR`);
+    console.log('✅ Locale já configurado como pt_BR');
   }
   
   try {
     // Processar Ganhas
     console.log('\n🏆 Recalculando Fiscal Q - Ganhas...');
-    results.ganhas = recalcularFiscalQAba_('📈 Análise Ganhas', 'WON');
+    results.ganhas = recalcularFiscalQAba_('📈 Análise Ganhas', 'WON', false);
     
     // Processar Perdidas
     console.log('\n❌ Recalculando Fiscal Q - Perdidas...');
-    results.perdidas = recalcularFiscalQAba_('📉 Análise Perdidas', 'LOST');
+    results.perdidas = recalcularFiscalQAba_('📉 Análise Perdidas', 'LOST', false);
     
     // Processar Pipeline
     console.log('\n📊 Recalculando Fiscal Q - Pipeline...');
-    results.pipeline = recalcularFiscalQAba_('🎯 Análise Forecast IA', 'OPEN');
+    results.pipeline = recalcularFiscalQAba_('🎯 Análise Forecast IA', 'OPEN', false);
     
     const duration = ((new Date() - startTime) / 1000).toFixed(1);
     const totalAtualizados = results.ganhas.atualizados + results.perdidas.atualizados + results.pipeline.atualizados;
@@ -382,6 +751,15 @@ function recalcularFiscalQTodasAnalises() {
       );
     }
     throw error;
+  } finally {
+    if (localeChanged) {
+      console.log(`↩️ Restaurando locale para ${originalLocale}...`);
+      ss.setSpreadsheetLocale(originalLocale);
+      if (typeof invalidateSheetCache_ === 'function') {
+        invalidateSheetCache_();
+        console.log('🧹 Cache de sheets limpo após restaurar locale');
+      }
+    }
   }
 }
 
@@ -391,7 +769,7 @@ function recalcularFiscalQTodasAnalises() {
  * @param {string} mode - OPEN, WON ou LOST
  * @return {Object} { total, atualizados, erros }
  */
-function recalcularFiscalQAba_(sheetName, mode) {
+function recalcularFiscalQAba_(sheetName, mode, manageLocale = true) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(sheetName);
   
@@ -400,22 +778,31 @@ function recalcularFiscalQAba_(sheetName, mode) {
     return { total: 0, atualizados: 0, erros: 0, datesStd: 0 };
   }
   
-  // CRÍTICO: Verificar e forçar locale pt-BR para evitar ambiguidade de datas
-  const currentLocale = ss.getSpreadsheetLocale();
-  console.log(`   🌍 Locale atual da planilha: ${currentLocale}`);
-  if (currentLocale !== 'pt_BR' && currentLocale !== 'pt-BR') {
-    console.log(`   🔧 Alterando locale para pt_BR...`);
-    ss.setSpreadsheetLocale('pt_BR');
+  const originalLocale = ss.getSpreadsheetLocale();
+  let localeChanged = false;
+
+  if (manageLocale) {
+    console.log(`   🌍 Locale atual da planilha: ${originalLocale}`);
+    if (originalLocale !== 'pt_BR' && originalLocale !== 'pt-BR') {
+      console.log('   🔧 Alterando locale para pt_BR...');
+      ss.setSpreadsheetLocale('pt_BR');
+      localeChanged = true;
+      if (typeof invalidateSheetCache_ === 'function') {
+        invalidateSheetCache_();
+        console.log('   🧹 Cache de sheets limpo após mudança de locale');
+      }
+    }
   }
-  
-  const data = sheet.getDataRange().getValues();
-  if (data.length <= 1) {
-    console.log(`   ⚠️ Aba ${sheetName} vazia`);
-    return { total: 0, atualizados: 0, erros: 0, datesStd: 0 };
-  }
-  
-  const headers = data[0];
-  const rows = data.slice(1);
+
+  try {
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) {
+      console.log(`   ⚠️ Aba ${sheetName} vazia`);
+      return { total: 0, atualizados: 0, erros: 0, datesStd: 0 };
+    }
+    
+    const headers = data[0];
+    const rows = data.slice(1);
   
   // ========================================
   // FASE 1: PADRONIZAÇÃO DE TODAS AS DATAS
@@ -434,92 +821,97 @@ function recalcularFiscalQAba_(sheetName, mode) {
   
   // IMPORTANTE: Aplicar formato de DATA em todas as colunas de data
   // Com locale pt_BR, o formato dd/mm/yyyy garante exibição correta
-  console.log(`   🔧 Aplicando formato de data dd/mm/yyyy em colunas de data...`);
+  console.log('   🔧 Aplicando formato de data dd/mm/yyyy em colunas de data...');
   dateColumns.forEach(col => {
     const colLetter = columnToLetter_(col.idx + 1);
     const range = sheet.getRange(`${colLetter}2:${colLetter}${rows.length + 1}`);
-    // Aplicar formato de data brasileiro: dia/mês/ano
-    range.setNumberFormat('dd/mm/yyyy');
+    const hasTime = rows.some(row => {
+      const val = row[col.idx];
+      return val instanceof Date && (val.getHours() || val.getMinutes() || val.getSeconds());
+    });
+    range.setNumberFormat(hasTime ? 'dd/mm/yyyy hh:mm' : 'dd/mm/yyyy');
   });
-  SpreadsheetApp.flush(); // Garantir que formato foi aplicado
+  SpreadsheetApp.flush();
   
-  // Padronizar todas as datas encontradas - ESCREVER DATE OBJECTS, NÃO STRINGS
-  const updates = [];  // Acumular mudanças para escritas em lote
+  // Padronizar todas as datas encontradas - ESCREVER DATE OBJECTS, NAO STRINGS
+  const columnBuffers = dateColumns.map(col => ({
+    idx: col.idx,
+    name: col.name,
+    values: [],
+    changed: false
+  }));
   
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const rowIndex = i + 2;
     
-    dateColumns.forEach(col => {
-      const cellValue = row[col.idx];
+    columnBuffers.forEach(buf => {
+      const cellValue = row[buf.idx];
       
-      // Pular se vazio
-      if (!cellValue || cellValue === '') return;
+      if (!cellValue || cellValue === '') {
+        buf.values.push(cellValue);
+        return;
+      }
       
       try {
         let newValue = null;
         
-        // Validação: Se for número pequeno (< 1000), provavelmente é contador, não data
         if (typeof cellValue === 'number' && cellValue < 1000) {
-          return; // Pular - não é data, é número/contador
+          buf.values.push(cellValue);
+          return; // Pular - nao e data, e numero/contador
         }
         
-        // Se for Date object, manter como Date
         if (cellValue instanceof Date) {
-          newValue = cellValue;
-        }
-        // Se for string, parsear para Date object
-        else if (typeof cellValue === 'string') {
-          // Remover qualquer prefixo de aspas se existir
+          newValue = normalizeDateToNoon_(cellValue);
+        } else if (typeof cellValue === 'string') {
           const cleanValue = String(cellValue).replace(/^['"]/, '');
           const parsed = parseDate(cleanValue);
           if (parsed && !isNaN(parsed.getTime())) {
-            newValue = parsed;  // Manter como Date object
+            newValue = normalizeDateToNoon_(parsed);
           }
-        }
-        // Se for número (serial date do Excel/Sheets)
-        else if (typeof cellValue === 'number') {
+        } else if (typeof cellValue === 'number') {
           const dateFromSerial = new Date((cellValue - 25569) * 86400 * 1000);
           if (!isNaN(dateFromSerial.getTime())) {
-            newValue = dateFromSerial;
+            newValue = normalizeDateToNoon_(dateFromSerial);
           }
         }
         
-        // Aplicar padronização se conseguimos converter
         if (newValue) {
-          updates.push({
-            row: rowIndex,
-            col: col.idx + 1,
-            value: newValue,  // Date object, não string
-            colName: col.name
-          });
+          const originalTs = cellValue instanceof Date ? cellValue.getTime() : null;
+          if (originalTs === null || originalTs !== newValue.getTime()) {
+            buf.changed = true;
+          }
+          buf.values.push(newValue);
           datesStandardized++;
           
-          // Debug nas primeiras 3 linhas
           if (i < 3) {
             const valueType = cellValue instanceof Date ? 'Date' : typeof cellValue;
             const displayValue = formatDateRobust(newValue);
-            console.log(`      📅 [L${rowIndex}] ${col.name}: ${cellValue} (tipo: ${valueType}) → ${displayValue}`);
+            console.log(`      📅 [L${rowIndex}] ${buf.name}: ${cellValue} (tipo: ${valueType}) → ${displayValue}`);
           }
+        } else {
+          buf.values.push(cellValue);
         }
       } catch (error) {
-        console.error(`      ⚠️ Erro ao padronizar [L${rowIndex}][${col.name}]: ${error.message}`);
+        console.error(`      ⚠️ Erro ao padronizar [L${rowIndex}][${buf.name}]: ${error.message}`);
+        buf.values.push(cellValue);
       }
     });
   }
   
-  // Escrever todas as mudanças de uma vez
-  if (updates.length > 0) {
-    updates.forEach(u => {
-      sheet.getRange(u.row, u.col).setValue(u.value);  // Escrever Date object
-    });
-    SpreadsheetApp.flush(); // Forçar gravação
-  }
+  let anyWrites = false;
+  columnBuffers.forEach(buf => {
+    if (!buf.changed) return;
+    const range = sheet.getRange(2, buf.idx + 1, rows.length, 1);
+    range.setValues(buf.values.map(v => [v]));
+    anyWrites = true;
+  });
+  if (anyWrites) SpreadsheetApp.flush();
   
   console.log(`   ✅ ${datesStandardized} datas padronizadas\n`);
   
-  // Limpar array para reutilização na Fase 2
-  updates.length = 0;
+  // Array de atualizacoes para logs na Fase 2
+  const updates = [];
   
   // Recarregar dados após padronização
   // CRÍTICO: Usar getValues() para pegar Date objects nativos do Google Sheets
@@ -536,12 +928,7 @@ function recalcularFiscalQAba_(sheetName, mode) {
   const colFiscalQ = headers.findIndex(h => 
     String(h).includes('Fiscal Q') || String(h).includes('Fiscal Quarter')
   );
-  const colDataFechamento = headers.findIndex(h => 
-    String(h).includes('Data Fechamento') || 
-    String(h).includes('Data Prevista') ||
-    String(h).includes('Close Date') ||
-    String(h).includes('Expected Close')
-  );
+  const colDataFechamento = findCloseDateColumn_(headers, mode);
   const colCiclo = headers.findIndex(h =>
     String(h).includes('Ciclo') && String(h).includes('dias')
   );
@@ -573,8 +960,18 @@ function recalcularFiscalQAba_(sheetName, mode) {
   
   let atualizados = 0;
   let erros = 0;
-  // IMPORTANTE: Reutilizar o array updates já criado na Fase 1
-  // (foi limpo após aplicar as mudanças da Fase 1)
+  // Buffers de colunas para escrita em lote na Fase 2
+
+  const fiscalQValues = rowsAfterStd.map(row => [row[colFiscalQ]]);
+  const closeDateValues = colDataFechamento >= 0
+    ? rowsAfterStd.map(row => [row[colDataFechamento]])
+    : null;
+  const cicloValues = colCiclo >= 0
+    ? rowsAfterStd.map(row => [row[colCiclo]])
+    : null;
+  let fiscalQChangedAny = false;
+  let closeDateChangedAny = false;
+  let cicloChangedAny = false;
   
   // Para WON/LOST: carregar Historico para pegar "Data da última mudança de fase" e "Data de criação"
   let historicoMap = null;
@@ -645,7 +1042,7 @@ function recalcularFiscalQAba_(sheetName, mode) {
           
           const parsedCreatedDate = createdDate instanceof Date ? createdDate : parseDate(createdDate);
           if (parsedCreatedDate && !isNaN(parsedCreatedDate.getTime())) {
-            dataCriacao = parsedCreatedDate;
+            dataCriacao = normalizeDateToNoon_(parsedCreatedDate);
             
             if (i < 3) {
               console.log(`   📅 [${i+1}] dataCriacao (local): ${dataCriacao.toDateString()} (${dataCriacao.getDate()}/${dataCriacao.getMonth()+1}/${dataCriacao.getFullYear()})`);
@@ -684,7 +1081,7 @@ function recalcularFiscalQAba_(sheetName, mode) {
             }
             
             if (parsedLastStageDate && !isNaN(parsedLastStageDate.getTime())) {
-              closeDate = parsedLastStageDate;
+              closeDate = normalizeDateToNoon_(parsedLastStageDate);
               dataCorrected = true;
               
               if (i < 3) {
@@ -701,15 +1098,15 @@ function recalcularFiscalQAba_(sheetName, mode) {
           if (createdDate) {
             // Converter para Date object se necessário
             if (createdDate instanceof Date) {
-              dataCriacao = createdDate;
+              dataCriacao = normalizeDateToNoon_(createdDate);
             } else if (typeof createdDate === 'string') {
               const cleanDate = createdDate.replace(/^['\"]/, '');
               const parsedCreatedDate = parseDate(cleanDate);
               if (parsedCreatedDate && !isNaN(parsedCreatedDate.getTime())) {
-                dataCriacao = parsedCreatedDate;
+                dataCriacao = normalizeDateToNoon_(parsedCreatedDate);
               }
             } else if (typeof createdDate === 'number') {
-              dataCriacao = new Date((createdDate - 25569) * 86400 * 1000);
+              dataCriacao = normalizeDateToNoon_(new Date((createdDate - 25569) * 86400 * 1000));
             }
             
             if (i < 3 && dataCriacao) {
@@ -726,14 +1123,15 @@ function recalcularFiscalQAba_(sheetName, mode) {
       let parsedDate;
       if (closeDate instanceof Date) {
         // Já é Date object, usar diretamente
-        parsedDate = closeDate;
+        parsedDate = normalizeDateToNoon_(closeDate);
       } else if (typeof closeDate === 'string') {
         // Ainda é string, parsear
         const cleanCloseDate = closeDate.replace(/^['\"]/, '');
-        parsedDate = parseDate(cleanCloseDate);
+        const parsed = parseDate(cleanCloseDate);
+        parsedDate = parsed ? normalizeDateToNoon_(parsed) : null;
       } else if (typeof closeDate === 'number') {
         // Serial date
-        parsedDate = new Date((closeDate - 25569) * 86400 * 1000);
+        parsedDate = normalizeDateToNoon_(new Date((closeDate - 25569) * 86400 * 1000));
       }
       
       if (!parsedDate || isNaN(parsedDate.getTime())) {
@@ -769,8 +1167,12 @@ function recalcularFiscalQAba_(sheetName, mode) {
           console.error(`   ⚠️ [${i+1}] Possível inversão DD/MM ↔ MM/DD nas datas!`);
           
           // Tentar corrigir invertendo as datas
-          const closeDateInverted = new Date(parsedDate.getFullYear(), parsedDate.getDate() - 1, parsedDate.getMonth() + 1);
-          const dataCriacaoInverted = new Date(dataCriacao.getFullYear(), dataCriacao.getDate() - 1, dataCriacao.getMonth() + 1);
+          const closeDateInverted = normalizeDateToNoon_(
+            new Date(parsedDate.getFullYear(), parsedDate.getDate() - 1, parsedDate.getMonth() + 1)
+          );
+          const dataCriacaoInverted = normalizeDateToNoon_(
+            new Date(dataCriacao.getFullYear(), dataCriacao.getDate() - 1, dataCriacao.getMonth() + 1)
+          );
           const cicloInverted = Math.ceil((closeDateInverted - dataCriacaoInverted) / MS_PER_DAY);
           
           console.warn(`   🔄 [${i+1}] Testando inversão: ${cicloInverted} dias`);
@@ -783,6 +1185,7 @@ function recalcularFiscalQAba_(sheetName, mode) {
             newCiclo = cicloInverted;
             parsedDate = closeDateInverted;
             dataCriacao = dataCriacaoInverted;
+            closeDate = parsedDate;
             dataCorrected = true;
           } else {
             console.error(`   ❌ [${i+1}] Inversão não resolveu. Pulando cálculo de ciclo.`);
@@ -803,6 +1206,19 @@ function recalcularFiscalQAba_(sheetName, mode) {
       const cicloChanged = newCiclo !== null && originalCiclo !== newCiclo;
       
       if (oldFiscalQ !== newFiscalQ || dataCorrected || cicloChanged) {
+        if (oldFiscalQ !== newFiscalQ) {
+          fiscalQValues[i][0] = newFiscalQ;
+          fiscalQChangedAny = true;
+        }
+        if (dataCorrected && closeDateValues) {
+          closeDateValues[i][0] = closeDate;
+          closeDateChangedAny = true;
+        }
+        if (cicloChanged && cicloValues) {
+          cicloValues[i][0] = newCiclo;
+          cicloChangedAny = true;
+        }
+
         // Adicionar update da Fase 2 ao array (já limpo após Fase 1)
         updates.push({
           row: rowIndex,
@@ -830,26 +1246,16 @@ function recalcularFiscalQAba_(sheetName, mode) {
   if (updates.length > 0) {
     console.log(`   ✍️ Aplicando ${updates.length} atualizações...`);
     
-    updates.forEach(update => {
-      // Verificar se é um update válido da Fase 2
-      if (!update.colFiscalQ || !update.colDataFechamento) {
-        console.error(`   ⚠️ Update inválido ignorado: ${JSON.stringify(update)}`);
-        return;
-      }
-      
-      // Atualizar Fiscal Q
-      sheet.getRange(update.row, update.colFiscalQ).setValue(update.newFiscalQ);
-      
-      // Atualizar Data Fechamento se foi corrigida
-      if (update.newDataFechamento) {
-        sheet.getRange(update.row, update.colDataFechamento).setValue(update.newDataFechamento);
-      }
-      
-      // Atualizar Ciclo se calculado e coluna existe
-      if (update.newCiclo !== null && update.colCiclo > 0) {
-        sheet.getRange(update.row, update.colCiclo).setValue(update.newCiclo);
-      }
-    });
+    if (fiscalQChangedAny) {
+      sheet.getRange(2, colFiscalQ + 1, rowsAfterStd.length, 1).setValues(fiscalQValues);
+    }
+    if (closeDateChangedAny && closeDateValues) {
+      sheet.getRange(2, colDataFechamento + 1, rowsAfterStd.length, 1).setValues(closeDateValues);
+    }
+    if (cicloChangedAny && cicloValues) {
+      sheet.getRange(2, colCiclo + 1, rowsAfterStd.length, 1).setValues(cicloValues);
+    }
+    SpreadsheetApp.flush();
     
     // Log das mudanças
     if (updates.length <= 10) {
@@ -882,12 +1288,22 @@ function recalcularFiscalQAba_(sheetName, mode) {
   
   console.log(`   ✅ ${datesStandardized} datas padronizadas, ${atualizados} recalculados, ${erros} erros`);
   
-  return {
-    total: rowsAfterStd.length,
-    atualizados: atualizados,
-    erros: erros,
-    datesStd: datesStandardized
-  };
+    return {
+      total: rowsAfterStd.length,
+      atualizados: atualizados,
+      erros: erros,
+      datesStd: datesStandardized
+    };
+  } finally {
+    if (manageLocale && localeChanged) {
+      console.log(`   ↩️ Restaurando locale para ${originalLocale}...`);
+      ss.setSpreadsheetLocale(originalLocale);
+      if (typeof invalidateSheetCache_ === 'function') {
+        invalidateSheetCache_();
+        console.log('   🧹 Cache de sheets limpo após restaurar locale');
+      }
+    }
+  }
 }
 
 /**
@@ -903,4 +1319,31 @@ function columnToLetter_(column) {
     column = (column - temp - 1) / 26;
   }
   return letter;
+}
+
+function normalizeDateToNoon_(dateObj) {
+  if (!(dateObj instanceof Date)) return null;
+  const d = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), 12, 0, 0, 0);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function findColumnByPatterns_(headers, patterns) {
+  const lowered = patterns.map(p => String(p).toLowerCase());
+  return headers.findIndex(h =>
+    lowered.some(p => String(h).toLowerCase().includes(p))
+  );
+}
+
+function findCloseDateColumn_(headers, mode) {
+  const isOpen = mode === 'OPEN';
+  const primary = isOpen
+    ? ['data prevista', 'expected close']
+    : ['data fechamento', 'close date', 'closed date'];
+  const secondary = isOpen
+    ? ['data fechamento', 'close date', 'closed date']
+    : ['data prevista', 'expected close'];
+
+  let idx = findColumnByPatterns_(headers, primary);
+  if (idx === -1) idx = findColumnByPatterns_(headers, secondary);
+  return idx;
 }

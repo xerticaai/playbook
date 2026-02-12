@@ -2,7 +2,7 @@
 # ============================================================================
 # Limpeza de Tabelas e Modelos Antigos do BigQuery
 # ============================================================================
-# Remove recursos que não são mais usados pelos modelos v2
+# Remove recursos que não são mais usados pelo pipeline canônico (sem _v2)
 # ============================================================================
 
 set -e
@@ -27,6 +27,8 @@ OLD_TABLES=(
   "pipeline_ml_predictions"
   "training_data_v2"
   "treino_previsao_ciclo"
+  "ml_prioridade_deal_v2"
+  "ml_proxima_acao_v2"
 )
 
 # ============================================================================
@@ -36,6 +38,10 @@ OLD_MODELS=(
   "previsao_ciclo_model"
   "win_loss_predictor"
   "win_loss_predictor_v2"
+  "ml_previsao_ciclo_v2"
+  "ml_classificador_perda_v2"
+  "ml_risco_abandono_v2"
+  "ml_performance_vendedor_v2"
 )
 
 # ============================================================================
@@ -95,13 +101,19 @@ echo "      • pipeline (39 deals abertos)"
 echo "      • sales_specialist (12 deals)"
 echo ""
 echo "   🤖 Modelos:"
-echo "      • ml_previsao_ciclo_v2 (R² 0.68)"
-echo "      • ml_classificador_perda_v2 (multiclass)"
+echo "      • ml_previsao_ciclo"
+echo "      • ml_classificador_perda"
+echo "      • ml_risco_abandono"
+echo "      • ml_performance_vendedor"
+echo ""
+echo "   🧠 Views/saídas (pipeline_*):"
+echo "      • pipeline_prioridade_deals"
+echo "      • pipeline_proxima_acao"
 echo ""
 echo "❌ REMOVIDOS:"
 echo "   📊 Tabelas: ${#OLD_TABLES[@]} removidas"
 echo "   🤖 Modelos: ${#OLD_MODELS[@]} removidos"
 echo ""
 echo "🔗 PRÓXIMO PASSO:"
-echo "   Atualizar BigQuerySync.gs para salvar em closed_deals_won/closed_deals_lost"
+echo "   Rodar ./deploy_ml.sh (após o BigQuerySync diário)"
 echo ""

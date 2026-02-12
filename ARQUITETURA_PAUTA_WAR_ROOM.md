@@ -351,7 +351,7 @@ router = APIRouter()
 
 PROJECT_ID = os.getenv("GCP_PROJECT", "operaciones-br")
 DATASET_ID = "sales_intelligence"
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyBwgc9nHAtgUiabpGJDwrMBd3dJTBE5ee4")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 genai.configure(api_key=GEMINI_API_KEY)
 

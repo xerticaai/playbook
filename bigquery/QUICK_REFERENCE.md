@@ -51,9 +51,16 @@ FROM \`operaciones-br.sales_intelligence.pipeline\`
 UNION ALL
 
 SELECT 
-  'closed_deals' as table_name,
+  'closed_deals_won' as table_name,
   COUNT(*) as rows
-FROM \`operaciones-br.sales_intelligence.closed_deals\`
+FROM \`operaciones-br.sales_intelligence.closed_deals_won\`
+
+UNION ALL
+
+SELECT 
+  'closed_deals_lost' as table_name,
+  COUNT(*) as rows
+FROM \`operaciones-br.sales_intelligence.closed_deals_lost\`
 "
 ```
 
@@ -101,30 +108,17 @@ ORDER BY win_rate DESC
 
 ## 🔄 Operações Diárias
 
-### Recarregar dados do pipeline
+### Atualizar modelos + saídas do dashboard
 ```bash
 cd /workspaces/playbook/bigquery
-./load_initial_data.py
-```
 
-### Retreinar modelo de ML
-```bash
-bq query --use_legacy_sql=false "
-CREATE OR REPLACE MODEL \`operaciones-br.sales_intelligence.win_loss_predictor\`
-OPTIONS(
-  model_type='BOOSTED_TREE_CLASSIFIER',
-  input_label_cols=['won'],
-  max_iterations=50,
-  learn_rate=0.1,
-  early_stop=TRUE
-) AS
-SELECT * FROM \`operaciones-br.sales_intelligence.training_data\`
-"
-```
+# 1) (Fora do terminal) BigQuerySync roda 1x/dia e atualiza:
+#    sales_intelligence.pipeline
+#    sales_intelligence.closed_deals_won
+#    sales_intelligence.closed_deals_lost
 
-### Atualizar predições
-```bash
-bq query --use_legacy_sql=false < ml_win_loss_model.sql
+# 2) Rodar o deploy canônico (modelos + views + tabelas pipeline_*)
+./deploy_ml.sh
 ```
 
 ---

@@ -8,7 +8,7 @@
 
 ## 🎯 MODELOS TREINADOS (4/6 - 67%)
 
-### ✅ Modelo 1: ml_previsao_ciclo_v2
+### ✅ Modelo 1: ml_previsao_ciclo
 - **Tipo**: BOOSTED_TREE_REGRESSOR
 - **Objetivo**: Prever tempo de ciclo (dias até fechamento)
 - **Dataset**: 2,575 deals (506 WON + 2,069 LOST)
@@ -20,7 +20,7 @@
 - **Tempo de treinamento**: 407 segundos (~7 min)
 - **Status**: ✅ PRODUÇÃO
 
-### ✅ Modelo 2: ml_classificador_perda_v2
+### ✅ Modelo 2: ml_classificador_perda
 - **Tipo**: BOOSTED_TREE_CLASSIFIER (multiclass)
 - **Objetivo**: Classificar causa de perda (5 categorias)
 - **Dataset**: 2,069 deals LOST
@@ -33,7 +33,7 @@
 - **Tempo de treinamento**: 284 segundos (~5 min)
 - **Status**: ✅ PRODUÇÃO
 
-### ✅ Modelo 3: ml_risco_abandono_v2
+### ✅ Modelo 3: ml_risco_abandono
 - **Tipo**: BOOSTED_TREE_CLASSIFIER (binary)
 - **Objetivo**: Prever risco de abandono (deal vai ser abandonado?)
 - **Dataset**: 2,575 deals (WON + LOST histórico)
@@ -47,7 +47,7 @@
 - **Tempo de treinamento**: 284 segundos (~5 min)
 - **Status**: ✅ PRODUÇÃO
 
-### ✅ Modelo 4: ml_performance_vendedor_v2
+### ✅ Modelo 4: ml_performance_vendedor
 - **Tipo**: LINEAR_REGRESSION
 - **Objetivo**: Prever win rate esperado por vendedor
 - **Dataset**: Agregações por vendedor (mínimo 3 deals)
@@ -63,7 +63,7 @@
 
 ## 📊 VIEWS CRIADAS (2/2 - 100%)
 
-### ✅ VIEW 5: ml_prioridade_deal_v2
+### ✅ VIEW 5: pipeline_prioridade_deals
 - **Tipo**: VIEW (scoring system)
 - **Objetivo**: Combinar valor, urgência e risco para priorizar deals
 - **Inputs**: 
@@ -83,10 +83,10 @@
   - 44 deals: MÉDIO priority, BAIXO risco (17%)
 - **Status**: ✅ PRODUÇÃO
 
-### ✅ VIEW 6: ml_proxima_acao_v2
+### ✅ VIEW 6: pipeline_proxima_acao
 - **Tipo**: VIEW (rule-based engine)
 - **Objetivo**: Sugerir ação específica para cada deal
-- **Inputs**: ml_prioridade_deal_v2 (scoring)
+- **Inputs**: pipeline_prioridade_deals (scoring)
 - **Outputs**:
   - categoria_acao (7 categorias)
   - urgencia (ALTA / MÉDIA / BAIXA)
@@ -151,17 +151,17 @@ sales_specialist (12 deals)
 1. TREINAMENTO (histórico):
    closed_deals_won + closed_deals_lost
    ↓
-   [ml_previsao_ciclo_v2] → Prever tempo de ciclo
-   [ml_classificador_perda_v2] → Classificar causa de perda
-   [ml_risco_abandono_v2] → Prever abandono
-   [ml_performance_vendedor_v2] → Prever win rate vendedor
+  [ml_previsao_ciclo] → Prever tempo de ciclo
+  [ml_classificador_perda] → Classificar causa de perda
+  [ml_risco_abandono] → Prever abandono
+  [ml_performance_vendedor] → Prever win rate vendedor
 
 2. SCORING (pipeline atual):
    pipeline (266 deals)
    ↓
-   [ml_prioridade_deal_v2 VIEW] → Score 0-100, nível, justificativa
+  [pipeline_prioridade_deals VIEW] → Score 0-100, nível, justificativa
    ↓
-   [ml_proxima_acao_v2 VIEW] → Ação, urgência, checklist
+  [pipeline_proxima_acao VIEW] → Ação, urgência, detalhes
 ```
 
 ---
@@ -169,9 +169,9 @@ sales_specialist (12 deals)
 ## 📊 MÉTRICAS DE QUALIDADE
 
 ### Performance dos Modelos
-- ✅ **Excelente** (>90%): ml_risco_abandono_v2 (97.83% ROC AUC), ml_performance_vendedor_v2 (99.56% R²)
-- ✅ **Boa** (60-90%): ml_previsao_ciclo_v2 (67.96% R²)
-- ⚠️ **Não avaliado**: ml_classificador_perda_v2 (classifier multiclass, métricas não coletadas)
+- ✅ **Excelente** (>90%): ml_risco_abandono (97.83% ROC AUC), ml_performance_vendedor (99.56% R²)
+- ✅ **Boa** (60-90%): ml_previsao_ciclo (67.96% R²)
+- ⚠️ **Não avaliado**: ml_classificador_perda (classifier multiclass, métricas não coletadas)
 
 ### Cobertura de Dados
 - **Histórico**: 2,575 deals (506 WON + 2,069 LOST) = 19.7% win rate
@@ -215,30 +215,30 @@ sales_specialist (12 deals)
 SELECT * FROM ML.MODELS WHERE dataset_id = 'sales_intelligence';
 
 -- Ver detalhes de um modelo
-SELECT * FROM ML.TRAINING_INFO(MODEL `sales_intelligence.ml_risco_abandono_v2`);
+SELECT * FROM ML.TRAINING_INFO(MODEL `sales_intelligence.ml_risco_abandono`);
 
 -- Avaliar modelo
-SELECT * FROM ML.EVALUATE(MODEL `sales_intelligence.ml_previsao_ciclo_v2`);
+SELECT * FROM ML.EVALUATE(MODEL `sales_intelligence.ml_previsao_ciclo`);
 ```
 
 ### Usar VIEWs em Produção
 ```sql
 -- Deals críticos (urgência ALTA)
-SELECT * FROM `sales_intelligence.ml_proxima_acao_v2` 
+SELECT * FROM `sales_intelligence.pipeline_proxima_acao` 
 WHERE urgencia = 'ALTA' 
 ORDER BY priority_score DESC;
 
 -- Deals por vendedor
 SELECT Vendedor, COUNT(*) as total, 
   SUM(CASE WHEN urgencia='ALTA' THEN 1 ELSE 0 END) as criticos
-FROM `sales_intelligence.ml_proxima_acao_v2`
+FROM `sales_intelligence.pipeline_proxima_acao`
 GROUP BY Vendedor
 ORDER BY criticos DESC;
 
 -- Distribuição de ações recomendadas
 SELECT categoria_acao, urgencia, COUNT(*) as total,
   ROUND(AVG(priority_score), 1) as avg_score
-FROM `sales_intelligence.ml_proxima_acao_v2`
+FROM `sales_intelligence.pipeline_proxima_acao`
 GROUP BY categoria_acao, urgencia
 ORDER BY urgencia DESC, total DESC;
 ```
@@ -247,10 +247,10 @@ ORDER BY urgencia DESC, total DESC;
 ```bash
 # Executar script de deploy
 cd /workspaces/playbook/bigquery
-bash deploy_ml_v2.sh
+bash deploy_ml.sh
 
 # Ou treinar modelo individual
-bq query --project_id=operaciones-br --use_legacy_sql=false < ml_risco_abandono_v2.sql
+bq query --project_id=operaciones-br --use_legacy_sql=false < ml_risco_abandono.sql
 ```
 
 ---
@@ -261,7 +261,7 @@ bq query --project_id=operaciones-br --use_legacy_sql=false < ml_risco_abandono_
 - [x] 2 VIEWs de scoring/recomendação criadas e testadas
 - [x] 266 deals no pipeline sendo analisados
 - [x] Identificados 120 deals críticos para ação imediata
-- [x] Scripts de deploy automatizados (deploy_ml_v2.sh)
+- [x] Scripts de deploy automatizados (deploy_ml.sh)
 - [x] Documentação completa (este resumo)
 - [x] Dados enriquecidos com análise qualitativa (CSVs)
 - [x] BigQuerySync.gs atualizado para tabelas separadas

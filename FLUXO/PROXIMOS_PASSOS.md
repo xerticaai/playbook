@@ -32,7 +32,7 @@ SELECT 'lost', COUNT(*) FROM \`operaciones-br.sales_intelligence.closed_deals_lo
 cd /workspaces/playbook/bigquery
 
 # Executar script de deploy
-./deploy_ml_v2.sh
+./deploy_ml.sh
 ```
 **Modelos a treinar**:
 - [ ] `forecast_ia_model` - Prever win/loss (Logistic Regression)

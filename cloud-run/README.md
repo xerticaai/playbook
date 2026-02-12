@@ -90,9 +90,9 @@ cloud-run/
   - Query params: `fiscal_q`, `vendedor`
 
 ### ML Predictions
-- `POST /api/v1/ml/predict` - Run ML predictions on opportunity
-  - Body: Opportunity details (MEDDIC, BANT, activities, etc.)
-  - Returns: Forecast, confidence, priority, next actions, risk
+- `POST /api/ml/predictions` - Fetch ML outputs for the dashboard
+  - Body: `{ "year": 2026, "quarter": 1, "seller": "Nome" }` (todos opcionais)
+  - Returns: 6 seções agregadas (previsão ciclo, classificador perda, risco abandono, performance vendedor, prioridade deals, próxima ação)
 
 ---
 
@@ -183,16 +183,13 @@ curl "https://your-service-url.run.app/api/v1/pipeline?fiscal_q=FY26-Q1&limit=10
 # Get metrics
 curl "https://your-service-url.run.app/api/v1/metrics/summary"
 
-# ML Prediction
-curl -X POST "https://your-service-url.run.app/api/v1/ml/predict" \
+# ML Predictions (dashboard payload)
+curl -X POST "https://your-service-url.run.app/api/ml/predictions" \
   -H "Content-Type: application/json" \
   -d '{
-    "oportunidade": "GOOG-123456",
-    "gross": 500000,
-    "meddic_score": 75,
-    "bant_score": 80,
-    "atividades": 25,
-    "idle_dias": 2
+    "year": 2026,
+    "quarter": 1,
+    "seller": "Alex Araujo"
   }'
 ```
 
@@ -200,15 +197,14 @@ curl -X POST "https://your-service-url.run.app/api/v1/ml/predict" \
 
 ## 📊 BigQuery ML Models
 
-The API uses 7 BQML models (V2):
+The API/dashboard uses 4 BQML models + 2 views (pipeline outputs):
 
-1. **ml_win_loss_model_v2** - Predict Win/Loss and confidence
-2. **ml_prioridade_deal_v2** - Deal priority (Alta/Média/Baixa)
-3. **ml_proxima_acao_v2** - Recommended next action
-4. **ml_risco_abandono_v2** - Abandonment risk assessment
-5. **ml_previsao_ciclo_v2** - Sales cycle duration prediction
-6. **ml_performance_vendedor_v2** - Vendor performance analysis
-7. **ml_classificador_perda_v2** - Loss reason classification
+1. **ml_previsao_ciclo** - Sales cycle duration prediction
+2. **ml_classificador_perda** - Loss reason classification
+3. **ml_risco_abandono** - Abandonment risk assessment
+4. **ml_performance_vendedor** - Vendor performance analysis
+5. **pipeline_prioridade_deals** (view) - Deal priority (Alta/Média/Baixa)
+6. **pipeline_proxima_acao** (view) - Recommended next action
 
 ### Retrain Models
 

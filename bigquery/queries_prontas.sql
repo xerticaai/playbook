@@ -21,7 +21,7 @@ SELECT
   categoria_acao,
   acao_recomendada,
   checklist
-FROM `sales_intelligence.ml_proxima_acao_v2`
+FROM `sales_intelligence.pipeline_proxima_acao`
 WHERE urgencia = 'ALTA'
 ORDER BY priority_score DESC
 LIMIT 20;
@@ -48,7 +48,7 @@ SELECT
   ROUND(AVG(dias_ate_close), 0) AS avg_dias_close,
   ROUND(AVG(Atividades), 1) AS avg_atividades
   
-FROM `sales_intelligence.ml_proxima_acao_v2`
+FROM `sales_intelligence.pipeline_proxima_acao`
 GROUP BY Vendedor
 ORDER BY deals_criticos DESC, valor_em_risco DESC;
 
@@ -64,7 +64,7 @@ SELECT
   ROUND(AVG(priority_score), 1) AS avg_priority,
   ROUND(AVG(dias_ate_close), 0) AS avg_dias_close,
   ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 1) AS percentual
-FROM `sales_intelligence.ml_proxima_acao_v2`
+FROM `sales_intelligence.pipeline_proxima_acao`
 GROUP BY categoria_acao, urgencia
 ORDER BY urgencia DESC, total_deals DESC;
 
@@ -82,7 +82,7 @@ SELECT
   nivel_risco,
   acao_recomendada,
   justificativa_prioridade
-FROM `sales_intelligence.ml_prioridade_deal_v2`
+FROM `sales_intelligence.pipeline_prioridade_deals`
 WHERE dias_ate_close <= 7 AND dias_ate_close >= 0
 ORDER BY dias_ate_close ASC, priority_score DESC;
 
@@ -99,7 +99,7 @@ SELECT
   Atividades,
   nivel_risco,
   acao_recomendada
-FROM `sales_intelligence.ml_prioridade_deal_v2`
+FROM `sales_intelligence.pipeline_prioridade_deals`
 WHERE dias_ate_close < 0
 ORDER BY dias_atrasado DESC, Gross DESC;
 
@@ -118,7 +118,7 @@ SELECT
   nivel_risco,
   acao_recomendada,
   checklist
-FROM `sales_intelligence.ml_prioridade_deal_v2`
+FROM `sales_intelligence.pipeline_prioridade_deals`
 WHERE nivel_risco = 'ALTO'
   AND Atividades < 3
   AND dias_em_pipeline > 30
@@ -140,7 +140,7 @@ SELECT
   CAST(SUM(Gross) AS INT64) AS valor_previsto_usd,
   SUM(CASE WHEN nivel_risco = 'ALTO' THEN 1 ELSE 0 END) AS deals_em_risco,
   SUM(CASE WHEN nivel_risco = 'BAIXO' THEN 1 ELSE 0 END) AS deals_seguros
-FROM `sales_intelligence.ml_prioridade_deal_v2`
+FROM `sales_intelligence.pipeline_prioridade_deals`
 WHERE dias_ate_close >= 0 AND dias_ate_close <= 90
 GROUP BY Segmento, periodo
 ORDER BY 
@@ -168,7 +168,7 @@ SELECT
   Atividades,
   recomendacao_foco,
   justificativa_prioridade
-FROM `sales_intelligence.ml_prioridade_deal_v2`
+FROM `sales_intelligence.pipeline_prioridade_deals`
 WHERE nivel_risco IN ('BAIXO', 'MÉDIO')
   AND Gross > 50000
   AND dias_ate_close <= 60
@@ -189,7 +189,7 @@ SELECT
   ROUND(AVG(dias_em_pipeline), 0) AS avg_dias_pipeline,
   ROUND(100.0 * COUNT(*) / SUM(COUNT(*)) OVER(), 1) AS percentual_deals,
   ROUND(100.0 * SUM(Gross) / SUM(SUM(Gross)) OVER(), 1) AS percentual_valor
-FROM `sales_intelligence.ml_prioridade_deal_v2`
+FROM `sales_intelligence.pipeline_prioridade_deals`
 GROUP BY nivel_risco, priority_level
 ORDER BY 
   CASE nivel_risco WHEN 'ALTO' THEN 1 WHEN 'MÉDIO' THEN 2 ELSE 3 END,
@@ -217,7 +217,7 @@ SELECT
   ROUND(AVG(Atividades), 1) AS avg_atividades,
   ROUND(AVG(priority_score), 1) AS avg_priority
   
-FROM `sales_intelligence.ml_prioridade_deal_v2`
+FROM `sales_intelligence.pipeline_prioridade_deals`
 GROUP BY Segmento
 ORDER BY pipeline_usd DESC;
 
@@ -301,7 +301,7 @@ SELECT
   categoria_acao AS Next_Action_Category__c,
   urgencia AS Action_Urgency__c,
   acao_recomendada AS Action_Recommendation__c
-FROM `sales_intelligence.ml_proxima_acao_v2`
+FROM `sales_intelligence.pipeline_proxima_acao`
 ORDER BY priority_score DESC;
 
 -- ============================================================================
@@ -312,7 +312,7 @@ SELECT
   'Pipeline Total' AS metrica,
   COUNT(*) AS valor,
   CONCAT('$', FORMAT('%,.0f', SUM(Gross))) AS valor_formatado
-FROM `sales_intelligence.ml_prioridade_deal_v2`
+FROM `sales_intelligence.pipeline_prioridade_deals`
 
 UNION ALL
 
@@ -320,7 +320,7 @@ SELECT
   'Deals Críticos' AS metrica,
   COUNT(*) AS valor,
   CONCAT('$', FORMAT('%,.0f', SUM(Gross))) AS valor_formatado
-FROM `sales_intelligence.ml_proxima_acao_v2`
+FROM `sales_intelligence.pipeline_proxima_acao`
 WHERE urgencia = 'ALTA'
 
 UNION ALL
@@ -329,7 +329,7 @@ SELECT
   'Deals Esta Semana' AS metrica,
   COUNT(*) AS valor,
   CONCAT('$', FORMAT('%,.0f', SUM(Gross))) AS valor_formatado
-FROM `sales_intelligence.ml_prioridade_deal_v2`
+FROM `sales_intelligence.pipeline_prioridade_deals`
 WHERE dias_ate_close <= 7 AND dias_ate_close >= 0
 
 UNION ALL
@@ -338,7 +338,7 @@ SELECT
   'Deals Atrasados' AS metrica,
   COUNT(*) AS valor,
   CONCAT('$', FORMAT('%,.0f', SUM(Gross))) AS valor_formatado
-FROM `sales_intelligence.ml_prioridade_deal_v2`
+FROM `sales_intelligence.pipeline_prioridade_deals`
 WHERE dias_ate_close < 0
 
 UNION ALL
@@ -347,7 +347,7 @@ SELECT
   'Deals Alto Risco' AS metrica,
   COUNT(*) AS valor,
   CONCAT('$', FORMAT('%,.0f', SUM(Gross))) AS valor_formatado
-FROM `sales_intelligence.ml_prioridade_deal_v2`
+FROM `sales_intelligence.pipeline_prioridade_deals`
 WHERE nivel_risco = 'ALTO';
 
 -- ============================================================================

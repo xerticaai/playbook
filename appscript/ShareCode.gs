@@ -2454,10 +2454,35 @@ function applyClosedDateCorrection_(item, mode, relatedChanges, changesHeaders) 
   
   if (lastStageDate) {
     item.closed = lastStageDate;
-    
-    // Recalcular ciclo com a data corrigida
+
+    // Recalcular ciclo com a data corrigida (e tentar corrigir inversão se ficar negativo)
     if (item.created) {
-      item.ciclo = Math.ceil((lastStageDate - item.created) / MS_PER_DAY);
+      const createdDate = item.created instanceof Date ? item.created : parseDate(item.created);
+      const closedDate = item.closed instanceof Date ? item.closed : parseDate(item.closed);
+
+      if (createdDate && closedDate) {
+        let ciclo = Math.ceil((closedDate - createdDate) / MS_PER_DAY);
+
+        if (ciclo < 0) {
+          const fix = tryFixInvertedDates_(createdDate, closedDate);
+          if (fix.fixed) {
+            logToSheet(
+              'WARN',
+              'DateFix',
+              `Inversão DD/MM↔MM/DD corrigida via ciclo negativo (ciclo=${ciclo} → ${fix.ciclo})`,
+              { oportunidade: item.oppName || item.opp || '', aba: mode }
+            );
+            item.created = fix.created;
+            item.closed = fix.closed;
+            item.ciclo = fix.ciclo;
+            return item;
+          }
+        }
+
+        item.created = createdDate;
+        item.closed = closedDate;
+        item.ciclo = ciclo;
+      }
     }
   }
   
@@ -2833,81 +2858,101 @@ function formatMoney(v) {
 }
 
 function parseDate(d) {
-  if (!d) return null;
-  
-  // Se já é Date nativo do Sheets, SEMPRE verificar inversão DD/MM vs MM/DD
+  if (d === null || d === undefined || d === '') return null;
+
+  const dateFromYMD_ = (year, month1to12, day1to31) => {
+    if (!year || !month1to12 || !day1to31) return null;
+    const dt = new Date(year, month1to12 - 1, day1to31);
+    if (isNaN(dt.getTime())) return null;
+    if (dt.getFullYear() !== year || (dt.getMonth() + 1) !== month1to12 || dt.getDate() !== day1to31) return null;
+    dt.setHours(0, 0, 0, 0);
+    return dt;
+  };
+
+  // Date object do Sheets: nunca "corrigir" aqui (não-destrutivo)
   if (d instanceof Date) {
-    const hoje = new Date();
-    const year = d.getFullYear();
-    const month = d.getMonth(); // 0-11 (Janeiro = 0)
-    const day = d.getDate(); // 1-31
-    
-    // DETECÇÃO AGRESSIVA: Se dia é válido como mês (1-12), pode estar invertido
-    if (day >= 1 && day <= 12) {
-      // Testa inversão: troca mês ↔ dia
-      const corrected = new Date(year, day - 1, month + 1);
-      
-      // CRITÉRIOS para aplicar correção:
-      // 1. Data original está no FUTURO (mês 6-12 = Jul-Dez)
-      // 2. Data corrigida fica no PASSADO ou PRESENTE (mês 0-2 = Jan-Mar)
-      // 3. OU data corrigida fica mais próxima de hoje
-      
-      const originalInFuture = d > hoje;
-      const correctedInPast = corrected <= hoje;
-      const correctedCloser = Math.abs(corrected - hoje) < Math.abs(d - hoje);
-      
-      // SE original parece errado (futuro distante) E corrigida faz mais sentido
-      if (originalInFuture && (correctedInPast || correctedCloser)) {
-        // EXTRA: Confirmar que mês original é "suspeito" (6-12 = Jul-Dez)
-        // E mês corrigido é início do ano (0-2 = Jan-Mar)
-        const suspiciousMonth = month >= 6 && month <= 11; // Jul-Dez
-        const correctedMonth = corrected.getMonth();
-        const correctedIsEarlyYear = correctedMonth >= 0 && correctedMonth <= 2; // Jan-Mar
-        
-        if (suspiciousMonth && correctedIsEarlyYear) {
-          console.warn(`⚠️ parseDate: Inversão DD/MM detectada - ${d.toDateString()} (mês ${month+1}) → ${corrected.toDateString()} (mês ${correctedMonth+1})`);
-          return corrected;
-        }
-      }
-    }
-    
-    return d;
+    const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    dt.setHours(0, 0, 0, 0);
+    return isNaN(dt.getTime()) ? null : dt;
   }
-  
-  // Tenta fazer parsing direto primeiro (para objetos Date nativos do Sheets)
-  if (typeof d === 'object' && d.getTime) return d;
-  
+
+  // Serial date (Excel/Sheets)
+  if (typeof d === 'number' && isFinite(d)) {
+    // Heurística: datas seriais normalmente > 1000
+    if (d > 1000) {
+      const dt = new Date(Math.round((d - 25569) * 86400 * 1000));
+      dt.setHours(0, 0, 0, 0);
+      return isNaN(dt.getTime()) ? null : dt;
+    }
+    return null;
+  }
+
+  // Objetos com getTime
+  if (typeof d === 'object' && d && typeof d.getTime === 'function') {
+    const ts = d.getTime();
+    if (!isFinite(ts)) return null;
+    const dt = new Date(ts);
+    dt.setHours(0, 0, 0, 0);
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+
   const str = String(d).trim();
   if (!str) return null;
-  
-  // FORMATOS SUPORTADOS:
-  // DD-MM-YYYY: 15-01-2026, 28-01-2025
-  // D/M/YYYY: 6/1/2026
-  // DD/MM/YYYY: 06/01/2026, 10/12/2025
-  // YYYY-MM-DD: 2026-01-15 (ISO)
-  
-  const p = str.split(/[\/\-]/);
-  if (p.length === 3) {
-    const a = parseInt(p[0], 10);
-    const b = parseInt(p[1], 10);
-    const c = parseInt(p[2], 10);
-    
-    // Detecta formato por tamanho do primeiro elemento
-    if (p[0].length === 4) {
-      // YYYY-MM-DD ou YYYY/MM/DD
-      return new Date(a, b - 1, c);
-    } else {
-      // DD-MM-YYYY ou DD/MM/YYYY ou D/M/YYYY
-      // Ano sempre no final (p[2])
-      // Mês sempre no meio (p[1])
-      // Dia sempre no início (p[0])
-      return new Date(c, b - 1, a);
-    }
+
+  // dd/mm/yyyy ou dd-mm-yyyy (pt_BR)
+  let m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m) {
+    const day = parseInt(m[1], 10);
+    const month = parseInt(m[2], 10);
+    const year = parseInt(m[3], 10);
+    return dateFromYMD_(year, month, day);
   }
-  
-  // Fallback: tenta Date.parse nativo
-  const ts = Date.parse(str);
-  return isNaN(ts) ? null : new Date(ts);
+
+  // yyyy-mm-dd (ISO date)
+  m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) {
+    const year = parseInt(m[1], 10);
+    const month = parseInt(m[2], 10);
+    const day = parseInt(m[3], 10);
+    return dateFromYMD_(year, month, day);
+  }
+
+  // ISO datetime (ex: 2026-02-10T12:34:56Z)
+  if (/^\d{4}-\d{2}-\d{2}T/.test(str)) {
+    const dt = new Date(str);
+    if (isNaN(dt.getTime())) return null;
+    const normalized = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+    normalized.setHours(0, 0, 0, 0);
+    return normalized;
+  }
+
+  // Evitar Date.parse em strings ambíguas (ex: 01/04/2026 pode virar MM/DD)
+  return null;
+}
+
+function tryFixInvertedDates_(created, closed) {
+  const result = { fixed: false, created: created, closed: closed, ciclo: null };
+  if (!(created instanceof Date) || !(closed instanceof Date)) return result;
+
+  const ciclo = Math.ceil((closed - created) / MS_PER_DAY);
+  result.ciclo = ciclo;
+  if (ciclo >= 0) return result;
+
+  // Tenta a mesma heurística do CorrigirFiscalQ: inverter DD/MM↔MM/DD em ambas
+  const createdInv = new Date(created.getFullYear(), created.getDate() - 1, created.getMonth() + 1);
+  const closedInv = new Date(closed.getFullYear(), closed.getDate() - 1, closed.getMonth() + 1);
+  createdInv.setHours(0, 0, 0, 0);
+  closedInv.setHours(0, 0, 0, 0);
+
+  const cicloInv = Math.ceil((closedInv - createdInv) / MS_PER_DAY);
+  if (cicloInv >= 0 && cicloInv < 1000) {
+    result.fixed = true;
+    result.created = createdInv;
+    result.closed = closedInv;
+    result.ciclo = cicloInv;
+  }
+
+  return result;
 }
 
 function formatDateRobust(d) {

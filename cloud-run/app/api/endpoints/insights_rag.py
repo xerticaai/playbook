@@ -13,10 +13,11 @@ router = APIRouter()
 
 PROJECT_ID = os.getenv("GCP_PROJECT", "operaciones-br")
 DATASET_ID = "sales_intelligence"
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyBwgc9nHAtgUiabpGJDwrMBd3dJTBE5ee4")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "models/gemini-pro-latest")
 
-genai.configure(api_key=GEMINI_API_KEY)
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 
 def get_bq_client():
@@ -286,6 +287,29 @@ async def get_insights_rag(
     Retrieve similar deals using embeddings and generate insights with Gemini.
     """
     try:
+        if not GEMINI_API_KEY:
+            return {
+                "success": True,
+                "timestamp": datetime.utcnow().isoformat(),
+                "query": query,
+                "filters": {
+                    "year": year,
+                    "quarter": quarter,
+                    "seller": seller,
+                    "source": source,
+                },
+                "stats": {"total": 0, "by_source": {}, "pipeline": {"total": 0, "avg_idle_days": 0}},
+                "wins_stats": {"total": 0, "avg_cycle_days": 0},
+                "losses_stats": {"total": 0, "avg_cycle_days": 0},
+                "aiInsights": {
+                    "status": "disabled",
+                    "wins": "Insights RAG desabilitado (GEMINI_API_KEY não configurada).",
+                    "losses": "Insights RAG desabilitado (GEMINI_API_KEY não configurada).",
+                    "recommendations": [],
+                },
+                "deals": [],
+            }
+
         client = get_bq_client()
         where_clause = build_filters(year, quarter, seller, source)
 
@@ -404,4 +428,24 @@ async def get_insights_rag(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao gerar insights RAG: {str(e)}")
+        return {
+            "success": False,
+            "timestamp": datetime.utcnow().isoformat(),
+            "query": query,
+            "filters": {
+                "year": year,
+                "quarter": quarter,
+                "seller": seller,
+                "source": source,
+            },
+            "stats": {"total": 0, "by_source": {}, "pipeline": {"total": 0, "avg_idle_days": 0}},
+            "wins_stats": {"total": 0, "avg_cycle_days": 0},
+            "losses_stats": {"total": 0, "avg_cycle_days": 0},
+            "aiInsights": {
+                "status": "unavailable",
+                "wins": "Insights RAG temporariamente indisponível.",
+                "losses": "Insights RAG temporariamente indisponível.",
+                "recommendations": [],
+            },
+            "deals": [],
+        }

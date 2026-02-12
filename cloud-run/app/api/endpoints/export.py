@@ -1,5 +1,6 @@
-"""
-Export Endpoint - Generate CSV/Excel exports for War Room and Weekly Agenda
+"""Export endpoints.
+
+War Room was removed; we keep only pauta semanal exports.
 """
 from fastapi import APIRouter, HTTPException, Query, Response
 from google.cloud import bigquery
@@ -16,80 +17,6 @@ DATASET_ID = "sales_intelligence"
 
 def get_bq_client():
     return bigquery.Client(project=PROJECT_ID)
-
-
-@router.get("/export/war-room-csv")
-async def export_war_room_csv():
-    """
-    Export War Room metrics as CSV for easy import into Google Sheets/Excel.
-    """
-    try:
-        client = get_bq_client()
-        
-        query = f"""
-        SELECT 
-          Vendedor,
-          Total_Deals_Pipeline,
-          Pipeline_Gross_K,
-          Pipeline_Net_K,
-          Avg_Confianca,
-          Deals_Zumbis,
-          Zumbis_Gross_K,
-          Pct_Pipeline_Podre,
-          Total_Deals_Closed_Q,
-          Closed_Gross_K_Q,
-          Closed_Net_K_Q,
-          Forecast_Total_Net_K,
-          Nota_Higiene
-        FROM `{PROJECT_ID}.{DATASET_ID}.war_room_metrics`
-        ORDER BY Forecast_Total_Net_K DESC
-        """
-        
-        results = client.query(query).result()
-        
-        # Create CSV in memory
-        output = io.StringIO()
-        writer = csv.writer(output)
-        
-        # Header
-        writer.writerow([
-            'Vendedor', 'Deals_Pipeline', 'Pipeline_Gross_K', 'Pipeline_Net_K',
-            'Confianca_Media', 'Deals_Zumbis', 'Zumbis_Gross_K', 'Pct_Podre',
-            'Deals_Closed_Q', 'Closed_Gross_K_Q', 'Closed_Net_K_Q',
-            'Forecast_Total_Net_K', 'Nota_Higiene'
-        ])
-        
-        # Data rows
-        for row in results:
-            writer.writerow([
-                row.Vendedor,
-                row.Total_Deals_Pipeline,
-                row.Pipeline_Gross_K,
-                row.Pipeline_Net_K,
-                row.Avg_Confianca,
-                row.Deals_Zumbis,
-                row.Zumbis_Gross_K,
-                row.Pct_Pipeline_Podre,
-                row.Total_Deals_Closed_Q,
-                row.Closed_Gross_K_Q,
-                row.Closed_Net_K_Q,
-                row.Forecast_Total_Net_K,
-                row.Nota_Higiene
-            ])
-        
-        csv_content = output.getvalue()
-        output.close()
-        
-        return Response(
-            content=csv_content,
-            media_type="text/csv",
-            headers={
-                "Content-Disposition": "attachment; filename=war_room_metrics.csv"
-            }
-        )
-    
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao exportar CSV: {str(e)}")
 
 
 @router.get("/export/pauta-semanal-csv")
