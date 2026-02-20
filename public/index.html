@@ -4,6 +4,9 @@
   <base target="_top">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Xertica.ai - Intelligence Dashboard</title>
   <link rel="icon" type="image/png" href="https://storage.googleapis.com/etp-bucket/Logos%20Xertica.ai%20(.png)/X%20-%20simbolo/Copy%20of%20X_symbol_variation3_Blue_white.png">
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
@@ -203,6 +206,35 @@
       box-shadow: 0 0 15px rgba(0,190,255,0.2);
       transform: translateX(2px);
     }
+    .nav-group-title {
+      margin: 16px 10px 6px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-gray);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      opacity: 0.8;
+      pointer-events: none;
+    }
+    .admin-validate-btn {
+      width: calc(100% - 20px);
+      margin: 8px 10px 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(0,190,255,0.35);
+      background: rgba(0,190,255,0.08);
+      color: var(--primary-cyan);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      transition: all 0.25s ease;
+    }
+    .admin-validate-btn:hover {
+      background: rgba(0,190,255,0.16);
+      border-color: var(--primary-cyan);
+      box-shadow: 0 0 10px rgba(0,190,255,0.2);
+    }
 
     /* Main Content */
     .main { flex: 1; padding: 30px; overflow-y: auto; }
@@ -328,7 +360,7 @@
       box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
       transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease, border-color 0.3s ease;
       position: relative; 
-      overflow: hidden;
+      overflow: visible;
     }
     .kpi-card:hover { 
       transform: translateY(-4px);
@@ -336,7 +368,107 @@
       box-shadow: 0 10px 40px -10px rgba(0, 190, 255, 0.2);
     }
     .kpi-card .icon-lg { position: absolute; top: 15px; right: 15px; opacity: 0.2; }
-    .kpi-title { font-size: 11px; color: var(--text-gray); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+    .kpi-title {
+      font-size: 11px;
+      color: var(--text-gray);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      width: 100%;
+      padding-right: 24px;
+      position: relative;
+      z-index: 1;
+    }
+    .card-info-badge {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 1px solid rgba(0, 190, 255, 0.55);
+      background: radial-gradient(circle at 30% 30%, rgba(34, 211, 238, 0.45), rgba(6, 24, 44, 0.92));
+      color: rgba(153, 246, 255, 0.98);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: help;
+      opacity: 0.95;
+      transition: all 0.2s ease;
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-52%);
+      outline: none;
+      user-select: none;
+      box-shadow: 0 0 0 1px rgba(6, 24, 44, 0.9), 0 0 10px rgba(0, 190, 255, 0.22);
+    }
+    .kpi-card:hover .card-info-badge,
+    .card-info-badge:hover,
+    .card-info-badge:focus-visible,
+    .card-info-badge.is-open {
+      opacity: 1;
+      border-color: rgba(103, 232, 249, 0.95);
+      color: #ecfeff;
+      transform: translateY(-52%) scale(1.08);
+      box-shadow: 0 0 0 2px rgba(0, 190, 255, 0.25), 0 0 18px rgba(0, 190, 255, 0.35);
+    }
+    .card-info-badge::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 10px);
+      transform: translateX(-50%) translateY(6px);
+      min-width: 220px;
+      max-width: min(320px, 72vw);
+      padding: 9px 10px;
+      border-radius: 10px;
+      background: rgba(2, 6, 23, 0.96);
+      border: 1px solid rgba(0, 190, 255, 0.3);
+      color: #e2e8f0;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0;
+      line-height: 1.45;
+      text-transform: none;
+      text-align: left;
+      white-space: normal;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      z-index: 30;
+      transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+      box-shadow: 0 12px 32px rgba(2, 6, 23, 0.45);
+    }
+    .card-info-badge::before {
+      content: '';
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 4px);
+      transform: translateX(-50%) rotate(45deg);
+      width: 10px;
+      height: 10px;
+      background: rgba(2, 6, 23, 0.96);
+      border-right: 1px solid rgba(0, 190, 255, 0.3);
+      border-bottom: 1px solid rgba(0, 190, 255, 0.3);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      z-index: 29;
+      transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+    }
+    .card-info-badge:hover::after,
+    .card-info-badge:hover::before,
+    .card-info-badge:focus-visible::after,
+    .card-info-badge:focus-visible::before,
+    .card-info-badge.is-open::after,
+    .card-info-badge.is-open::before {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%) translateY(0);
+    }
     .kpi-value { 
       font-size: 28px; 
       font-weight: 700; 
@@ -366,6 +498,37 @@
       border: 1px solid var(--glass-border);
     }
     th { text-align: left; color: var(--text-gray); font-size: 11px; text-transform: uppercase; padding: 12px 15px; border-bottom: 2px solid rgba(255,255,255,0.1); font-weight: 600; letter-spacing: 0.5px; }
+    table tr { transition: background 0.15s; }
+    table tbody tr:hover { background: rgba(0, 190, 255, 0.08); cursor: pointer; }
+    
+    /* MODAL STYLES FOR DRILL-DOWN */
+    .deal-modal {
+      position: fixed; inset: 0; z-index: 10000;
+      background: rgba(0,0,0,0.85); backdrop-filter: blur(12px);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: all 0.3s;
+    }
+    .deal-modal.active { opacity: 1; pointer-events: auto; }
+    .deal-modal-content {
+      background: #0f172a; border: 1px solid rgba(0, 190, 255, 0.3);
+      box-shadow: 0 0 50px rgba(0,190,255,0.15);
+      border-radius: 16px; width: 90%; max-width: 900px;
+      max-height: 90vh; overflow-y: auto; padding: 0;
+      transform: scale(0.95); transition: transform 0.3s;
+      display: flex; flex-direction: column;
+    }
+    .deal-modal.active .deal-modal-content { transform: scale(1); }
+    .dm-header { padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center; background: linear-gradient(90deg, rgba(0,190,255,0.1) 0%, transparent 100%); }
+    .dm-title { font-size: 18px; font-weight: 700; color: var(--primary-cyan); font-family: 'Poppins', sans-serif; }
+    .dm-close { background: none; border: none; color: var(--text-gray); cursor: pointer; font-size: 24px; transition: color 0.2s; }
+    .dm-close:hover { color: var(--text-white); }
+    .dm-body { padding: 24px; overflow-y: auto; }
+    .dm-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .dm-field { background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); }
+    .dm-label { font-size: 11px; text-transform: uppercase; color: var(--text-gray); margin-bottom: 4px; letter-spacing: 0.5px; }
+    .dm-value { font-size: 14px; color: var(--text-white); font-weight: 500; word-break: break-word; }
+    .dm-section-title { font-size: 14px; font-weight: 600; color: var(--primary-cyan); margin: 20px 0 10px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px; }
+    .dm-history-item { padding: 10px; border-left: 2px solid var(--text-gray); margin-bottom: 10px; background: rgba(255,255,255,0.02); }
     td { padding: 12px 15px; border-bottom: 1px solid rgba(255,255,255,0.03); font-size: 13px; }
     tr:hover { 
       background: rgba(0,190,255,0.05);
@@ -460,6 +623,159 @@
     }
     .exec-tab-content {
       animation: fadeIn 0.3s ease;
+    }
+
+    .exec-drilldown-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+      z-index: 1400;
+      display: none;
+    }
+    .exec-drilldown-backdrop.active {
+      display: block;
+    }
+    .exec-drilldown-panel {
+      position: fixed;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: min(720px, 92vw);
+      transform: translateX(100%);
+      transition: transform 0.28s ease;
+      z-index: 1401;
+      background: rgba(11, 18, 30, 0.97);
+      border-left: 1px solid rgba(0,190,255,0.25);
+      box-shadow: -18px 0 50px rgba(0,0,0,0.45);
+      display: flex;
+      flex-direction: column;
+    }
+    .exec-drilldown-panel.active {
+      transform: translateX(0);
+    }
+    .exec-drilldown-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: rgba(255,255,255,0.04);
+    }
+    .exec-drilldown-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+    .exec-dd-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.06);
+      font-size: 11px;
+      color: var(--text-gray);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .exec-dd-chip.active {
+      border-color: rgba(0,190,255,0.5);
+      color: var(--primary-cyan);
+      background: rgba(0,190,255,0.15);
+    }
+    .exec-drilldown-body {
+      padding: 14px 16px 20px;
+      overflow-y: auto;
+      display: grid;
+      gap: 12px;
+    }
+    .exec-dd-toolbar {
+      display: grid;
+      grid-template-columns: 1fr auto auto auto;
+      gap: 8px;
+    }
+    .exec-dd-input, .exec-dd-select {
+      width: 100%;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.06);
+      color: var(--text-main);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+    .exec-dd-btn {
+      border: 1px solid rgba(0,190,255,0.35);
+      background: rgba(0,190,255,0.12);
+      color: var(--primary-cyan);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .exec-dd-meta {
+      font-size: 11px;
+      color: var(--text-gray);
+      line-height: 1.7;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.04);
+    }
+    .exec-dd-list {
+      display: grid;
+      gap: 8px;
+    }
+    .exec-dd-item {
+      border: 1px solid rgba(255,255,255,0.12);
+      border-left: 4px solid rgba(0,190,255,0.55);
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.04);
+      cursor: pointer;
+    }
+    .exec-dd-item:hover {
+      background: rgba(0,190,255,0.09);
+      border-color: rgba(0,190,255,0.35);
+    }
+    .exec-dd-item-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 4px;
+    }
+    .exec-dd-item-meta {
+      font-size: 11px;
+      color: var(--text-gray);
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .exec-dd-detail {
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      padding: 12px;
+      background: rgba(255,255,255,0.04);
+      font-size: 12px;
+      color: var(--text-gray);
+      line-height: 1.7;
+    }
+    .exec-dd-sql {
+      white-space: pre-wrap;
+      font-size: 11px;
+      color: var(--text-main);
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.03);
+      display: none;
+    }
+    .exec-dd-sql.active {
+      display: block;
     }
 
     /* ML Tabs */
@@ -642,9 +958,105 @@
       border-color: var(--primary-cyan);
       color: var(--primary-cyan);
     }
+
+    /* ====== FIREBASE AUTH OVERLAY ====== */
+    #auth-overlay {
+      position: fixed; inset: 0; z-index: 99999;
+      background: #050a10;
+      background-image:
+        linear-gradient(rgba(0, 190, 255, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 190, 255, 0.04) 1px, transparent 1px),
+        radial-gradient(circle at 50% 0%, rgba(0, 190, 255, 0.18) 0%, transparent 60%);
+      background-size: 40px 40px, 40px 40px, 100% 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.5s ease;
+    }
+    #auth-overlay.fade-out { opacity: 0; pointer-events: none; }
+    .auth-card {
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(0, 190, 255, 0.25);
+      box-shadow: 0 0 60px rgba(0, 190, 255, 0.12);
+      border-radius: 20px; padding: 48px 40px;
+      text-align: center; max-width: 420px; width: 90%;
+      animation: slideUp 0.4s ease;
+    }
+    .auth-logo { width: 72px; height: 72px; margin: 0 auto 20px; }
+    .auth-logo img { width: 100%; filter: drop-shadow(0 0 18px rgba(0,190,255,0.5)); }
+    .auth-title {
+      font-family: 'Poppins', sans-serif;
+      font-size: 22px; font-weight: 700;
+      color: #fff; margin: 0 0 6px;
+    }
+    .auth-subtitle {
+      font-size: 13px; color: #64748b; margin: 0 0 32px;
+    }
+    .auth-google-btn {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px; width: 100%; padding: 13px 20px;
+      background: #fff; color: #1e293b;
+      border: none; border-radius: 10px;
+      font-size: 15px; font-weight: 600; cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+      font-family: 'Poppins', sans-serif;
+    }
+    .auth-google-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+    }
+    .auth-google-btn svg { width: 20px; height: 20px; flex-shrink: 0; }
+    .auth-error {
+      margin-top: 18px; padding: 10px 16px;
+      background: rgba(225, 72, 73, 0.12);
+      border: 1px solid rgba(225, 72, 73, 0.4);
+      border-radius: 8px; color: #f87171; font-size: 13px; display: none;
+    }
+    .auth-loading {
+      margin-top: 18px; font-size: 13px; color: #64748b;
+      display: none;
+    }
+    .auth-user-chip {
+      display: none; /* shows after login */
+      align-items: center; gap: 8px;
+      background: rgba(0,190,255,0.08); border: 1px solid rgba(0,190,255,0.2);
+      border-radius: 8px; padding: 8px 14px; margin-top: 14px;
+      font-size: 13px; color: var(--primary-cyan, #00beff);
+    }
   </style>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
 </head>
 <body>
+
+  <!-- ========== AUTH OVERLAY ========== -->
+  <div id="auth-overlay">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <img src="https://storage.googleapis.com/etp-bucket/Logos%20Xertica.ai%20(.png)/X%20-%20simbolo/Copy%20of%20X_symbol_variation3_Blue_white.png" alt="Xertica">
+      </div>
+      <h1 class="auth-title">Xertica.ai Intelligence</h1>
+      <p class="auth-subtitle">Acesso restrito a membros autorizados</p>
+
+      <button class="auth-google-btn" id="auth-google-btn" onclick="signInWithGoogle()">
+        <!-- Google G icon -->
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+        </svg>
+        Entrar com Google
+      </button>
+
+      <div class="auth-error" id="auth-error"></div>
+      <div class="auth-loading" id="auth-loading">Verificando credenciais...</div>
+      <div class="auth-user-chip" id="auth-user-chip"></div>
+    </div>
+  </div>
+
   <!-- ========== SVG ICON SPRITES ========== -->
   <svg style="display: none;" xmlns="http://www.w3.org/2000/svg">
     <defs>
@@ -782,13 +1194,6 @@
       </svg>
       Visão Executiva
     </div>
-    <div class="nav-item" onclick="showSection(this, 'dashboard')">
-      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <rect x="3" y="3" width="18" height="18" rx="2"/>
-        <path d="M9 9h6M9 15h6"/>
-      </svg>
-      Indicadores L10
-    </div>
       <div class="nav-item" onclick="showSection(this, 'aprendizados')">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="10"/>
@@ -796,20 +1201,19 @@
       </svg>
       Aprendizados
     </div>
-    <div class="nav-item" onclick="showSection(this, 'fsr')">
-      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-        <circle cx="9" cy="7" r="4"/>
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
-      </svg>
-      Performance FSR
-    </div>
-    <div class="nav-item" onclick="showSection(this, 'individual')">
+    <div id="nav-performance-item" class="nav-item" onclick="showPerformanceView('individual')">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
         <circle cx="12" cy="7" r="4"/>
       </svg>
-      Por Vendedor
+      Performance Equipe
+    </div>
+    <div id="nav-admin-item" class="nav-item" onclick="showSection(this, 'admin')" style="display:none;">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+      Admin
     </div>
     <div class="nav-item" onclick="showSection(this, 'agenda')">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -820,12 +1224,31 @@
       </svg>
       Pauta Semanal
     </div>
-    <div class="nav-item" onclick="showSection(this, 'ml')">
+    <div id="nav-em-construcao-title" class="nav-group-title" style="display:none;">Em construção</div>
+    <div id="nav-dashboard-item" class="nav-item" onclick="showSection(this, 'dashboard')" style="display:none;">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <path d="M9 9h6M9 15h6"/>
+      </svg>
+      Indicadores L10
+    </div>
+    <div id="nav-ml-item" class="nav-item" onclick="showSection(this, 'ml')" style="display:none;">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="2"/>
         <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
       </svg>
       Inteligência ML
+    </div>
+    <button id="nav-admin-validate-btn" class="admin-validate-btn" onclick="toggleAdminPreview()" style="display:none;">
+      Validação ADM: oculto
+    </button>
+    <div id="nav-fsr-item" class="nav-item" onclick="showSection(this, 'fsr')" style="display:none;">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+        <circle cx="9" cy="7" r="4"/>
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+      Performance Equipe
     </div>
   </div>
 
@@ -1720,16 +2143,16 @@
         <div id="exec-top5-note" style="display: none; color: var(--text-muted); font-size: 12px; margin: -5px 0 12px 0;"></div>
 
         <!-- Card Indicador: Total das Principais Oportunidades -->
-        <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 25px;">
-          <div class="kpi-card">
+        <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 12px;">
+          <div class="kpi-card" id="exec-top5-total-card">
             <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
             </svg>
             <div class="kpi-title">Valor Total Top 5</div>
             <div class="kpi-value val-warning" id="exec-top5-total">-</div>
-            <div class="kpi-subtitle" id="exec-top5-percent">-% do pipeline total</div>
+            <div class="kpi-subtitle" id="exec-top5-percent">-% da base</div>
           </div>
-          <div class="kpi-card">
+          <div class="kpi-card" id="exec-top5-confidence-card">
             <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>
               <line x1="12" y1="8" x2="12" y2="16"/>
@@ -1739,6 +2162,19 @@
             <div class="kpi-value val-cyan" id="exec-top5-confidence">-</div>
             <div class="kpi-subtitle" id="exec-top5-deals">5 deals</div>
           </div>
+          <div class="kpi-card" id="exec-top5-weighted-card" style="display:none;">
+            <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L3 7v10l9 5 9-5V7l-9-5z"/>
+              <path d="M12 7v10M7 10l5 3 5-3"/>
+            </svg>
+            <div class="kpi-title">Top 5 Ponderado (Gross × Confiança)</div>
+            <div class="kpi-value val-cyan" id="exec-top5-weighted">-</div>
+            <div class="kpi-subtitle" id="exec-top5-weighted-sub">-% da base</div>
+          </div>
+        </div>
+
+        <div id="exec-top5-base-footer" style="margin: 0 0 18px 0; color: var(--text-muted); font-size: 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04);">
+          Base: -
         </div>
 
         <div id="exec-top5-summary" class="ai-card" style="margin-bottom: 20px; padding: 16px;">
@@ -1957,6 +2393,14 @@
 
     <!-- SEÇÃO 2: PERFORMANCE FSR -->
     <div id="fsr" class="section">
+      <div style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+        <button class="perf-toggle-btn" data-target="individual" onclick="showPerformanceView('individual')" style="padding:8px 12px; border-radius:10px; border:1px solid var(--glass-border); background:rgba(255,255,255,0.04); color:var(--text-gray); font-size:12px; font-weight:700; cursor:pointer;">
+          Performance Individual por Vendedor
+        </button>
+        <button class="perf-toggle-btn" data-target="fsr" onclick="showPerformanceView('fsr')" style="padding:8px 12px; border-radius:10px; border:1px solid var(--glass-border); background:rgba(255,255,255,0.04); color:var(--text-gray); font-size:12px; font-weight:700; cursor:pointer;">
+          Performance Equipe
+        </button>
+      </div>
       <!-- Como Interpretar o IPV (Colapsável) -->
       <div style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%); border-radius: 8px; margin-bottom: 32px; border: 1px solid rgba(148, 163, 184, 0.2); overflow: hidden;">
         <!-- Header Clicável -->
@@ -2120,6 +2564,14 @@
 
     <!-- SEÇÃO 4: POR VENDEDOR (NOVA - DRILL-DOWN) -->
     <div id="individual" class="section">
+      <div style="display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;">
+        <button class="perf-toggle-btn" data-target="individual" onclick="showPerformanceView('individual')" style="padding:8px 12px; border-radius:10px; border:1px solid var(--glass-border); background:rgba(255,255,255,0.04); color:var(--text-gray); font-size:12px; font-weight:700; cursor:pointer;">
+          Performance Individual por Vendedor
+        </button>
+        <button class="perf-toggle-btn" data-target="fsr" onclick="showPerformanceView('fsr')" style="padding:8px 12px; border-radius:10px; border:1px solid var(--glass-border); background:rgba(255,255,255,0.04); color:var(--text-gray); font-size:12px; font-weight:700; cursor:pointer;">
+          Performance Equipe
+        </button>
+      </div>
       <h3><svg class="icon"><use href="#icon-user"/></svg> Performance Individual por Vendedor</h3>
       <p style="color: var(--text-gray); margin-bottom: 20px;">Análise detalhada de métricas, tendências e comparações entre vendedores</p>
       
@@ -2458,6 +2910,52 @@
     </div>
 
     <!-- SEÇÃO 6: INTELIGÊNCIA ML -->
+    <div id="admin" class="section">
+      <h3><svg class="icon"><use href="#icon-user"/></svg> Admin - Gestão de Férias</h3>
+      <p style="color: var(--text-gray); margin-bottom: 16px;">Cadastro de férias/afastamentos para ajuste automático do IPV por capacidade.</p>
+
+      <div class="ai-card" style="margin-bottom: 20px;">
+        <div style="display:grid; grid-template-columns: 1.2fr 0.8fr 0.8fr 0.7fr; gap: 10px; margin-bottom: 10px;">
+          <select id="admin-vac-seller" style="padding:10px;border-radius:8px;border:1px solid var(--glass-border);background:rgba(255,255,255,0.05);color:var(--text-main);"></select>
+          <input id="admin-vac-start" type="date" style="padding:10px;border-radius:8px;border:1px solid var(--glass-border);background:rgba(255,255,255,0.05);color:var(--text-main);" />
+          <input id="admin-vac-end" type="date" style="padding:10px;border-radius:8px;border:1px solid var(--glass-border);background:rgba(255,255,255,0.05);color:var(--text-main);" />
+          <select id="admin-vac-type" style="padding:10px;border-radius:8px;border:1px solid var(--glass-border);background:rgba(255,255,255,0.05);color:var(--text-main);">
+            <option value="ferias">Férias</option>
+            <option value="afastamento">Afastamento</option>
+            <option value="folga">Folga</option>
+          </select>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items:center;">
+          <input id="admin-vac-notes" type="text" placeholder="Observação (opcional)" style="padding:10px;border-radius:8px;border:1px solid var(--glass-border);background:rgba(255,255,255,0.05);color:var(--text-main);" />
+          <button onclick="createAdminVacation()" style="padding:10px 14px;border-radius:8px;border:1px solid rgba(0,190,255,0.35);background:rgba(0,190,255,0.12);color:var(--primary-cyan);font-weight:700;cursor:pointer;">Salvar</button>
+          <button onclick="loadAdminVacations()" style="padding:10px 14px;border-radius:8px;border:1px solid var(--glass-border);background:rgba(255,255,255,0.06);color:var(--text-main);font-weight:700;cursor:pointer;">Atualizar</button>
+        </div>
+        <div id="admin-vac-feedback" style="margin-top: 10px; font-size: 12px; color: var(--text-gray);"></div>
+      </div>
+
+      <div class="ai-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <h4 style="margin:0;">Férias cadastradas</h4>
+          <input id="admin-vac-year" type="number" min="2024" max="2035" placeholder="Ano" style="width:100px;padding:8px;border-radius:8px;border:1px solid var(--glass-border);background:rgba(255,255,255,0.05);color:var(--text-main);" oninput="loadAdminVacations()" />
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Vendedor</th>
+              <th>Início</th>
+              <th>Fim</th>
+              <th>Tipo</th>
+              <th>Obs</th>
+              <th>Ação</th>
+            </tr>
+          </thead>
+          <tbody id="admin-vac-table-body">
+            <tr><td colspan="6" style="text-align:center;color:var(--text-gray);padding:20px;">Carregando...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <div id="ml" class="section">
       <h3><svg class="icon"><use href="#icon-robot"/></svg> Inteligência Artificial: 9 Modelos/Views Preditivos BigQuery ML</h3>
       <p style="color: var(--text-gray); margin-bottom: 24px;">Predições baseadas em modelos de Machine Learning treinados com histórico de vendas</p>
@@ -2637,6 +3135,244 @@
     const DASHBOARD_API_URL = API_BASE_URL;
     const ML_API_URL = API_BASE_URL;
     window.API_BASE_URL = API_BASE_URL;
+    const USER_CONTEXT_ENDPOINTS = API_BASE_URL
+      ? [`${API_BASE_URL}/api/user-context`]
+      : [
+          'https://sales-intelligence-api-j7loux7yta-uc.a.run.app/api/user-context',
+          '/api/user-context'
+        ];
+    const ADMIN_ALLOWED_EMAIL = 'amalia.silva@xertica.com';
+    let currentUserEmail = null;
+    let isAdminUser = false;
+    let adminPreviewEnabled = false;
+
+    function normalizeUserEmail(rawEmail) {
+      const value = String(rawEmail || '').trim().toLowerCase();
+      if (!value) return null;
+      if (value.includes(':')) return value.split(':').pop().trim().toLowerCase();
+      return value;
+    }
+
+    function updateAdminValidateButton() {
+      const adminBtn = document.getElementById('nav-admin-validate-btn');
+      if (!adminBtn) return;
+      adminBtn.textContent = adminPreviewEnabled ? 'Validação ADM: visível' : 'Validação ADM: oculto';
+    }
+
+    function applyAdminVisibility() {
+      const navDashboardItem = document.getElementById('nav-dashboard-item');
+      const navMlItem = document.getElementById('nav-ml-item');
+      const navAdminItem = document.getElementById('nav-admin-item');
+      const navGroupTitle = document.getElementById('nav-em-construcao-title');
+      const adminBtn = document.getElementById('nav-admin-validate-btn');
+      const dashboardSection = document.getElementById('dashboard');
+      const mlSection = document.getElementById('ml');
+      const adminSection = document.getElementById('admin');
+      const shouldShowUnderConstruction = isAdminUser && adminPreviewEnabled;
+
+      if (navDashboardItem) navDashboardItem.style.display = shouldShowUnderConstruction ? '' : 'none';
+      if (navMlItem) navMlItem.style.display = shouldShowUnderConstruction ? '' : 'none';
+      if (navAdminItem) navAdminItem.style.display = isAdminUser ? '' : 'none';
+      if (navGroupTitle) navGroupTitle.style.display = shouldShowUnderConstruction ? '' : 'none';
+      if (adminBtn) adminBtn.style.display = isAdminUser ? '' : 'none';
+
+      if (!shouldShowUnderConstruction) {
+        if (dashboardSection && dashboardSection.classList.contains('active')) {
+          dashboardSection.classList.remove('active');
+        }
+        if (mlSection && mlSection.classList.contains('active')) {
+          mlSection.classList.remove('active');
+        }
+      }
+
+      if (!isAdminUser && adminSection && adminSection.classList.contains('active')) {
+        adminSection.classList.remove('active');
+      }
+    }
+
+    function getAdminSellerOptions() {
+      const byKey = new Map();
+      const all = [
+        ...(Array.isArray(availableSellers?.active) ? availableSellers.active : []),
+        ...(Array.isArray(availableSellers?.historical) ? availableSellers.historical : [])
+      ];
+      all.forEach((item) => {
+        const name = item && item.Vendedor ? String(item.Vendedor).trim() : '';
+        if (!name) return;
+        const key = name.toLowerCase();
+        if (!byKey.has(key)) byKey.set(key, name);
+      });
+      return Array.from(byKey.values()).sort((a, b) => a.localeCompare(b));
+    }
+
+    function populateAdminSellerSelect() {
+      const select = document.getElementById('admin-vac-seller');
+      if (!select) return;
+      const sellers = getAdminSellerOptions();
+      if (sellers.length === 0) {
+        select.innerHTML = '<option value="">Sem vendedores disponíveis</option>';
+        return;
+      }
+      select.innerHTML = sellers.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join('');
+    }
+
+    async function loadAdminVacations() {
+      if (!isAdminUser) return;
+      const tbody = document.getElementById('admin-vac-table-body');
+      const feedback = document.getElementById('admin-vac-feedback');
+      if (!tbody) return;
+
+      try {
+        const yearEl = document.getElementById('admin-vac-year');
+        const year = String(yearEl?.value || '').trim();
+        const qs = year ? `?year=${encodeURIComponent(year)}` : '';
+        const response = await fetch(`${API_BASE_URL}/api/admin/vacations${qs}`, { cache: 'no-store' });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        const items = Array.isArray(data?.items) ? data.items : [];
+
+        if (items.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-gray);padding:20px;">Nenhum registro</td></tr>';
+        } else {
+          tbody.innerHTML = items.map((item) => {
+            const id = String(item.id || '');
+            const seller = escapeHtml(String(item.seller || ''));
+            const start = escapeHtml(String(item.start_date || '').slice(0, 10));
+            const end = escapeHtml(String(item.end_date || '').slice(0, 10));
+            const type = escapeHtml(String(item.type || 'ferias'));
+            const notes = escapeHtml(String(item.notes || ''));
+            return `
+              <tr>
+                <td>${seller}</td>
+                <td>${start}</td>
+                <td>${end}</td>
+                <td>${type}</td>
+                <td>${notes || '-'}</td>
+                <td><button onclick="deleteAdminVacation('${id}')" style="padding:6px 10px;border-radius:6px;border:1px solid rgba(255,80,80,0.35);background:rgba(255,80,80,0.12);color:var(--danger);font-weight:700;cursor:pointer;">Excluir</button></td>
+              </tr>
+            `;
+          }).join('');
+        }
+
+        if (feedback) feedback.textContent = `Total: ${items.length} registro(s).`;
+      } catch (error) {
+        console.error('[ADMIN] Erro ao carregar férias:', error);
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--danger);padding:20px;">Erro ao carregar registros</td></tr>';
+        if (feedback) feedback.textContent = `Falha ao carregar férias: ${error.message || error}`;
+      }
+    }
+
+    async function createAdminVacation() {
+      if (!isAdminUser) return;
+      const seller = document.getElementById('admin-vac-seller')?.value || '';
+      const startDate = document.getElementById('admin-vac-start')?.value || '';
+      const endDate = document.getElementById('admin-vac-end')?.value || '';
+      const type = document.getElementById('admin-vac-type')?.value || 'ferias';
+      const notes = document.getElementById('admin-vac-notes')?.value || '';
+      const feedback = document.getElementById('admin-vac-feedback');
+
+      if (!seller || !startDate || !endDate) {
+        if (feedback) feedback.textContent = 'Preencha vendedor, início e fim.';
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/admin/vacations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            seller,
+            start_date: startDate,
+            end_date: endDate,
+            type,
+            notes
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        if (feedback) feedback.textContent = 'Registro salvo com sucesso.';
+        const notesEl = document.getElementById('admin-vac-notes');
+        if (notesEl) notesEl.value = '';
+        await loadAdminVacations();
+      } catch (error) {
+        console.error('[ADMIN] Erro ao salvar férias:', error);
+        if (feedback) feedback.textContent = `Falha ao salvar: ${error.message || error}`;
+      }
+    }
+
+    async function deleteAdminVacation(vacationId) {
+      if (!isAdminUser || !vacationId) return;
+      const feedback = document.getElementById('admin-vac-feedback');
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/admin/vacations/${encodeURIComponent(vacationId)}`, {
+          method: 'DELETE'
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        if (feedback) feedback.textContent = 'Registro removido com sucesso.';
+        await loadAdminVacations();
+      } catch (error) {
+        console.error('[ADMIN] Erro ao remover férias:', error);
+        if (feedback) feedback.textContent = `Falha ao remover: ${error.message || error}`;
+      }
+    }
+
+    function initAdminSection() {
+      if (!isAdminUser) return;
+      populateAdminSellerSelect();
+      loadAdminVacations();
+    }
+
+    function toggleAdminPreview() {
+      if (!isAdminUser) return;
+      adminPreviewEnabled = !adminPreviewEnabled;
+      updateAdminValidateButton();
+      applyAdminVisibility();
+
+      if (!adminPreviewEnabled) {
+        const executiveNav = document.querySelector('.nav-item[onclick="showSection(this, \'executive\')"]');
+        showSection(executiveNav, 'executive');
+      }
+    }
+
+    async function resolveAdminAccess() {
+      isAdminUser = false;
+      adminPreviewEnabled = false;
+      currentUserEmail = null;
+
+      try {
+        for (const endpoint of USER_CONTEXT_ENDPOINTS) {
+          try {
+            const response = await fetch(endpoint, { cache: 'no-store' });
+            if (!response.ok) continue;
+
+            const data = await response.json();
+            currentUserEmail = normalizeUserEmail(data.email);
+            isAdminUser = currentUserEmail === ADMIN_ALLOWED_EMAIL;
+            adminPreviewEnabled = isAdminUser;
+            break;
+          } catch (innerError) {
+            log('[AUTH] Tentativa de user-context falhou:', endpoint, innerError?.message || innerError);
+          }
+        }
+      } catch (e) {
+        log('[AUTH] Não foi possível validar acesso admin:', e.message || e);
+      }
+
+      updateAdminValidateButton();
+      applyAdminVisibility();
+    }
     
     // Recupera dados do servidor (não mais injetados pelo template)
     let DATA = {
@@ -2786,8 +3522,8 @@
     function selectActiveSellers() {
       const checkboxes = document.querySelectorAll('#seller-dropdown input[type="checkbox"]');
       checkboxes.forEach(cb => {
-        const sellerName = cb.value;
-        const isActive = availableSellers.active.some(s => s.Vendedor === sellerName);
+        const sellerName = (cb.value || '').trim().toLowerCase();
+        const isActive = availableSellers.active.some(s => ((s.Vendedor || '').trim().toLowerCase()) === sellerName);
         cb.checked = isActive;
       });
       onSellerChange();
@@ -2804,7 +3540,7 @@
        ======================== */
     
     // Inicialização
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
       // Default do filtro global de período: semana vigente (segunda até hoje)
       // (aplica-se principalmente às Atividades da Pauta Semanal)
       try {
@@ -2838,13 +3574,17 @@
         console.warn('Falha ao aplicar período default:', e);
       }
 
+      await resolveAdminAccess();
       loadSellers(); // Load available sellers for multi-select
       loadDashboardData();
+      enhanceAllKpiCards(document);
+      initKpiCardInfoObserver();
     });
     
     // Função para recarregar dashboard quando filtros mudam (COM DEBOUNCE)
     function reloadDashboard() {
       log('[RELOAD] <svg class="icon"><use href="#icon-refresh"/></svg> Recarregando dashboard com novos filtros...');
+      clearDataCache();
       showFilterLoader();
       
       // Debounce: aguarda 400ms antes de executar
@@ -2919,10 +3659,33 @@
     function syncQuarterMonth(changedFilter) {
       const quarterFilter = document.getElementById('quarter-filter');
       const monthFilter = document.getElementById('month-filter');
+      const dateStartFilter = document.getElementById('date-start-filter');
+      const dateEndFilter = document.getElementById('date-end-filter');
       
       if (changedFilter === 'quarter' && quarterFilter?.value) {
         // Se quarter foi selecionado, limpar month
         if (monthFilter) monthFilter.value = '';
+        
+        // Auto-ajustar datas para o quarter selecionado
+        const year = document.getElementById('year-filter')?.value || new Date().getFullYear();
+        const quarter = quarterFilter.value;
+        
+        if (quarter && year) {
+          const quarterNum = parseInt(quarter.replace(/[^0-9]/g, ''));
+          if (quarterNum >= 1 && quarterNum <= 4) {
+            const startMonth = (quarterNum - 1) * 3 + 1; // Q1=1, Q2=4, Q3=7, Q4=10
+            const endMonth = startMonth + 2; // Q1=3, Q2=6, Q3=9, Q4=12
+            
+            const startDate = `${year}-${String(startMonth).padStart(2, '0')}-01`;
+            const endDate = new Date(year, endMonth, 0); // Last day of quarter
+            const endDateStr = `${year}-${String(endMonth).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+            
+            if (dateStartFilter) dateStartFilter.value = startDate;
+            if (dateEndFilter) dateEndFilter.value = endDateStr;
+            
+            console.log(`[SYNC] Auto-ajustado datas para ${quarter}: ${startDate} até ${endDateStr}`);
+          }
+        }
       } else if (changedFilter === 'month' && monthFilter?.value) {
         // Se month foi selecionado, limpar quarter
         if (quarterFilter) quarterFilter.value = '';
@@ -2969,9 +3732,11 @@
         }
       }
       
-      // Busca da API
-      log(`[CACHE] 🌐 Fetch: ${url.substring(0, 80)}...`);
-      const data = await fetchJsonNoCache(url);
+      // Busca da API com timestamp para evitar cache do navegador
+      const separator = url.includes('?') ? '&' : '?';
+      const urlWithTs = `${url}${separator}_ts=${Date.now()}`;
+      log(`[CACHE] 🌐 Fetch: ${urlWithTs.substring(0, 80)}...`);
+      const data = await fetchJsonNoCache(urlWithTs);
       
       // Salva no cache
       try {
@@ -3045,19 +3810,21 @@
         const needsTopOppsFallback = !!queryString;
         const insightsRagPromise = Promise.resolve({ aiInsights: { status: 'disabled', wins: '', losses: '', recommendations: [] }, deals: [] });
 
+        const ts = Date.now();
+        const sep = queryString ? '&' : '?';
         const [metrics, pipelineData, prioritiesData, actionsData, wonDataCached, lostDataCached, patternsData, salesSpecialistData, insightsRagData, fallbackPipelineData, fallbackWonData, fallbackLostData] = await Promise.all([
-          fetchJsonNoCache(`${API_BASE_URL}/api/metrics${queryString}`),
-          fetchJsonNoCache(`${API_BASE_URL}/api/pipeline?limit=500${queryString ? '&' + params.toString() : ''}`),
-          fetchJsonNoCache(`${API_BASE_URL}/api/priorities?limit=100${queryString ? '&' + params.toString() : ''}`),
-          fetchJsonNoCache(`${API_BASE_URL}/api/actions?urgencia=ALTA&limit=50${queryString ? '&' + params.toString() : ''}`),
-          fetchWithCache(wonUrl, `cache_won_${cacheKey}`, queryString ? 3 : 10),
-          fetchWithCache(lostUrl, `cache_lost_${cacheKey}`, queryString ? 3 : 10),
-          fetchJsonNoCache(`${API_BASE_URL}/api/analyze-patterns${queryString}`),
-          fetchJsonNoCache(`${API_BASE_URL}/api/sales-specialist${queryString}`),
+          fetchJsonNoCache(`${API_BASE_URL}/api/metrics${queryString}${sep}_ts=${ts}`),
+          fetchJsonNoCache(`${API_BASE_URL}/api/pipeline?limit=500${queryString ? '&' + params.toString() : ''}&_ts=${ts}`),
+          fetchJsonNoCache(`${API_BASE_URL}/api/priorities?limit=100${queryString ? '&' + params.toString() : ''}&_ts=${ts}`),
+          fetchJsonNoCache(`${API_BASE_URL}/api/actions?urgencia=ALTA&limit=50${queryString ? '&' + params.toString() : ''}&_ts=${ts}`),
+          fetchWithCache(wonUrl, `cache_won_${cacheKey}`, queryString ? 1 : 2),
+          fetchWithCache(lostUrl, `cache_lost_${cacheKey}`, queryString ? 1 : 2),
+          fetchJsonNoCache(`${API_BASE_URL}/api/analyze-patterns${queryString}${sep}_ts=${ts}`),
+          fetchJsonNoCache(`${API_BASE_URL}/api/sales-specialist${queryString}${sep}_ts=${ts}`),
           insightsRagPromise,
-          needsTopOppsFallback ? fetchJsonNoCache(`${API_BASE_URL}/api/pipeline?limit=500`) : Promise.resolve([]),
-          needsTopOppsFallback ? fetchWithCache(`${API_BASE_URL}/api/closed/won?limit=5000`, 'cache_won_all', 10) : Promise.resolve([]),
-          needsTopOppsFallback ? fetchWithCache(`${API_BASE_URL}/api/closed/lost?limit=5000`, 'cache_lost_all', 10) : Promise.resolve([])
+          needsTopOppsFallback ? fetchJsonNoCache(`${API_BASE_URL}/api/pipeline?limit=500&_ts=${ts}`) : Promise.resolve([]),
+          needsTopOppsFallback ? fetchWithCache(`${API_BASE_URL}/api/closed/won?limit=5000`, 'cache_won_all', 2) : Promise.resolve([]),
+          needsTopOppsFallback ? fetchWithCache(`${API_BASE_URL}/api/closed/lost?limit=5000`, 'cache_lost_all', 2) : Promise.resolve([])
         ]);
 
         const wonData = wonDataCached;
@@ -3337,6 +4104,8 @@
           account: deal.Conta || deal.Conta_Nome || deal.Account || deal.Cliente || deal.Empresa || 'Conta não especificada',
           Data_Fechamento: deal.Data_Fechamento,
           closeDate: deal.Data_Fechamento,
+          Atividades: deal.Atividades ?? deal.activities ?? null,
+          activities: deal.Atividades ?? deal.activities ?? null,
           Ciclo_dias: parseFloat(deal.Ciclo_dias) || 0,
           ciclo_dias: parseFloat(deal.Ciclo_dias) || 0,
           Tipo_Resultado: deal.Tipo_Resultado || '',
@@ -3363,6 +4132,8 @@
           account: deal.Conta || deal.Conta_Nome || deal.Account || deal.Cliente || deal.Empresa || 'Conta não especificada',
           Data_Fechamento: deal.Data_Fechamento,
           closeDate: deal.Data_Fechamento,
+          Atividades: deal.Atividades ?? deal.activities ?? null,
+          activities: deal.Atividades ?? deal.activities ?? null,
           Tipo_Resultado: deal.Tipo_Resultado || '',
           Causa_Raiz: deal.Causa_Raiz || '',
           Loss_Reason: deal.Causa_Raiz || deal.Loss_Reason || 'Motivo não especificado',
@@ -3904,6 +4675,145 @@
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
     };
+
+    const KPI_CARD_EXPLANATIONS = {
+      'exec-pipeline-year-total': 'Pipeline total consolidado do período (gross), com contagem de deals e visão net no subtítulo.',
+      'exec-pipeline-total': 'Pipeline aberto no recorte filtrado (gross), atualizado a partir dos filtros ativos.',
+      'exec-forecast-weighted': 'Previsão ponderada = Pipeline (gross) × Confiança média da IA.',
+      'exec-above50-value': 'Soma do gross dos deals com confiança da IA maior ou igual a 50%.',
+      'exec-active-reps': 'Quantidade de vendedores ativos no recorte atual, com Win Rate consolidado no subtítulo.',
+      'exec-closed-quarter': 'Total fechado no quarter (gross), com net e número de deals no subtítulo.',
+      'exec-conversion-rate': 'Taxa de conversão = Ganhas ÷ (Ganhas + Perdidas) no período analisado.',
+      'exec-loss-rate': 'Taxa de perda = Perdidas ÷ (Ganhas + Perdidas) no período analisado.',
+      'exec-cycle-efficiency': 'Eficiência de ciclo compara o tempo médio de ganho versus perda para indicar velocidade comercial.',
+      'exec-ss-total': 'Total curado pelo Sales Specialist (gross), incluindo net e quantidade de deals curados.',
+      'exec-ss-coverage': 'Taxa de curadoria = Valor curado pelo Sales Specialist ÷ Valor total do pipeline.',
+      'exec-ss-ticket': 'Ticket médio da curadoria = Total curado ÷ Número de deals curados.',
+      'exec-ss-top-seller': 'Vendedor com maior volume curado dentro da base de curadoria manual.',
+      'exec-top5-total-card': 'Top 5 oportunidades por maior valor bruto no pipeline aberto.',
+      'exec-top5-confidence-card': 'Top 5 oportunidades por confiança da IA no pipeline aberto.',
+      'exec-top5-weighted-card': 'Top 5 oportunidades por valor ponderado (gross × confiança).'
+    };
+
+    const KPI_TITLE_EXPLANATIONS = {
+      'taxa de curadoria': 'Taxa de curadoria = Valor curado pelo Sales Specialist ÷ Valor total do pipeline.',
+      'ticket medio': 'Ticket médio = Valor total da base do card ÷ Quantidade de deals da mesma base.',
+      'taxa de conversao': 'Taxa de conversão = Ganhas ÷ (Ganhas + Perdidas).',
+      'taxa de perda': 'Taxa de perda = Perdidas ÷ (Ganhas + Perdidas).',
+      'previsao ponderada': 'Previsão ponderada = Valor do pipeline × confiança/probabilidade média.',
+      'deals com 50%': 'Total de deals com confiança da IA maior ou igual a 50%.',
+      'total curado': 'Soma dos deals que passaram por curadoria manual (Sales Specialist).',
+      'top vendedor': 'Vendedor com maior volume agregado na base exibida pelo card.',
+      'acuracia': 'Acurácia = previsões corretas ÷ total de previsões avaliadas.'
+    };
+
+    let kpiCardInfoObserver = null;
+    let kpiCardInfoRefreshTimer = null;
+
+    const normalizeKpiLabel = (label) => {
+      if (!label) return '';
+      return String(label)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .replace(/[()]/g, '')
+        .trim()
+        .toLowerCase();
+    };
+
+    const buildKpiCardJustification = (card, titleText) => {
+      const explicit = card.getAttribute('data-kpi-help');
+      if (explicit) return explicit;
+
+      if (card.id && KPI_CARD_EXPLANATIONS[card.id]) {
+        return KPI_CARD_EXPLANATIONS[card.id];
+      }
+
+      const normalizedTitle = normalizeKpiLabel(titleText);
+      if (normalizedTitle && KPI_TITLE_EXPLANATIONS[normalizedTitle]) {
+        return KPI_TITLE_EXPLANATIONS[normalizedTitle];
+      }
+
+      const subtitles = Array.from(card.querySelectorAll('.kpi-subtitle'))
+        .map((node) => (node.textContent || '').trim())
+        .filter(Boolean)
+        .slice(0, 2);
+
+      if (subtitles.length > 0) {
+        return `${titleText}: ${subtitles.join(' · ')}`;
+      }
+
+      return `${titleText}: cálculo consolidado automaticamente a partir dos dados da seção e filtros ativos.`;
+    };
+
+    function attachInfoBadgeToKpiCard(card) {
+      if (!card || !(card instanceof HTMLElement)) return;
+
+      const titleEl = card.querySelector('.kpi-title');
+      if (!titleEl) return;
+
+      const titleText = (titleEl.textContent || '').replace(/\s*i\s*$/i, '').trim() || 'Métrica';
+      const tooltipText = buildKpiCardJustification(card, titleText);
+
+      let badge = titleEl.querySelector('.card-info-badge');
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'card-info-badge';
+        badge.innerText = 'i';
+        badge.tabIndex = 0;
+        badge.setAttribute('role', 'button');
+
+        badge.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          badge.classList.toggle('is-open');
+        });
+
+        badge.addEventListener('blur', () => {
+          badge.classList.remove('is-open');
+        });
+
+        badge.addEventListener('mouseleave', () => {
+          badge.classList.remove('is-open');
+        });
+
+        titleEl.appendChild(badge);
+      }
+
+      badge.setAttribute('data-tooltip', tooltipText);
+      badge.setAttribute('aria-label', `Como calculamos ${titleText}`);
+      badge.setAttribute('title', tooltipText);
+    }
+
+    function enhanceAllKpiCards(root = document) {
+      const cards = root.querySelectorAll('.kpi-card');
+      cards.forEach(attachInfoBadgeToKpiCard);
+    }
+
+    function initKpiCardInfoObserver() {
+      if (kpiCardInfoObserver || !document.body) return;
+
+      kpiCardInfoObserver = new MutationObserver((mutations) => {
+        let shouldRefresh = false;
+        for (const mutation of mutations) {
+          if (mutation.type !== 'childList' || mutation.addedNodes.length === 0) continue;
+          for (const node of mutation.addedNodes) {
+            if (!(node instanceof HTMLElement)) continue;
+            if (node.classList?.contains('kpi-card') || node.querySelector?.('.kpi-card')) {
+              shouldRefresh = true;
+              break;
+            }
+          }
+          if (shouldRefresh) break;
+        }
+
+        if (!shouldRefresh) return;
+        clearTimeout(kpiCardInfoRefreshTimer);
+        kpiCardInfoRefreshTimer = setTimeout(() => enhanceAllKpiCards(document), 80);
+      });
+
+      kpiCardInfoObserver.observe(document.body, { childList: true, subtree: true });
+    }
 
     const showToast = (message, type = 'info') => {
       const id = 'toast-container';
@@ -4533,21 +5443,10 @@
           setTextSafe('exec-pipeline-year-net', 'Net: ' + formatMoney(allPipelineNet));
 
           // Pipeline (Período Filtrado) - DINÂMICO
-          // CORREÇÃO: NÃO sobrescrever se updateExecutiveMetricsFromAPI() já atualizou
-          // Somente atualizar se NÃO há filtros ativos (load inicial sem filtros)
-          if (!hasActiveFilters) {
-            const initialPipelineGross = allPipelineGross;
-            const initialPipelineNet = allPipelineNet;
-            const initialPipelineDeals = allPipelineDeals;
-            
-            setTextSafe('exec-pipeline-total', formatMoney(initialPipelineGross));
-            setTextSafe('exec-pipeline-deals', initialPipelineDeals + ' deals no período');
-            setTextSafe('exec-pipeline-net', 'Net: ' + formatMoney(initialPipelineNet));
-            log('[PIPELINE FILTERED] <svg class="icon"><use href="#icon-x"/></svg> Sobrescrito com valores totais (sem filtro):', formatMoney(initialPipelineGross));
-          } else {
-            log('[PIPELINE FILTERED] ⏭️ MANTENDO valores da API (já atualizados por updateExecutiveMetricsFromAPI)');
-            log('[DEBUG] Filtros ativos detectados - NÃO sobrescrevendo card');
-          }
+          // CORREÇÃO CRÍTICA: NUNCA sobrescrever valores da API
+          // updateExecutiveMetricsFromAPI() já atualizou com dados frescos do BigQuery
+          // Se sobrescrevermos aqui, estaremos usando dados estáticos ANTIGOS do JSON
+          log('[PIPELINE FILTERED] ⏭️ MANTENDO valores da API (já atualizados por updateExecutiveMetricsFromAPI)');
           
           // Sales Specialist
           setTextSafe('exec-pipeline-specialist-total', formatMoney(pipelineSalesSpecGross));
@@ -5214,6 +6113,9 @@
 
         const topOppsContainer = document.getElementById('exec-top-opps-container');
         const topOppsNote = document.getElementById('exec-top5-note');
+        const topOppsConfidenceCard = document.getElementById('exec-top5-confidence-card');
+        const topOppsWeightedCard = document.getElementById('exec-top5-weighted-card');
+        const topOppsBaseFooter = document.getElementById('exec-top5-base-footer');
         const topOppsTabs = Array.from(document.querySelectorAll('.top-opps-tab'));
 
         const normalizeConfidencePercent = (value) => {
@@ -5271,18 +6173,46 @@
 
         const normalizeClosedDeal = (deal, kind) => {
           const quarter = deal.fiscalQ || deal.Fiscal_Q || deriveQuarterLabel(deal.Data_Fechamento || deal.closeDate);
+          const rawCycle = deal.Ciclo_dias || deal.ciclo_dias || deal.Ciclo || deal.cycle;
+          const rawActivities = deal.Atividades ?? deal.activities ?? deal.atividades;
+          const rawMeddic = deal.MEDDIC ?? deal.meddic ?? deal.Meddic ?? deal.Score_Meddic;
+          const rawAvoidable = deal.Evitavel ?? deal.evitavel ?? deal.Evitável ?? '';
+          const cycle = (rawCycle === '' || rawCycle == null) ? null : Number(rawCycle);
+          const activities = (rawActivities === '' || rawActivities == null) ? null : Number(rawActivities);
+          const meddic = (rawMeddic === '' || rawMeddic == null) ? null : Number(rawMeddic);
+          const avoidable = /^(sim|yes|true|1)$/i.test(String(rawAvoidable).trim());
           return {
             name: deal.Oportunidade || deal.Opportunity_Name || deal.opportunityName || deal.name || 'Deal sem nome',
             account: deal.Conta || deal.account || 'Conta nao informada',
             owner: deal.Vendedor || deal.owner || 'N/A',
             value: deal.Gross || deal.val || 0,
             closeDate: deal.Data_Fechamento || deal.closeDate || '',
-            cycle: deal.Ciclo_dias || deal.ciclo_dias || deal.Ciclo || deal.cycle || null,
+            cycle: Number.isNaN(cycle) ? null : cycle,
+            activities: Number.isNaN(activities) ? null : activities,
+            meddic: Number.isNaN(meddic) ? null : meddic,
+            avoidable,
             resultType: deal.Tipo_Resultado || '',
             reason: kind === 'won'
               ? (deal.Fatores_Sucesso || deal.Win_Reason || deal.winReason || '')
               : (deal.Causa_Raiz || deal.Loss_Reason || deal.lossReason || ''),
             quarter: quarter || 'Quarter N/A'
+          };
+        };
+
+        const normalizeSalesSpecialistDeal = (deal) => {
+          const gross = Number(deal.booking_total_gross || deal.gross || deal.Gross || 0);
+          const status = String(deal.forecast_status || deal.Status || '').toUpperCase();
+          const closeDate = deal.close_date || deal.closeDate || deal.Data_Fechamento || '';
+          return {
+            name: deal.oportunidade || deal.Oportunidade || deal.opportunity || deal.name || 'Deal sem nome',
+            account: deal.conta || deal.Conta || deal.account || deal.account_name || 'Conta nao informada',
+            owner: deal.vendedor || deal.Vendedor || deal.owner || 'N/A',
+            value: Number.isNaN(gross) ? 0 : gross,
+            stage: status || 'FORECAST_SPECIALIST',
+            quarter: deal.fiscalQ || deal.Fiscal_Q || deriveQuarterLabel(closeDate) || 'Quarter N/A',
+            closeDate,
+            source: 'ss',
+            forecastStatus: status || ''
           };
         };
 
@@ -5489,23 +6419,58 @@
           const top5AvgConf = tab === 'open' && top5Deals.length > 0
             ? Math.round(top5Deals.reduce((sum, d) => sum + (d.confidence || 0), 0) / top5Deals.length)
             : null;
+          const weightedTop5 = tab === 'open'
+            ? top5Deals.reduce((sum, d) => sum + ((d.value || 0) * ((d.confidence || 0) / 100)), 0)
+            : 0;
+          const weightedTop5Pct = totalBase > 0 ? ((weightedTop5 / totalBase) * 100).toFixed(1) : 0;
+          const periodLabel = isQuarterPeriod ? `período ${targetQuarter}` : 'período selecionado';
+          const baseContext = fallbackUsed ? 'base histórica (fallback)' : `base do ${periodLabel}`;
+
+          if (topOppsConfidenceCard) {
+            topOppsConfidenceCard.style.display = tab === 'open' ? 'block' : 'none';
+          }
+          if (topOppsWeightedCard) {
+            topOppsWeightedCard.style.display = tab === 'open' ? 'block' : 'none';
+          }
 
           setTextSafe('exec-top5-total', formatMoney(top5Total));
-          const periodSuffix = isQuarterPeriod ? ` (${targetQuarter})` : '';
-          setTextSafe('exec-top5-percent', `${top5Percent}% do ${baseLabel} do periodo${periodSuffix}`);
-          setTextSafe('exec-top5-confidence', top5AvgConf == null ? 'N/A' : `${top5AvgConf}%`);
+          setTextSafe('exec-top5-percent', `${top5Percent}% da ${baseLabel} · ${baseContext}`);
+          setTextSafe('exec-top5-confidence', top5AvgConf == null ? '-' : `${top5AvgConf}%`);
           setTextSafe('exec-top5-deals', `${top5Deals.length} deals`);
+          if (tab === 'open') {
+            setTextSafe('exec-top5-weighted', formatMoney(weightedTop5));
+            setTextSafe('exec-top5-weighted-sub', `${weightedTop5Pct}% da base (${periodLabel})`);
+          }
+
+          if (topOppsBaseFooter) {
+            const updatedAtLabel = formatDateTime(safe(DATA, 'updatedAt', '')) || '-';
+            topOppsBaseFooter.textContent = `Base usada: ${normalized.length} deals | Soma base: ${formatMoney(totalBase)} | Regra: Top 5 por Gross | Contexto: ${baseContext} | Atualizado: ${updatedAtLabel}`;
+          }
 
           renderTopOppsSummary(tab, top5Deals, normalized, totalBase, top5Total, top5AvgConf, targetQuarter, baseLabel);
 
+          window.execTopOppsContext = {
+            tab,
+            baseLabel,
+            periodLabel,
+            baseContext,
+            fallbackUsed,
+            targetQuarter,
+            normalized,
+            top5Deals,
+            totalBase,
+            top5Total,
+            weightedTop5,
+            sql: tab === 'open'
+              ? `SELECT Oportunidade, Conta, Vendedor, Gross, Confianca, Fiscal_Q FROM pipeline WHERE <filtros_herdados> ORDER BY Gross DESC LIMIT 5`
+              : tab === 'won'
+                ? `SELECT Oportunidade, Conta, Vendedor, Gross, Fiscal_Q FROM closed_deals_won WHERE <filtros_herdados> ORDER BY Gross DESC LIMIT 5`
+                : `SELECT Oportunidade, Conta, Vendedor, Gross, Fiscal_Q FROM closed_deals_lost WHERE <filtros_herdados> ORDER BY Gross DESC LIMIT 5`
+          };
+
           if (topOppsNote) {
-            if (fallbackUsed) {
-              topOppsNote.style.display = 'block';
-              topOppsNote.textContent = 'Mostrando base historica sem filtro (nao ha deals no periodo selecionado).';
-            } else {
-              topOppsNote.style.display = 'none';
-              topOppsNote.textContent = '';
-            }
+            topOppsNote.style.display = 'block';
+            topOppsNote.textContent = `Regra de período: ${periodLabel}. Contexto aplicado: ${baseContext}.`;
           }
 
           if (top5Deals.length === 0) {
@@ -5526,6 +6491,7 @@
             const card = document.createElement('div');
             card.className = 'deal-card';
             card.style.marginBottom = '10px';
+            card.style.cursor = 'pointer';
 
             card.innerHTML = `
               <div style="font-size: 10px; color: var(--text-gray); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">#${idx + 1} · ${deal.quarter || 'Quarter N/A'}</div>
@@ -5583,7 +6549,279 @@
                 <div style="margin-top: 6px; font-size: 12px; color: var(--primary-cyan);"><strong>Recomendacao:</strong> ${insight.action}</div>
               </div>
             `;
+            card.onclick = () => openExecutiveDrilldown({
+              title: `Drill-down · Top 5 ${tab === 'open' ? 'Abertas' : tab === 'won' ? 'Ganhas' : 'Perdidas'}`,
+              subtitle: `${periodLabel} · ${baseContext}`,
+              rows: normalized,
+              selected: deal,
+              rule: 'Top 5 por Gross',
+              baseLabel: `${normalized.length} deals · ${formatMoney(totalBase)}`,
+              sql: window.execTopOppsContext?.sql || 'Regra SQL indisponível'
+            });
             topOppsContainer.appendChild(card);
+          });
+
+          const bindTopOppKpiClick = (el) => {
+            if (!el || el.dataset.execDdBound === '1') return;
+            el.dataset.execDdBound = '1';
+            el.style.cursor = 'pointer';
+            el.addEventListener('click', () => {
+              const ctx = window.execTopOppsContext || {};
+              openExecutiveDrilldown({
+                title: `Drill-down · Top 5 ${ctx.tab === 'open' ? 'Abertas' : ctx.tab === 'won' ? 'Ganhas' : 'Perdidas'}`,
+                subtitle: `${ctx.periodLabel || 'período selecionado'} · ${ctx.baseContext || 'base aplicada'}`,
+                rows: ctx.normalized || [],
+                selected: (ctx.top5Deals && ctx.top5Deals[0]) || null,
+                rule: 'Top 5 por Gross',
+                baseLabel: `${(ctx.normalized || []).length} deals · ${formatMoney(ctx.totalBase || 0)}`,
+                sql: ctx.sql || 'Regra SQL indisponível'
+              });
+            });
+          };
+          bindTopOppKpiClick(document.getElementById('exec-top5-total-card'));
+          bindTopOppKpiClick(document.getElementById('exec-top5-confidence-card'));
+          bindTopOppKpiClick(document.getElementById('exec-top5-weighted-card'));
+        };
+
+        const buildDrilldownRowsFromMetric = (metricId) => {
+          const openRows = (allDeals || []).map(normalizeOpenDeal).map(d => ({ ...d, source: 'pipeline' }));
+          const wonRows = (Array.isArray(DATA.wonAgg) ? DATA.wonAgg : []).map(d => ({ ...normalizeClosedDeal(d, 'won'), source: 'won' }));
+          const lostRows = (Array.isArray(DATA.lostAgg) ? DATA.lostAgg : []).map(d => ({ ...normalizeClosedDeal(d, 'lost'), source: 'lost' }));
+          const ssRows = (Array.isArray(DATA?.salesSpecialist?.deals) ? DATA.salesSpecialist.deals : []).map(normalizeSalesSpecialistDeal);
+
+          const exactMetricRules = {
+            'exec-above50-value': { rows: openRows.filter(r => (r.confidence || 0) >= 50), title: 'Deals ≥50% Confiança IA', rule: 'Pipeline com confiança IA >= 50%' },
+            'exec-idle-days-avg': { rows: openRows.filter(r => r.idleDays != null && Number(r.idleDays) > 0), title: 'Dias Idle Médio', rule: 'Pipeline com idle > 0 dias' },
+            'exec-won-cycle-days': { rows: wonRows.filter(r => r.cycle != null), title: 'Ciclo Médio (Ganhos)', rule: 'Deals ganhos com ciclo preenchido' },
+            'exec-won-activities': { rows: wonRows.filter(r => r.activities != null), title: 'Atividades Médias (Ganhos)', rule: 'Deals ganhos com atividades preenchidas' },
+            'exec-won-meddic': { rows: wonRows.filter(r => r.meddic != null), title: 'MEDDIC Médio', rule: 'Deals ganhos com score MEDDIC preenchido' },
+            'exec-lost-cycle-days': { rows: lostRows.filter(r => r.cycle != null), title: 'Ciclo Médio (Perdas)', rule: 'Deals perdidos com ciclo preenchido' },
+            'exec-lost-evitavel-pct': { rows: lostRows.filter(r => r.avoidable), title: 'Perdas Evitáveis', rule: 'Somente perdas marcadas como evitáveis' },
+            'exec-cycle-efficiency': { rows: [...wonRows.filter(r => r.cycle != null), ...lostRows.filter(r => r.cycle != null)], title: 'Eficiência de Ciclo', rule: 'Ganhos e perdas com ciclo preenchido' },
+            'exec-conversion-rate': { rows: [...wonRows, ...lostRows], title: 'Taxa de Win', rule: 'Base de ganhos + perdas (conversão)' },
+            'exec-loss-rate': { rows: [...wonRows, ...lostRows], title: 'Taxa de Perda', rule: 'Base de ganhos + perdas (perda)' },
+            'exec-ss-total': { rows: ssRows, title: 'Sales Specialist · Total Curado', rule: 'Deals de curadoria manual (Sales Specialist)' },
+            'exec-ss-coverage': { rows: ssRows, title: 'Sales Specialist · Taxa de Curadoria', rule: 'Deals de curadoria manual (Sales Specialist)' },
+            'exec-ss-ticket': { rows: ssRows, title: 'Sales Specialist · Ticket Médio', rule: 'Deals de curadoria manual (Sales Specialist)' },
+            'exec-ss-top-seller': { rows: ssRows, title: 'Sales Specialist · Top Vendedor', rule: 'Deals de curadoria manual (Sales Specialist)' }
+          };
+
+          if (metricId && exactMetricRules[metricId]) {
+            return exactMetricRules[metricId];
+          }
+
+          if (!metricId) return { rows: [...openRows, ...wonRows, ...lostRows], title: 'Drill-down Executivo', rule: 'Base consolidada de oportunidades' };
+          if (metricId.startsWith('exec-pipeline') || metricId.startsWith('exec-forecast') || metricId.startsWith('exec-above50') || metricId.startsWith('exec-idle')) {
+            return { rows: openRows, title: 'Pipeline Aberto', rule: 'Base de pipeline aberto com filtros herdados' };
+          }
+          if (metricId.startsWith('exec-ss')) {
+            return { rows: ssRows, title: 'Sales Specialist', rule: 'Base de curadoria manual (Sales Specialist)' };
+          }
+          if (metricId.startsWith('exec-closed') || metricId.startsWith('exec-conversion') || metricId.startsWith('exec-won')) {
+            return { rows: wonRows, title: 'Deals Ganhos', rule: 'Base de ganhos com filtros herdados' };
+          }
+          if (metricId.startsWith('exec-lost') || metricId.startsWith('exec-loss') || metricId.startsWith('exec-cycle-efficiency')) {
+            return { rows: lostRows, title: 'Deals Perdidos', rule: 'Base de perdas com filtros herdados' };
+          }
+          if (metricId.startsWith('exec-sellers') || metricId.startsWith('exec-ticket') || metricId.startsWith('exec-cycle-')) {
+            return { rows: [...wonRows, ...lostRows], title: 'Performance de Vendedores', rule: 'Base de ganhos + perdas para performance' };
+          }
+          return { rows: [...openRows, ...wonRows, ...lostRows], title: 'Drill-down Executivo', rule: 'Base consolidada de oportunidades' };
+        };
+
+        const getCurrentFiltersLabel = () => {
+          const f = window.currentFilters || {};
+          const parts = [];
+          if (f.year) parts.push(`Ano: ${f.year}`);
+          if (f.quarter) parts.push(`Quarter: ${f.quarter}`);
+          if (f.month) parts.push(`Mês: ${f.month}`);
+          if (f.seller) parts.push(`Vendedor: ${f.seller}`);
+          return parts.length ? parts.join(' | ') : 'Sem filtros adicionais';
+        };
+
+        const renderExecutiveDrilldown = () => {
+          const state = window.execDrilldownState || {};
+          const rows = Array.isArray(state.filteredRows) ? state.filteredRows : [];
+          const titleEl = document.getElementById('exec-dd-title');
+          const subtitleEl = document.getElementById('exec-dd-subtitle');
+          const metaEl = document.getElementById('exec-dd-meta');
+          const listEl = document.getElementById('exec-dd-list');
+          const detailEl = document.getElementById('exec-dd-detail');
+          const chipsEl = document.getElementById('exec-dd-source-chips');
+          const sqlEl = document.getElementById('exec-dd-sql');
+          if (!titleEl || !subtitleEl || !metaEl || !listEl || !detailEl || !chipsEl || !sqlEl) return;
+
+          titleEl.textContent = state.title || 'Drill-down Executivo';
+          subtitleEl.textContent = state.subtitle || 'Resumo → Lista → Detalhe';
+          metaEl.innerHTML = `
+            <div><strong>Regra de cálculo:</strong> ${state.rule || '-'}</div>
+            <div><strong>Base usada:</strong> ${state.baseLabel || `${(state.rows || []).length} deals`}</div>
+            <div><strong>Filtros herdados:</strong> ${getCurrentFiltersLabel()}</div>
+            <div><strong>Última atualização:</strong> ${formatDateTime(safe(DATA, 'updatedAt', '')) || '-'}</div>
+          `;
+
+          const distinctSources = Array.from(new Set((state.rows || []).map(r => r.source || 'other')));
+          chipsEl.innerHTML = ['all', ...distinctSources].map(src => {
+            const active = (state.activeSource || 'all') === src;
+            const label = src === 'all' ? 'Tudo' : src.toUpperCase();
+            return `<button class="exec-dd-chip ${active ? 'active' : ''}" onclick="setExecutiveDrilldownSource('${src}')">${label}</button>`;
+          }).join('');
+
+          sqlEl.textContent = state.sql || 'Regra SQL indisponível';
+
+          if (!rows.length) {
+            listEl.innerHTML = '<div class="exec-dd-item"><div class="exec-dd-item-title">Nenhum resultado</div><div class="exec-dd-item-meta">Ajuste busca/fonte para visualizar dados.</div></div>';
+            detailEl.textContent = 'Sem item selecionado.';
+            return;
+          }
+
+          listEl.innerHTML = rows.map((row, idx) => `
+            <div class="exec-dd-item" onclick="selectExecutiveDrilldownItem(${idx})">
+              <div class="exec-dd-item-title">${escapeHtml(row.name || 'Deal sem nome')}</div>
+              <div class="exec-dd-item-meta">
+                <span>${escapeHtml(row.account || 'Conta não informada')} · ${escapeHtml(row.owner || 'N/A')}</span>
+                <span>${formatMoney(row.value || 0)} · ${escapeHtml(row.quarter || 'Quarter N/A')} · ${(row.source || 'other').toUpperCase()}</span>
+              </div>
+            </div>
+          `).join('');
+
+          const selected = state.selected || rows[0];
+          detailEl.innerHTML = `
+            <div style="font-size:13px;font-weight:700;color:var(--text-main);margin-bottom:6px;">${escapeHtml(selected.name || 'Deal')}</div>
+            <div><strong>Conta:</strong> ${escapeHtml(selected.account || 'N/A')}</div>
+            <div><strong>Vendedor:</strong> ${escapeHtml(selected.owner || 'N/A')}</div>
+            <div><strong>Origem:</strong> ${(selected.source || 'other').toUpperCase()}</div>
+            <div><strong>Valor:</strong> ${formatMoney(selected.value || 0)}</div>
+            <div><strong>Quarter:</strong> ${escapeHtml(selected.quarter || 'N/A')}</div>
+            ${selected.forecastStatus ? `<div><strong>Forecast:</strong> ${escapeHtml(selected.forecastStatus)}</div>` : ''}
+            ${selected.stage ? `<div><strong>Stage:</strong> ${escapeHtml(selected.stage)}</div>` : ''}
+            ${selected.confidence != null ? `<div><strong>Confiança:</strong> ${selected.confidence}%</div>` : ''}
+            ${selected.idleDays != null ? `<div><strong>Idle:</strong> ${selected.idleDays} dias</div>` : ''}
+            ${selected.activities != null ? `<div><strong>Atividades:</strong> ${selected.activities}</div>` : ''}
+            ${selected.meddic != null ? `<div><strong>MEDDIC:</strong> ${selected.meddic}</div>` : ''}
+            ${selected.avoidable ? `<div><strong>Evitável:</strong> Sim</div>` : ''}
+            ${selected.cycle != null ? `<div><strong>Ciclo:</strong> ${selected.cycle} dias</div>` : ''}
+            ${selected.resultType ? `<div><strong>Resultado:</strong> ${escapeHtml(selected.resultType)}</div>` : ''}
+            ${selected.reason ? `<div><strong>Motivo:</strong> ${escapeHtml(selected.reason)}</div>` : ''}
+            ${selected.closeDate ? `<div><strong>Data fechamento:</strong> ${escapeHtml(selected.closeDate)}</div>` : ''}
+          `;
+        };
+
+        window.setExecutiveDrilldownSource = function(source) {
+          window.execDrilldownState = window.execDrilldownState || {};
+          window.execDrilldownState.activeSource = source;
+          applyExecutiveDrilldownFilters();
+        };
+
+        window.selectExecutiveDrilldownItem = function(idx) {
+          const state = window.execDrilldownState || {};
+          state.selected = (state.filteredRows || [])[idx] || null;
+          window.execDrilldownState = state;
+          renderExecutiveDrilldown();
+        };
+
+        window.applyExecutiveDrilldownFilters = function() {
+          const state = window.execDrilldownState || {};
+          const searchEl = document.getElementById('exec-dd-search');
+          const sortEl = document.getElementById('exec-dd-sort');
+          const text = (searchEl?.value || '').toLowerCase().trim();
+          const source = state.activeSource || 'all';
+          const sort = sortEl?.value || 'value_desc';
+
+          let rows = Array.isArray(state.rows) ? [...state.rows] : [];
+          if (source !== 'all') rows = rows.filter(r => (r.source || 'other') === source);
+          if (text) {
+            rows = rows.filter(r => [r.name, r.account, r.owner, r.quarter, r.stage, r.resultType, r.reason]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase()
+              .includes(text));
+          }
+
+          if (sort === 'value_asc') rows.sort((a, b) => (a.value || 0) - (b.value || 0));
+          else if (sort === 'name_asc') rows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+          else rows.sort((a, b) => (b.value || 0) - (a.value || 0));
+
+          state.filteredRows = rows;
+          state.selected = rows.find(r => state.selected && r.name === state.selected.name && r.owner === state.selected.owner) || rows[0] || null;
+          window.execDrilldownState = state;
+          renderExecutiveDrilldown();
+        };
+
+        window.toggleExecutiveDrilldownSql = function() {
+          const sqlEl = document.getElementById('exec-dd-sql');
+          if (sqlEl) sqlEl.classList.toggle('active');
+        };
+
+        window.exportExecutiveDrilldownCsv = function() {
+          const state = window.execDrilldownState || {};
+          const rows = Array.isArray(state.filteredRows) ? state.filteredRows : [];
+          if (!rows.length) return;
+          const headers = ['source','name','account','owner','value','quarter','stage','confidence','idleDays','activities','cycle','resultType','reason','closeDate'];
+          const csv = [headers.join(',')]
+            .concat(rows.map(row => headers.map(h => {
+              const value = row[h] == null ? '' : String(row[h]).replace(/"/g, '""');
+              return `"${value}"`;
+            }).join(',')))
+            .join('\n');
+
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `drilldown_executivo_${new Date().toISOString().slice(0,10)}.csv`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        };
+
+        window.closeExecutiveDrilldown = function() {
+          document.getElementById('exec-drilldown-backdrop')?.classList.remove('active');
+          document.getElementById('exec-drilldown-panel')?.classList.remove('active');
+        };
+
+        const openExecutiveDrilldown = (config) => {
+          window.execDrilldownState = {
+            ...config,
+            rows: Array.isArray(config.rows) ? config.rows : [],
+            filteredRows: Array.isArray(config.rows) ? [...config.rows] : [],
+            activeSource: 'all',
+            selected: config.selected || null
+          };
+          renderExecutiveDrilldown();
+          document.getElementById('exec-dd-search').value = '';
+          document.getElementById('exec-dd-sort').value = 'value_desc';
+          document.getElementById('exec-dd-sql').classList.remove('active');
+          document.getElementById('exec-drilldown-backdrop')?.classList.add('active');
+          document.getElementById('exec-drilldown-panel')?.classList.add('active');
+        };
+
+        const bindExecutiveKpiDrilldown = () => {
+          const summaryRoot = document.querySelector('.exec-tab-content[data-content="resumo"]');
+          if (!summaryRoot) return;
+          summaryRoot.querySelectorAll('.kpi-card').forEach(card => {
+            if (card.dataset.execDdBound === '1') return;
+            card.dataset.execDdBound = '1';
+            card.style.cursor = 'pointer';
+            card.addEventListener('click', () => {
+              const metricNode = card.querySelector('[id^="exec-"]');
+              const metricId = metricNode ? metricNode.id : '';
+              const cfg = buildDrilldownRowsFromMetric(metricId);
+              openExecutiveDrilldown({
+                title: `Drill-down · ${cfg.title}`,
+                subtitle: 'Resumo → Lista → Detalhe',
+                rows: cfg.rows,
+                selected: cfg.rows[0] || null,
+                rule: cfg.rule,
+                baseLabel: `${cfg.rows.length} deals · ${formatMoney(cfg.rows.reduce((sum, r) => sum + (r.value || 0), 0))}`,
+                sql: metricId.includes('lost')
+                  ? 'SELECT * FROM closed_deals_lost WHERE <filtros_herdados>'
+                  : metricId.includes('closed') || metricId.includes('won')
+                    ? 'SELECT * FROM closed_deals_won WHERE <filtros_herdados>'
+                    : 'SELECT * FROM pipeline WHERE <filtros_herdados>'
+              });
+            });
           });
         };
 
@@ -5609,6 +6847,7 @@
         const initialTab = (window.topOppsState && window.topOppsState.tab) ? window.topOppsState.tab : 'open';
         setActiveTopOppsTab(initialTab);
         renderTopOppsTab(initialTab);
+        bindExecutiveKpiDrilldown();
         
         // Armazena todos os deals com quarter para uso global
         window.allDealsWithQuarter = allDeals;
@@ -6050,53 +7289,8 @@
           }
         }
 
-        // 5. Agenda (Pautas por Quarter) - código existente mantido
-        const agendaContainer = document.getElementById('agenda-sellers-container');
-        if (agendaContainer) {
-          agendaContainer.innerHTML = '';
-        
-        const quartersAgenda = DATA.weeklyAgenda || {};
-        if (Object.keys(quartersAgenda).length === 0) {
-          agendaContainer.innerHTML = '<div class="loading">Nenhuma pauta crítica no momento</div>';
-        } else {
-          for (const [quarter, deals] of Object.entries(quartersAgenda)) {
-            if (!deals || deals.length === 0) continue;
-            
-            const qDiv = document.createElement('div');
-            qDiv.innerHTML = `<h4>${quarter}</h4>`;
-            
-            deals.forEach(d => {
-              const card = document.createElement('div');
-              card.className = 'deal-card';
-              
-              // Determina badge de confiança
-              let confidenceBadge = 'badge-warning';
-              const conf = d.confidence || 50;
-              if (conf >= 70) confidenceBadge = 'badge-success';
-              else if (conf < 50) confidenceBadge = 'badge-danger';
-              
-              card.innerHTML = `
-                <div class="deal-header">
-                  <div class="deal-name">${d.name || 'Deal sem nome'}</div>
-                  <div class="deal-value">${formatMoney(d.val || 0)}</div>
-                </div>
-                <div class="deal-meta">
-                  <svg class="icon"><use href="#icon-user"/></svg> ${d.owner || 'N/A'} | 
-                  <strong>Stage:</strong> ${d.stage || 'N/A'} | 
-                  <span class="badge ${confidenceBadge}">${conf}% confiança</span> | 
-                  ${(d.daysToClose || 0) > 0 ? d.daysToClose + ' dias p/ close' : 'Atrasado'}
-                </div>
-                <div class="deal-audit">
-                  ${d.auditQuestions || (d.nextActivity ? 'Próx: ' + d.nextActivity : 'Sem atividade agendada')}
-                </div>
-              `;
-              qDiv.appendChild(card);
-            });
-            
-            agendaContainer.appendChild(qDiv);
-          }
-        }
-        } // fim do if agendaContainer
+        // 5. Agenda (LEGADO DESATIVADO)
+        // A renderização da Pauta Semanal é feita exclusivamente por public/weekly-agenda-new.js
         
         // ============================================================================
         // POPULA FILTRO DE VENDEDORES
@@ -6105,6 +7299,7 @@
         
         // Atualizar métricas de Sales Specialist
         updateSalesSpecialistMetrics();
+        enhanceAllKpiCards(document);
         
         log('[RENDER] ========== RENDERIZAÇÃO CONCLUÍDA ==========');
         log('[RENDER] Timestamp fim:', new Date().toISOString());
@@ -6180,24 +7375,58 @@
         }
         setHtmlSafe('rep-period-badge', periodLabel);
         
-        // ✅ CONSOME API /api/performance/seller/{name}
-        const response = await fetch(
-          `${window.API_BASE_URL}/api/performance/seller/${encodeURIComponent(sellerName)}${queryString}`
-        );
-        
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status}`);
+        const normalizeSellerKey = (value) => String(value || '').trim().toLowerCase();
+
+        // 1) Tenta endpoint dedicado /api/performance/seller/{name}
+        let perf = null;
+        let scorecard = {};
+        let comportamento = {};
+        let lastStatus = null;
+
+        const sellerUrl = `${window.API_BASE_URL}/api/performance/seller/${encodeURIComponent(sellerName)}${queryString}`;
+        let response = await fetch(sellerUrl);
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.performance) {
+            perf = data.performance;
+            scorecard = data.scorecard || {};
+            comportamento = data.comportamento || {};
+          }
+        } else {
+          lastStatus = response.status;
+          console.warn(`[SELLER] Endpoint dedicado falhou (${response.status}). Tentando fallback no endpoint /api/performance...`);
         }
-        
-        const data = await response.json();
-        
-        if (!data.success || !data.performance) {
-          throw new Error('Dados do vendedor não encontrados');
+
+        // 2) Fallback: usa /api/performance?seller={name} quando dedicado falha (ex.: 403 legado)
+        if (!perf) {
+          const params = new URLSearchParams();
+          if (year) params.append('year', year);
+          if (quarter) params.append('quarter', quarter);
+          params.append('seller', sellerName);
+
+          const fallbackUrl = `${window.API_BASE_URL}/api/performance?${params.toString()}`;
+          const fallbackResponse = await fetch(fallbackUrl);
+
+          if (!fallbackResponse.ok) {
+            throw new Error(`API error: ${fallbackResponse.status}`);
+          }
+
+          const fallbackData = await fallbackResponse.json();
+          if (!fallbackData.success) {
+            throw new Error('Dados do vendedor não encontrados');
+          }
+
+          const sellerKey = normalizeSellerKey(sellerName);
+          perf = (fallbackData.ranking || []).find(item => normalizeSellerKey(item.vendedor) === sellerKey) || (fallbackData.ranking || [])[0] || null;
+          scorecard = (fallbackData.scorecard || []).find(item => normalizeSellerKey(item.vendedor) === sellerKey) || (fallbackData.scorecard || [])[0] || {};
+          comportamento = (fallbackData.comportamento || []).find(item => normalizeSellerKey(item.vendedor) === sellerKey) || (fallbackData.comportamento || [])[0] || {};
+
+          if (!perf) {
+            const statusHint = lastStatus ? ` (falha inicial: ${lastStatus})` : '';
+            throw new Error(`Dados do vendedor não encontrados${statusHint}`);
+          }
         }
-        
-        const perf = data.performance;
-        const scorecard = data.scorecard || {};
-        const comportamento = data.comportamento || {};
         
         // ============================================================================
         // POPULA CARD IPV DESTACADO
@@ -6674,7 +7903,7 @@
     // ============================================================================
     
     // Carrega agenda semanal usando nova API /api/weekly-agenda
-    async function loadWeeklyAgenda(period = 'all') {
+    async function loadWeeklyAgendaLegacy(period = 'all') {
       log('[AGENDA INLINE] Carregando pauta semanal via API (fallback)...');
       showLoading('Carregando pauta semanal com IA');
       
@@ -6994,9 +8223,35 @@
       }
     }
 
+    function updatePerformanceToggleButtons(activeSection) {
+      document.querySelectorAll('.perf-toggle-btn').forEach((btn) => {
+        const isActive = btn.dataset && btn.dataset.target === activeSection;
+        btn.style.background = isActive ? 'rgba(0,190,255,0.18)' : 'rgba(255,255,255,0.04)';
+        btn.style.color = isActive ? 'var(--primary-cyan)' : 'var(--text-gray)';
+        btn.style.borderColor = isActive ? 'var(--primary-cyan)' : 'var(--glass-border)';
+      });
+    }
+
+    function showPerformanceView(sectionId) {
+      const performanceNav = document.getElementById('nav-performance-item');
+      showSection(performanceNav, sectionId);
+    }
+
     // ==========================================================================
     // Navegação corrigida com argumentos explícitos
     function showSection(element, sectionId) {
+      if ((sectionId === 'dashboard' || sectionId === 'ml') && !(isAdminUser && adminPreviewEnabled)) {
+        const executiveNav = document.querySelector('.nav-item[onclick="showSection(this, \'executive\')"]');
+        showSection(executiveNav, 'executive');
+        return;
+      }
+
+      if (sectionId === 'admin' && !isAdminUser) {
+        const executiveNav = document.querySelector('.nav-item[onclick="showSection(this, \'executive\')"]');
+        showSection(executiveNav, 'executive');
+        return;
+      }
+
       // Remove active de todas as seções e nav items
       document.querySelectorAll('.section').forEach(el => el.classList.remove('active'));
       document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
@@ -7005,15 +8260,24 @@
       const target = document.getElementById(sectionId);
       if (target) target.classList.add('active');
       if (element) element.classList.add('active');
+
+      if ((sectionId === 'individual' || sectionId === 'fsr') && !element) {
+        const performanceNav = document.getElementById('nav-performance-item');
+        if (performanceNav) performanceNav.classList.add('active');
+      }
+      if (sectionId === 'individual' || sectionId === 'fsr') {
+        updatePerformanceToggleButtons(sectionId);
+      }
       
       // Atualiza título
       const titles = { 
         'executive': 'Visão Executiva',
         'dashboard': 'Indicadores L10', 
         'aprendizados': 'Aprendizados',
-        'fsr': 'Performance FSR',
-        'individual': 'Por Vendedor', 
+        'fsr': 'Performance Equipe',
+        'individual': 'Performance Equipe', 
         'agenda': 'Pauta Semanal',
+        'admin': 'Admin - Gestão de Férias',
         'warroom': '🎯 War Room - Apresentação Executiva',
         'ml': '<svg class="icon"><use href="#icon-robot"/></svg> Inteligência ML'
       };
@@ -7028,13 +8292,13 @@
         loadMLPredictions();
       }
       
-      // Se aba Agenda for ativada, carrega pauta automaticamente
+        // Se aba Agenda for ativada, carrega pauta automaticamente
       if (sectionId === 'agenda') {
         // Usa nova função do weekly-agenda-new.js se disponível
         if (typeof window.loadWeeklyAgenda === 'function') {
           window.loadWeeklyAgenda();
         } else {
-          loadWeeklyAgenda('all'); // Fallback para função antiga
+          loadWeeklyAgendaLegacy('all'); // Fallback legado
         }
       }
 
@@ -7046,6 +8310,10 @@
       // Se aba Performance FSR for ativada, carrega dados da API
       if (sectionId === 'fsr') {
         loadPerformanceData();
+      }
+
+      if (sectionId === 'admin') {
+        initAdminSection();
       }
     }
 
@@ -7211,6 +8479,20 @@
       log('[EXEC METRICS] Atualizando KPIs com dados da API:', metrics);
       log('[DEBUG] ===== updateExecutiveMetricsFromAPI EXECUTANDO =====');
       
+      // PIPELINE TOTAL (TODOS OS ANOS)
+      if (metrics.pipeline_total) {
+        const totalGross = metrics.pipeline_total.gross;
+        const totalNet = metrics.pipeline_total.net;
+        const totalCount = metrics.pipeline_total.deals_count;
+        
+        if (totalGross !== null && totalGross !== undefined) {
+          setTextSafe('exec-pipeline-year-total', formatMoney(totalGross));
+          setTextSafe('exec-pipeline-year-deals', totalCount + ' deals abertos');
+          setTextSafe('exec-pipeline-year-net', 'Net: ' + formatMoney(totalNet));
+          log('[PIPELINE TOTAL] <svg class="icon"><use href="#icon-check"/></svg> Card ATUALIZADO da API:', formatMoney(totalGross), totalCount, 'deals');
+        }
+      }
+      
       // PIPELINE (PERÍODO FILTRADO)
       if (metrics.pipeline_filtered) {
         const pipelineGross = metrics.pipeline_filtered.gross;
@@ -7291,10 +8573,23 @@
       
       // ATIVIDADES e MEDDIC SCORE (GANHOS do pipeline)
       if (metrics.closed_won) {
-        const avgActivitiesWon = metrics.closed_won.avg_activities;
+        const avgActivitiesFromApi = metrics.closed_won.avg_activities;
+        let avgActivitiesWon = (avgActivitiesFromApi !== null && avgActivitiesFromApi !== undefined)
+          ? Number(avgActivitiesFromApi)
+          : null;
         const avgCycleWon = metrics.closed_won.avg_cycle_days;
+
+        if (!(avgActivitiesWon > 0) && Array.isArray(window.wonAgg) && window.wonAgg.length > 0) {
+          const wonActivities = window.wonAgg
+            .map((deal) => Number(deal.activities ?? deal.Atividades))
+            .filter((value) => Number.isFinite(value));
+          if (wonActivities.length > 0) {
+            avgActivitiesWon = wonActivities.reduce((sum, value) => sum + value, 0) / wonActivities.length;
+            log('[ATIVIDADES WON] Usando fallback de wonAgg:', avgActivitiesWon);
+          }
+        }
         
-        if (avgActivitiesWon !== null && avgActivitiesWon !== undefined) {
+        if (avgActivitiesWon !== null && avgActivitiesWon !== undefined && Number.isFinite(avgActivitiesWon)) {
           setTextSafe('exec-won-activities', Math.round(avgActivitiesWon));
           setTextSafe('exec-won-activities-detail', `${Math.round(avgActivitiesWon)} atividades por deal ganho`);
           log('[ATIVIDADES WON] <svg class="icon"><use href="#icon-check"/></svg> Atualizado da API:', avgActivitiesWon);
@@ -7351,9 +8646,20 @@
       if (metrics.closed_lost) {
         const avgActivitiesLost = metrics.closed_lost.avg_activities;
         const avgCycleLost = metrics.closed_lost.avg_cycle_days;
+        const lostGross = metrics.closed_lost.gross || 0;
+        const lostNet = metrics.closed_lost.net || 0;
         const evitavelPct = metrics.closed_lost.evitavel_pct || 0;
         const evitavelCount = metrics.closed_lost.evitavel_count || 0;
         const totalLosses = metrics.closed_lost.deals_count || 0;
+        const totalWins = metrics.closed_won?.deals_count || 0;
+        const totalClosed = totalWins + totalLosses;
+        const lossRate = totalClosed > 0 ? Math.round((totalLosses / totalClosed) * 100) : 0;
+
+        setTextSafe('exec-lost-total', formatMoney(lostGross));
+        setTextSafe('exec-lost-deals', totalLosses + ' deals perdidos');
+        setTextSafe('exec-lost-net', 'Net: ' + formatMoney(lostNet));
+        setTextSafe('exec-loss-rate', lossRate + '%');
+        setTextSafe('exec-loss-detail', `${totalLosses}/${totalClosed} deals`);
         
         if (avgCycleLost !== null && avgCycleLost !== undefined) {
           setTextSafe('exec-lost-cycle-days', Math.round(avgCycleLost));
@@ -7433,6 +8739,25 @@
         log('[CONVERSION] <svg class="icon"><use href="#icon-alert"/></svg> wonAgg ou lostAgg não disponíveis');
         log('[CONVERSION] wonAgg:', window.wonAgg ? window.wonAgg.length : 'undefined');
         log('[CONVERSION] lostAgg:', window.lostAgg ? window.lostAgg.length : 'undefined');
+        const apiWon = window.currentApiMetrics?.closed_won || {};
+        const apiLost = window.currentApiMetrics?.closed_lost || {};
+        const apiWins = apiWon.deals_count || 0;
+        const apiLosses = apiLost.deals_count || 0;
+        const apiTotal = apiWins + apiLosses;
+        if (apiTotal > 0) {
+          const conversionRateApi = Math.round((apiWins / apiTotal) * 100);
+          const lossRateApi = Math.round((apiLosses / apiTotal) * 100);
+          setTextSafe('exec-closed-total', formatMoney(apiWon.gross || 0));
+          setTextSafe('exec-closed-deals', apiWins + ' deals ganhos');
+          setTextSafe('exec-closed-net', 'Net: ' + formatMoney(apiWon.net || 0));
+          setTextSafe('exec-conversion-rate', conversionRateApi + '%');
+          setTextSafe('exec-conversion-detail', apiWins + '/' + apiTotal + ' deals');
+          setTextSafe('exec-lost-total', formatMoney(apiLost.gross || 0));
+          setTextSafe('exec-lost-deals', apiLosses + ' deals perdidos');
+          setTextSafe('exec-lost-net', 'Net: ' + formatMoney(apiLost.net || 0));
+          setTextSafe('exec-loss-rate', lossRateApi + '%');
+          setTextSafe('exec-loss-detail', apiLosses + '/' + apiTotal + ' deals');
+        }
         return;
       }
       
@@ -7476,6 +8801,23 @@
         });
       }
       
+      const apiWon = window.currentApiMetrics?.closed_won || {};
+      const apiLost = window.currentApiMetrics?.closed_lost || {};
+      if (targetQuarter === null) {
+        const apiWins = apiWon.deals_count || 0;
+        const apiLosses = apiLost.deals_count || 0;
+        const shouldUseApiFallback = (totalWins === 0 && apiWins > 0) || (totalLosses === 0 && apiLosses > 0);
+        if (shouldUseApiFallback) {
+          log('[CONVERSION] Aplicando fallback da API para ganhos/perdas');
+          totalWins = apiWins;
+          totalLosses = apiLosses;
+          winsGross = apiWon.gross || 0;
+          winsNet = apiWon.net || 0;
+          lossesGross = apiLost.gross || 0;
+          lossesNet = apiLost.net || 0;
+        }
+      }
+
       const totalDeals = totalWins + totalLosses;
       const conversionRate = totalDeals > 0 ? Math.round((totalWins / totalDeals) * 100) : 0;
       
@@ -8406,6 +9748,124 @@
         });
     }
 
+    // ==================== CLICK & DRILL-DOWN LOGIC ====================
+    window.ML_DEAL_MAP = {}; // Maps unique ID -> Deal Object
+    window.ML_DEAL_Counter = 0;
+
+    function registerDeal(deal) {
+      if (!deal) return '';
+      const id = 'ml_deal_' + (++window.ML_DEAL_Counter);
+      window.ML_DEAL_MAP[id] = deal;
+      return id;
+    }
+
+    function createModalStructure() {
+      if (document.getElementById('deal-modal')) return;
+      const modal = document.createElement('div');
+      modal.id = 'deal-modal';
+      modal.className = 'deal-modal';
+      modal.innerHTML = `
+        <div class="deal-modal-content">
+          <div class="dm-header">
+            <div class="dm-title">Deal Profile</div>
+            <button class="dm-close" onclick="closeDealModal()">&times;</button>
+          </div>
+          <div class="dm-body" id="deal-modal-body">
+            <!-- Content injected here -->
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      
+      // Close on BG click
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeDealModal();
+      });
+      // Close on Esc
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) closeDealModal();
+      });
+    }
+    
+    // Call this once on init
+    window.addEventListener('DOMContentLoaded', createModalStructure);
+
+    function closeDealModal() {
+      const m = document.getElementById('deal-modal');
+      if (m) m.classList.remove('active');
+    }
+
+    function showOpportunityDetails(dealId) {
+      const deal = window.ML_DEAL_MAP[dealId];
+      if (!deal) return;
+      
+      createModalStructure(); // Ensure exists
+      
+      const modal = document.getElementById('deal-modal');
+      const body = document.getElementById('deal-modal-body');
+      
+      const formatVal = (v) => (v === null || v === undefined) ? '-' : v;
+      const formatMoneySafe = (v) => (v ? formatMoney(v) : '-');
+      const formatPctSafe = (v) => (v ? Math.round(v) + '%' : '-');
+
+      // Helper to iterate object keys
+      const buildGrid = (obj, keys) => {
+        return keys.map(k => `
+          <div class="dm-field">
+            <div class="dm-label">${k.replace(/_/g, ' ')}</div>
+            <div class="dm-value text-white">${formatVal(obj[k])}</div>
+          </div>`).join('');
+      };
+
+      // Construct content
+      let content = `
+        <div class="dm-section-title">Overview</div>
+        <div class="dm-grid" style="grid-template-columns: 2fr 1fr 1fr;">
+           <div class="dm-field"><div class="dm-label">Opportunity</div><div class="dm-value" style="font-size:16px; font-weight:700; color:var(--primary-cyan);">${formatVal(deal.opportunity || deal.Opportunity)}</div></div>
+           <div class="dm-field"><div class="dm-label">Account</div><div class="dm-value">${formatVal(deal.Account_Name || deal.Cliente)}</div></div>
+           <div class="dm-field"><div class="dm-label">Vendedor</div><div class="dm-value">${formatVal(deal.Vendedor)}</div></div>
+        </div>
+        
+        <div class="dm-grid">
+           <div class="dm-field"><div class="dm-label">Gross Value</div><div class="dm-value val-cyan" style="font-size:18px;">${formatMoneySafe(deal.Gross_Value || deal.valor || deal.Valor)}</div></div>
+           <div class="dm-field"><div class="dm-label">Net Value</div><div class="dm-value text-white">${formatMoneySafe(deal.Net_Value)}</div></div>
+           <div class="dm-field"><div class="dm-label">Close Date</div><div class="dm-value">${formatVal(deal.Close_Date || deal.data_fechamento)}</div></div>
+           <div class="dm-field"><div class="dm-label">Stage</div><div class="dm-value">${formatVal(deal.Stage)}</div></div>
+        </div>
+
+        <div class="dm-section-title">AI Insights</div>
+        <div class="dm-grid">
+           <div class="dm-field"><div class="dm-label">Win Probability</div><div class="dm-value val-green">${formatPctSafe(deal.prob_win || deal.prob_ganho)}</div></div>
+           <div class="dm-field"><div class="dm-label">Confidence</div><div class="dm-value">${formatPctSafe(deal.confidence_num || deal.confianca)}</div></div>
+           <div class="dm-field"><div class="dm-label">Anomaly Score</div><div class="dm-value ${deal.anomaly_score > 0.5 ? 'val-red' : 'val-cyan'}">${formatVal(deal.anomaly_score)}</div></div>
+           <div class="dm-field"><div class="dm-label">Predicted Cause</div><div class="dm-value val-warning">${formatVal(deal.causa_prevista || deal.loss_reason_prediction)}</div></div>
+        </div>
+        
+        <div class="dm-section-title">Activity & Health</div>
+        <div class="dm-grid">
+           <div class="dm-field"><div class="dm-label">Idle Days</div><div class="dm-value ${deal.idle_days > 30 ? 'val-red' : ''}">${formatVal(Math.round(deal.idle_days || 0))}d</div></div>
+           <div class="dm-field"><div class="dm-label">Total Activities</div><div class="dm-value">${formatVal(deal.atividades || deal.total_activities)}</div></div>
+           <div class="dm-field"><div class="dm-label">Meetings</div><div class="dm-value">${formatVal(deal.meetings_count)}</div></div>
+           <div class="dm-field"><div class="dm-label">Last Activity</div><div class="dm-value">${formatVal(formatDateShort(deal.ultima_atualizacao))}</div></div>
+           <div class="dm-field"><div class="dm-label">Next Action</div><div class="dm-value">${formatVal(deal.Next_Step || deal.Proximos_Passos)}</div></div>
+        </div>
+
+        <div class="dm-section-title">Raw Data (All Fields)</div>
+        <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap:10px;">
+          ${Object.keys(deal).map(k => {
+             // Skip already shown or object fields
+             if (typeof deal[k] === 'object' && deal[k] !== null) return '';
+             return `<div style="font-size:10px; color:var(--text-gray); overflow:hidden; text-overflow:ellipsis;">
+               <strong style="color:var(--primary-dark);">${k}:</strong> <span style="color:var(--text-muted);">${deal[k]}</span>
+             </div>`;
+          }).join('')}
+        </div>
+      `;
+      
+      body.innerHTML = content;
+      modal.classList.add('active');
+    }
+
     function switchMLTab(tabName) {
       document.querySelectorAll('.ml-tab').forEach(tab => {
         tab.classList.remove('active');
@@ -8462,6 +9922,7 @@
       <h4>⏱️ Top 15 Deals Mais Lentos</h4>
       <table><thead><tr><th>Deal</th><th>Vendedor</th><th>Gross</th><th>Net</th><th>Dias previstos</th><th>Dias sem atividade</th><th>Ultima atividade</th><th>Velocidade</th><th>Justificativa</th></tr></thead><tbody>`;
       deals.forEach(d => {
+        const dealId = registerDeal(d);
         const idleDays = parseIdleDays(d.idle_days);
         const lastActivity = d.ultima_atualizacao ? formatDateShort(d.ultima_atualizacao) : estimateLastActivity(idleDays);
         const reasonParts = [];
@@ -8470,7 +9931,7 @@
         if (d.atividades !== null && d.atividades !== undefined) reasonParts.push(`Ativ ${Math.round(d.atividades||0)}`);
         const reason = reasonParts.length ? reasonParts.join(' • ') : 'Sem sinais adicionais';
         const netValue = (d.Net_Value || 0) > 0 ? formatMoney(d.Net_Value||0) : '-';
-        html += `<tr><td style="font-weight:600;">${d.opportunity||'N/A'}</td><td>${d.Vendedor||'N/A'}</td><td style="font-weight:600;">${formatMoney(d.Gross_Value||0)}</td><td style="font-weight:600;">${netValue}</td><td class="${d.velocidade_prevista==='MUITO_LENTO'?'val-red':d.velocidade_prevista==='LENTO'?'val-warning':'val-cyan'}" style="font-weight:700;">${Math.round(d.dias_previstos||0)}d</td><td>${idleDays !== null ? Math.round(idleDays) + 'd' : 'N/A'}</td><td>${lastActivity || 'N/A'}</td><td><span class="badge badge-${d.velocidade_prevista==='RÁPIDO'?'success':d.velocidade_prevista==='NORMAL'?'warning':'danger'}">${formatVelocityLabel(d.velocidade_prevista)}</span></td><td style="font-size:12px;max-width:260px;">${reason}</td></tr>`;
+        html += `<tr class="clickable-row" onclick="showOpportunityDetails('${dealId}')"><td style="font-weight:600;">${d.opportunity||'N/A'}</td><td>${d.Vendedor||'N/A'}</td><td style="font-weight:600;">${formatMoney(d.Gross_Value||0)}</td><td style="font-weight:600;">${netValue}</td><td class="${d.velocidade_prevista==='MUITO_LENTO'?'val-red':d.velocidade_prevista==='LENTO'?'val-warning':'val-cyan'}" style="font-weight:700;">${Math.round(d.dias_previstos||0)}d</td><td>${idleDays !== null ? Math.round(idleDays) + 'd' : 'N/A'}</td><td>${lastActivity || 'N/A'}</td><td><span class="badge badge-${d.velocidade_prevista==='RÁPIDO'?'success':d.velocidade_prevista==='NORMAL'?'warning':'danger'}">${formatVelocityLabel(d.velocidade_prevista)}</span></td><td style="font-size:12px;max-width:260px;">${reason}</td></tr>`;
       });
       html += '</tbody></table>';
       document.getElementById('ml-content-area').innerHTML = html;
@@ -8524,7 +9985,10 @@
 
       html += `<h4><svg class="icon"><use href="#icon-target"/></svg> Top 15 por Provisionado (Gross)</h4>
         <table><thead><tr><th>Deal</th><th>Vendedor</th><th>Gross</th><th>Net</th><th>Prob</th><th>Gross Prov.</th><th>Net Prov.</th><th>Faixa</th></tr></thead><tbody>`;
-      deals.forEach(d => html += `<tr><td style="font-weight:600;">${d.opportunity||'N/A'}</td><td>${d.Vendedor||'N/A'}</td><td style="font-weight:600;">${formatMoney(d.Gross_Value||0)}</td><td style="font-weight:600;">${formatMoney(d.Net_Value||0)}</td><td class="val-cyan" style="font-weight:700;">${formatPercentDetailed(d.prob_win||0)}</td><td style="font-weight:700;">${formatMoney(d.expected_gross||0)}</td><td style="font-weight:700;">${formatMoney(d.expected_net||0)}</td><td><span class="badge badge-${d.previsibilidade==='ALTA'?'success':d.previsibilidade==='MEDIA'?'warning':'danger'}">${d.previsibilidade||'N/A'}</span></td></tr>`);
+      deals.forEach(d => {
+        const dealId = registerDeal(d);
+        html += `<tr class="clickable-row" onclick="showOpportunityDetails('${dealId}')"><td style="font-weight:600;">${d.opportunity||'N/A'}</td><td>${d.Vendedor||'N/A'}</td><td style="font-weight:600;">${formatMoney(d.Gross_Value||0)}</td><td style="font-weight:600;">${formatMoney(d.Net_Value||0)}</td><td class="val-cyan" style="font-weight:700;">${formatPercentDetailed(d.prob_win||0)}</td><td style="font-weight:700;">${formatMoney(d.expected_gross||0)}</td><td style="font-weight:700;">${formatMoney(d.expected_net||0)}</td><td><span class="badge badge-${d.previsibilidade==='ALTA'?'success':d.previsibilidade==='MEDIA'?'warning':'danger'}">${d.previsibilidade||'N/A'}</span></td></tr>`;
+      });
       html += '</tbody></table>';
       document.getElementById('ml-content-area').innerHTML = html;
     }
@@ -8556,7 +10020,10 @@
         <div class="kpi-card"><div class="kpi-title">CONCORRENTE</div><div class="kpi-value val-red">${s.concorrente||0}</div></div>
         <div class="kpi-card"><div class="kpi-title">BUDGET</div><div class="kpi-value val-warning">${s.budget||0}</div></div>
       </div><h4><svg class="icon"><use href="#icon-x"/></svg> Top 15 em Risco de Perda</h4><table><thead><tr><th>Deal</th><th>Vendedor</th><th>Gross</th><th>Net</th><th>Causa</th><th>Confiança</th><th>Fatores</th></tr></thead><tbody>`;
-      deals.forEach(d => html += `<tr><td style="font-weight:600;">${d.opportunity||'N/A'}</td><td>${d.Vendedor||'N/A'}</td><td style="font-weight:600;">${formatMoney(d.Gross_Value||0)}</td><td style="font-weight:600;">${formatMoney(d.Net_Value||0)}</td><td><span class="badge badge-${d.causa_prevista==='PRECO'||d.causa_prevista==='CONCORRENTE'?'danger':'warning'}">${formatLossCause(d.causa_prevista)}</span></td><td class="val-cyan" style="font-weight:700;">${formatPercentDetailed(d.confianca_predicao||0)}</td><td style="font-size:12px;max-width:220px;">${buildFactors(d)}</td></tr>`);
+      deals.forEach(d => {
+        const dealId = registerDeal(d);
+        html += `<tr class="clickable-row" onclick="showOpportunityDetails('${dealId}')"><td style="font-weight:600;">${d.opportunity||'N/A'}</td><td>${d.Vendedor||'N/A'}</td><td style="font-weight:600;">${formatMoney(d.Gross_Value||0)}</td><td style="font-weight:600;">${formatMoney(d.Net_Value||0)}</td><td><span class="badge badge-${d.causa_prevista==='PRECO'||d.causa_prevista==='CONCORRENTE'?'danger':'warning'}">${formatLossCause(d.causa_prevista)}</span></td><td class="val-cyan" style="font-weight:700;">${formatPercentDetailed(d.confianca_predicao||0)}</td><td style="font-size:12px;max-width:220px;">${buildFactors(d)}</td></tr>`;
+      });
       html += '</tbody></table>';
       document.getElementById('ml-content-area').innerHTML = html;
     }
@@ -8577,7 +10044,10 @@
         <div class="kpi-card"><div class="kpi-title">BAIXO Risco</div><div class="kpi-value val-green">${s.baixo_risco||0}</div></div>
         <div class="kpi-card"><div class="kpi-title">Prob Média</div><div class="kpi-value val-cyan">${formatPercentDetailed(s.avg_prob_abandono||0)}</div></div>
       </div><h4><svg class="icon" style="color:var(--error)"><use href="#icon-alert"/></svg> Top 15 em Risco de Abandono</h4><table><thead><tr><th>Deal</th><th>Vendedor</th><th>Valor</th><th>Nível</th><th>Prob.</th></tr></thead><tbody>`;
-      deals.forEach(d => html += `<tr><td style="font-weight:600;">${d.opportunity||'N/A'}</td><td>${d.Vendedor||'N/A'}</td><td style="font-weight:600;">${formatMoney(d.Gross_Value||0)}</td><td><span class="badge badge-${d.nivel_risco==='ALTO'?'danger':d.nivel_risco==='MÉDIO'?'warning':'success'}">${d.nivel_risco||'N/A'}</span></td><td class="val-red" style="font-weight:700;">${formatPercentDetailed(d.prob_abandono||0)}</td></tr>`);
+      deals.forEach(d => {
+        const dealId = registerDeal(d);
+        html += `<tr class="clickable-row" onclick="showOpportunityDetails('${dealId}')"><td style="font-weight:600;">${d.opportunity||'N/A'}</td><td>${d.Vendedor||'N/A'}</td><td style="font-weight:600;">${formatMoney(d.Gross_Value||0)}</td><td><span class="badge badge-${d.nivel_risco==='ALTO'?'danger':d.nivel_risco==='MÉDIO'?'warning':'success'}">${d.nivel_risco||'N/A'}</span></td><td class="val-red" style="font-weight:700;">${formatPercentDetailed(d.prob_abandono||0)}</td></tr>`;
+      });
       html += '</tbody></table>';
       document.getElementById('ml-content-area').innerHTML = html;
     }
@@ -8614,7 +10084,10 @@
         <div class="kpi-card"><div class="kpi-title">MÉDIO</div><div class="kpi-value val-cyan">${s.medio||0}</div></div>
         <div class="kpi-card"><div class="kpi-title">Score Médio</div><div class="kpi-value val-cyan">${Math.round(s.avg_priority_score||0)}</div></div>
       </div><h4><svg class="icon"><use href="#icon-star"/></svg> Top 20 Prioridade MÁXIMA</h4><table><thead><tr><th>#</th><th>Deal</th><th>Vendedor</th><th>Valor</th><th>Score</th><th>Nível</th></tr></thead><tbody>`;
-      deals.forEach(d => html += `<tr><td style="font-weight:700;color:var(--primary-cyan);">#${d.ranking_global||'N/A'}</td><td style="font-weight:600;">${d.opportunity||'N/A'}</td><td>${d.Vendedor||'N/A'}</td><td style="font-weight:600;">${formatMoney(d.Gross_Value||0)}</td><td class="val-cyan" style="font-weight:700;font-size:16px;">${Math.round(d.priority_score||0)}</td><td><span class="badge badge-${d.priority_level==='CRÍTICO'?'danger':d.priority_level==='ALTO'?'warning':'warning'}">${d.priority_level||'N/A'}</span></td></tr>`);
+      deals.forEach(d => {
+        const dealId = registerDeal(d);
+        html += `<tr class="clickable-row" onclick="showOpportunityDetails('${dealId}')"><td style="font-weight:700;color:var(--primary-cyan);">#${d.ranking_global||'N/A'}</td><td style="font-weight:600;">${d.opportunity||'N/A'}</td><td>${d.Vendedor||'N/A'}</td><td style="font-weight:600;">${formatMoney(d.Gross_Value||0)}</td><td class="val-cyan" style="font-weight:700;font-size:16px;">${Math.round(d.priority_score||0)}</td><td><span class="badge badge-${d.priority_level==='CRÍTICO'?'danger':d.priority_level==='ALTO'?'warning':'warning'}">${d.priority_level||'N/A'}</span></td></tr>`;
+      });
       html += '</tbody></table>';
       document.getElementById('ml-content-area').innerHTML = html;
     }
@@ -8635,7 +10108,10 @@
         <div class="kpi-card"><div class="kpi-title">BAIXAS</div><div class="kpi-value val-cyan">${s.baixas||0}</div></div>
         <div class="kpi-card"><div class="kpi-title">Top Categoria</div><div class="kpi-value val-cyan" style="font-size:14px;">${Object.keys(s.top_categorias||{})[0]||'N/A'}</div></div>
       </div><h4><svg class="icon"><use href="#icon-idea"/></svg> Top 25 Ações Prioritárias</h4><table><thead><tr><th>Deal</th><th>Vendedor</th><th>Valor</th><th>Urgência</th><th>Ação Recomendada</th></tr></thead><tbody>`;
-      deals.forEach(d => html += `<tr><td style="font-weight:600;">${d.opportunity||'N/A'}</td><td>${d.Vendedor||'N/A'}</td><td style="font-weight:600;">${formatMoney(d.Gross_Value||0)}</td><td><span class="badge badge-${d.urgencia==='ALTA'?'danger':d.urgencia==='MÉDIA'?'warning':'success'}">${d.urgencia||'N/A'}</span></td><td style="font-size:12px;max-width:300px;">${d.acao_recomendada||'N/A'}</td></tr>`);
+      deals.forEach(d => {
+        const dealId = registerDeal(d);
+        html += `<tr class="clickable-row" onclick="showOpportunityDetails('${dealId}')"><td style="font-weight:600;">${d.opportunity||'N/A'}</td><td>${d.Vendedor||'N/A'}</td><td style="font-weight:600;">${formatMoney(d.Gross_Value||0)}</td><td><span class="badge badge-${d.urgencia==='ALTA'?'danger':d.urgencia==='MÉDIA'?'warning':'success'}">${d.urgencia||'N/A'}</span></td><td style="font-size:12px;max-width:300px;">${d.acao_recomendada||'N/A'}</td></tr>`;
+      });
       html += '</tbody></table>';
       document.getElementById('ml-content-area').innerHTML = html;
     }
@@ -8680,9 +10156,10 @@
         <div class="kpi-card"><div class="kpi-title">Score Médio</div><div class="kpi-value val-cyan">${(s.avg_score||0).toFixed(2)}</div></div>
       </div><h4><svg class="icon"><use href="#icon-alert"/></svg> Top Anomalias</h4><table><thead><tr><th>Deal</th><th>Vendedor</th><th>Gross</th><th>Net</th><th>Ciclo</th><th>Idle</th><th>Conf.</th><th>Score</th><th>Sev.</th><th>Ação</th></tr></thead><tbody>`;
       rows.forEach(r => {
+        const dealId = registerDeal(r);
         const sev = r.severidade || 'N/A';
         const sevClass = sev === 'ALTA' ? 'danger' : sev === 'MEDIA' ? 'warning' : 'success';
-        html += `<tr><td style="font-weight:600;">${r.opportunity||'N/A'}</td><td>${r.Vendedor||'N/A'}</td><td style="font-weight:600;">${formatMoney(r.Gross_Value||0)}</td><td style="font-weight:600;">${formatMoney(r.Net_Value||0)}</td><td>${r.ciclo_dias||0}d</td><td>${r.idle_days||0}d</td><td>${formatPercentDetailed(r.confianca||0)}</td><td class="val-cyan" style="font-weight:700;">${(r.anomaly_score||0).toFixed(2)}</td><td><span class="badge badge-${sevClass}">${sev}</span></td><td style="font-size:12px;max-width:240px;">${r.acao_recomendada||'N/A'}</td></tr>`;
+        html += `<tr class="clickable-row" onclick="showOpportunityDetails('${dealId}')"><td style="font-weight:600;">${r.opportunity||'N/A'}</td><td>${r.Vendedor||'N/A'}</td><td style="font-weight:600;">${formatMoney(r.Gross_Value||0)}</td><td style="font-weight:600;">${formatMoney(r.Net_Value||0)}</td><td>${r.ciclo_dias||0}d</td><td>${r.idle_days||0}d</td><td>${formatPercentDetailed(r.confianca||0)}</td><td class="val-cyan" style="font-weight:700;">${(r.anomaly_score||0).toFixed(2)}</td><td><span class="badge badge-${sevClass}">${sev}</span></td><td style="font-size:12px;max-width:240px;">${r.acao_recomendada||'N/A'}</td></tr>`;
       });
       html += '</tbody></table>';
       document.getElementById('ml-content-area').innerHTML = html;
@@ -8719,13 +10196,28 @@
       if (year) params.append('year', year);
       if (quarter) params.append('quarter', quarter);
       
-      // Adicionar seller se filtrado
-      if (filters.seller) {
-        params.append('seller', filters.seller);
+      // Seller padrão da aba Performance Equipe:
+      // - Se usuário aplicou filtro global de seller, respeitar seleção
+      // - Se não aplicou, usar apenas vendedores ativos
+      let performanceSellerFilter = filters.seller || '';
+      if (!performanceSellerFilter && Array.isArray(availableSellers?.active) && availableSellers.active.length > 0) {
+        performanceSellerFilter = availableSellers.active
+          .map(s => (s && s.Vendedor ? String(s.Vendedor).trim() : ''))
+          .filter(Boolean)
+          .join(',');
+      }
+
+      if (performanceSellerFilter) {
+        params.append('seller', performanceSellerFilter);
       }
       
       const queryString = params.toString();
-      log('[PERFORMANCE FSR] Filtros aplicados:', { year, quarter, seller: filters.seller });
+      log('[PERFORMANCE FSR] Filtros aplicados:', {
+        year,
+        quarter,
+        seller_global: filters.seller || '(nao definido)',
+        seller_performance: performanceSellerFilter || '(todos)'
+      });
       log('[PERFORMANCE FSR] Query string:', queryString);
       
       return queryString ? '?' + queryString : '';
@@ -8899,7 +10391,7 @@
   </script>
 
   <!-- Weekly Agenda Enhanced Script (cache-bust) -->
-  <script src="weekly-agenda-new.js?v=20260212-0015"></script>
+<script src="weekly-agenda-new.js?v=20260212-0012"></script>
 
   <!-- Xertica Loading Overlay -->
   <div id="xertica-loading-overlay" class="xertica-loading-overlay">
@@ -8916,6 +10408,115 @@
       </div>
     </div>
   </div>
+
+  <div id="exec-drilldown-backdrop" class="exec-drilldown-backdrop" onclick="closeExecutiveDrilldown()"></div>
+  <aside id="exec-drilldown-panel" class="exec-drilldown-panel" aria-hidden="true">
+    <div class="exec-drilldown-header">
+      <div>
+        <div class="exec-drilldown-title" id="exec-dd-title">Drill-down Executivo</div>
+        <div style="font-size:11px;color:var(--text-gray);" id="exec-dd-subtitle">Resumo → Lista → Detalhe</div>
+      </div>
+      <button class="exec-dd-btn" onclick="closeExecutiveDrilldown()">Fechar</button>
+    </div>
+    <div class="exec-drilldown-body">
+      <div id="exec-dd-meta" class="exec-dd-meta">Carregando metadados...</div>
+
+      <div class="exec-dd-toolbar">
+        <input id="exec-dd-search" class="exec-dd-input" type="text" placeholder="Buscar oportunidade, conta, vendedor..." oninput="applyExecutiveDrilldownFilters()" />
+        <select id="exec-dd-sort" class="exec-dd-select" onchange="applyExecutiveDrilldownFilters()">
+          <option value="value_desc">Maior valor</option>
+          <option value="value_asc">Menor valor</option>
+          <option value="name_asc">Nome A-Z</option>
+        </select>
+        <button class="exec-dd-btn" onclick="exportExecutiveDrilldownCsv()">Exportar CSV</button>
+        <button class="exec-dd-btn" onclick="toggleExecutiveDrilldownSql()">Ver SQL/base</button>
+      </div>
+
+      <div id="exec-dd-source-chips" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
+      <pre id="exec-dd-sql" class="exec-dd-sql"></pre>
+      <div id="exec-dd-list" class="exec-dd-list"></div>
+      <div id="exec-dd-detail" class="exec-dd-detail">Selecione uma oportunidade para ver detalhes.</div>
+    </div>
+  </aside>
+
+<script>
+  // ===== FIREBASE AUTH GUARD =====
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyCKEpr6fQVQHtrYe4rNHuPkjJebZn0ePBQ",
+    authDomain: "operaciones-br.firebaseapp.com",
+    projectId: "operaciones-br",
+    storageBucket: "operaciones-br.firebasestorage.app",
+    messagingSenderId: "789640198008",
+    appId: "1:789640198008:web:9506ae861e435007fb7a8d"
+  };
+
+  const ALLOWED_EMAILS = [
+    "amalia.silva@xertica.com",
+    "barbara.pessoa@xertica.com",
+    "gustavo.paula@xertica.com"
+  ];
+
+  if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+  const _fbAuth = firebase.auth();
+
+  const _overlay   = document.getElementById('auth-overlay');
+  const _errorBox  = document.getElementById('auth-error');
+  const _loadBox   = document.getElementById('auth-loading');
+  const _userChip  = document.getElementById('auth-user-chip');
+  const _signInBtn = document.getElementById('auth-google-btn');
+
+  function _showAuthError(msg) {
+    _errorBox.textContent = msg;
+    _errorBox.style.display = 'block';
+    _loadBox.style.display  = 'none';
+    if (_signInBtn) _signInBtn.style.display = 'flex';
+  }
+
+  function _revealApp(user) {
+    _userChip.innerHTML = '&#10003;&nbsp;' + user.email;
+    _userChip.style.display = 'flex';
+    _loadBox.style.display  = 'none';
+    if (_signInBtn) _signInBtn.style.display = 'none';
+    _errorBox.style.display = 'none';
+    setTimeout(() => {
+      _overlay.classList.add('fade-out');
+      setTimeout(() => { _overlay.style.display = 'none'; }, 600);
+    }, 800);
+  }
+
+  window.signInWithGoogle = async function() {
+    _errorBox.style.display = 'none';
+    if (_signInBtn) _signInBtn.style.display = 'none';
+    _loadBox.style.display = 'block';
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ hd: 'xertica.com', prompt: 'select_account' });
+    try {
+      await _fbAuth.signInWithPopup(provider);
+    } catch (e) {
+      _showAuthError('Falha ao autenticar: ' + (e.message || e.code || e));
+    }
+  };
+
+  _fbAuth.onAuthStateChanged(user => {
+    if (!_overlay) return; // overlay already removed (already authed page refresh edge case)
+    if (user) {
+      const email = (user.email || '').toLowerCase().trim();
+      if (ALLOWED_EMAILS.includes(email)) {
+        _revealApp(user);
+      } else {
+        _fbAuth.signOut();
+        _showAuthError('Acesso negado. ' + user.email + ' não está na lista de usuários autorizados.');
+      }
+    } else {
+      _overlay.style.display = 'flex';
+      _overlay.classList.remove('fade-out');
+      _loadBox.style.display  = 'none';
+      if (_signInBtn) _signInBtn.style.display = 'flex';
+      _errorBox.style.display = 'none';
+      _userChip.style.display = 'none';
+    }
+  });
+</script>
 
 </body>
 </html>

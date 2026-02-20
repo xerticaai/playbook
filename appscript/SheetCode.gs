@@ -838,7 +838,7 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
 
   // Usa mapeamento preciso baseado nos Schemas
   const cols = getColumnMapping(mainData.headers);
-  const aggregatedData = aggregateOpportunities(mainData.values, cols);
+  const aggregatedData = aggregateOpportunities(mainData.values, cols, mode);
   
   logToSheet("DEBUG", "Engine", `Oportunidades agregadas: ${aggregatedData.length}`);
   
@@ -894,7 +894,7 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
     // --- ANÁLISE DETERMINÍSTICA (HARD GATES) ---
     const isBaseClient = baseClients.has(item.accName.toLowerCase());
     const clientProfile = isBaseClient ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT;
-    const fiscal = calculateFiscalQuarter(item.closed);
+    const fiscal = calculateFiscalQuarterForItem_(item, mode);
     const rulesApplied = [];
     
     // --- VALIDAÇÃO DE TERRITÓRIO ---
@@ -1471,9 +1471,9 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
         created: row[12] instanceof Date ? row[12] : parseDate(row[12]),
         inactiveDays: row[13], 
         nextActivityDate: row[14] instanceof Date ? row[14] : parseDate(row[14]),
-        forecast_sf: row[15], ciclo: row[16], reason: row[17],
-        portfolio: row[18], segment: row[19], productFamily: row[20],
-        billingState: row[21] || "", billingCity: row[22] || "", billingCalendar: row[23] || ""
+        forecast_sf: row[15], fiscalQ: row[16], ciclo: row[17], reason: row[18],
+        portfolio: row[19], segment: row[20], productFamily: row[21],
+        billingState: row[22] || "", billingCity: row[23] || "", billingCalendar: row[24] || ""
       };
       if (item.oppKey) aggMap.set(item.oppKey, item);
     });
@@ -1482,7 +1482,7 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
     const mainData = getSheetData(config.input);
     if (!mainData) return { status: 'ERROR', message: `Aba ${config.input} não encontrada.` };
     const cols = getColumnMapping(mainData.headers);
-    const aggregatedData = aggregateOpportunities(mainData.values, cols);
+    const aggregatedData = aggregateOpportunities(mainData.values, cols, mode);
     aggregatedData.forEach(item => {
       if (item.oppKey) aggMap.set(item.oppKey, item);
     });
@@ -1537,7 +1537,7 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
 
     const isBaseClient = baseClients.has(item.accName.toLowerCase());
     const clientProfile = isBaseClient ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT;
-    const fiscal = calculateFiscalQuarter(item.closed);
+    const fiscal = calculateFiscalQuarterForItem_(item, mode);
     const rulesApplied = [];
 
     // --- VALIDAÇÃO DE TERRITÓRIO ---
@@ -2250,11 +2250,11 @@ function setupAnalysisSheet(mode, preserve) {
   if (!preserve) s.clear();
   
   const h = mode === 'OPEN' ? [
-    ["Run ID", "Oportunidade", "Conta", "Perfil", "Produtos", "Vendedor", "Gross", "Net", "Fase Atual", "Forecast SF", "Fiscal Q", "Data Prevista", "Ciclo (dias)", "Dias Funil", "Atividades", "Atividades (Peso)", "Mix Atividades", "Idle (Dias)", "Qualidade Engajamento", "Forecast IA", "Confiança (%)", "Motivo Confiança", "MEDDIC Score", "MEDDIC Gaps", "MEDDIC Evidências", "BANT Score", "BANT Gaps", "BANT Evidências", "Justificativa IA", "Regras Aplicadas", "Incoerência Detectada", "Perguntas de Auditoria IA", "Flags de Risco", "Gaps Identificados", "Cód Ação", "Ação Sugerida", "Risco Principal", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "🚨 Anomalias Detectadas", "Velocity Predição", "Velocity Detalhes", "Território Correto?", "Vendedor Designado", "Estado/Cidade Detectado", "Fonte Detecção", "Calendário Faturação", "Valor Reconhecido Q1", "Valor Reconhecido Q2", "Valor Reconhecido Q3", "Valor Reconhecido Q4", "🕐 Última Atualização"]
+    ["Run ID", "Oportunidade", "Conta", "Perfil", "Produtos", "Vendedor", "Gross", "Net", "Fase Atual", "Forecast SF", "Fiscal Q", "Data Prevista", "Ciclo (dias)", "Dias Funil", "Atividades", "Atividades (Peso)", "Mix Atividades", "Idle (Dias)", "Qualidade Engajamento", "Forecast IA", "Confiança (%)", "Motivo Confiança", "MEDDIC Score", "MEDDIC Gaps", "MEDDIC Evidências", "BANT Score", "BANT Gaps", "BANT Evidências", "Justificativa IA", "Regras Aplicadas", "Incoerência Detectada", "Perguntas de Auditoria IA", "Flags de Risco", "Gaps Identificados", "Cód Ação", "Ação Sugerida", "Risco Principal", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "🚨 Anomalias Detectadas", "Velocity Predição", "Velocity Detalhes", "Território Correto?", "Vendedor Designado", "Estado/Cidade Detectado", "Fonte Detecção", "Calendário Faturação", "Valor Reconhecido Q1", "Valor Reconhecido Q2", "Valor Reconhecido Q3", "Valor Reconhecido Q4", "Data de criação", "Subsegmento de mercado", "Segmento Consolidado", "Portfólio", "Portfolio FDM", "Owner Preventa", "Produtos", "Cidade de cobrança", "Estado/Província de cobrança", "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "Justificativa IA", "🕐 Última Atualização"]
   ] : mode === 'WON' ? [
-    ["Run ID", "Oportunidade", "Conta", "Perfil Cliente", "Vendedor", "Gross", "Net", "Portfólio", "Segmento", "Família Produto", "Status", "Fiscal Q", "Data Fechamento", "Ciclo (dias)", "Produtos", "📝 Resumo Análise", "🎯 Causa Raiz", "✨ Fatores Sucesso", "Tipo Resultado", "Qualidade Engajamento", "Gestão Oportunidade", "-", "💡 Lições Aprendidas", "# Atividades", "Ativ. 7d", "Ativ. 30d", "Distribuição Tipos", "Período Pico", "Cadência Média (dias)", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "Campos + Alterados", "Padrão Mudanças", "Freq. Mudanças", "# Editores", "🏷️ Labels", "🕐 Última Atualização"]
+    ["Run ID", "Oportunidade", "Conta", "Perfil Cliente", "Vendedor", "Gross", "Net", "Portfólio", "Segmento", "Família Produto", "Status", "Fiscal Q", "Data Fechamento", "Ciclo (dias)", "Produtos", "📝 Resumo Análise", "🎯 Causa Raiz", "✨ Fatores Sucesso", "Tipo Resultado", "Qualidade Engajamento", "Gestão Oportunidade", "-", "💡 Lições Aprendidas", "# Atividades", "Ativ. 7d", "Ativ. 30d", "Distribuição Tipos", "Período Pico", "Cadência Média (dias)", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "Campos + Alterados", "Padrão Mudanças", "Freq. Mudanças", "# Editores", "🏷️ Labels", "Owner Preventa", "Cidade de cobrança", "Estado/Província de cobrança", "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "Justificativa IA", "🕐 Última Atualização"]
   ] : [
-    ["Run ID", "Oportunidade", "Conta", "Perfil Cliente", "Vendedor", "Gross", "Net", "Portfólio", "Segmento", "Família Produto", "Status", "Fiscal Q", "Data Fechamento", "Ciclo (dias)", "Produtos", "📝 Resumo Análise", "🎯 Causa Raiz", "⚠️ Causas Secundárias", "Tipo Resultado", "Evitável?", "🚨 Sinais Alerta", "Momento Crítico", "💡 Lições Aprendidas", "# Atividades", "Ativ. 7d", "Ativ. 30d", "Distribuição Tipos", "Período Pico", "Cadência Média (dias)", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "Campos + Alterados", "Padrão Mudanças", "Freq. Mudanças", "# Editores", "🏷️ Labels", "🕐 Última Atualização"]
+    ["Run ID", "Oportunidade", "Conta", "Perfil Cliente", "Vendedor", "Gross", "Net", "Portfólio", "Segmento", "Família Produto", "Status", "Fiscal Q", "Data Fechamento", "Ciclo (dias)", "Produtos", "📝 Resumo Análise", "🎯 Causa Raiz", "⚠️ Causas Secundárias", "Tipo Resultado", "Evitável?", "🚨 Sinais Alerta", "Momento Crítico", "💡 Lições Aprendidas", "# Atividades", "Ativ. 7d", "Ativ. 30d", "Distribuição Tipos", "Período Pico", "Cadência Média (dias)", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "Campos + Alterados", "Padrão Mudanças", "Freq. Mudanças", "# Editores", "🏷️ Labels", "Owner Preventa", "Cidade de cobrança", "Estado/Província de cobrança", "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "Justificativa IA", "🕐 Última Atualização"]
   ];
 
   s.getRange(1, 1, 1, h[0].length).setValues(h)
@@ -2705,7 +2705,7 @@ function buildQueueSheet_(mode, runId) {
     
     logToSheet("DEBUG", "Queue", `Mapeamento de colunas OK`);
     
-    const aggregatedData = aggregateOpportunities(mainData.values, cols);
+    const aggregatedData = aggregateOpportunities(mainData.values, cols, mode);
     flushLogs_(); // Força flush para ver logs de agregação
     
     logToSheet("DEBUG", "Queue", `${aggregatedData.length} oportunidades agregadas`);
@@ -2758,7 +2758,7 @@ function buildAggregationSnapshot_(mode, runId) {
   }
   
   const cols = getColumnMapping(mainData.headers);
-  const aggregatedData = aggregateOpportunities(mainData.values, cols);
+  const aggregatedData = aggregateOpportunities(mainData.values, cols, mode);
   
   const snapshotName = `_AGG_${mode}_${runId}`;
   const existing = ss.getSheetByName(snapshotName);
@@ -2767,7 +2767,7 @@ function buildAggregationSnapshot_(mode, runId) {
   const snapshot = ss.insertSheet(snapshotName);
   const headers = ["oppKey", "oppId", "oppName", "accName", "owner", "gross", "net", 
                    "products", "stage", "probabilidad", "closed", "desc", "created", 
-                   "inactiveDays", "nextActivityDate", "forecast_sf", "ciclo", "reason", 
+                   "inactiveDays", "nextActivityDate", "forecast_sf", "fiscalQ", "ciclo", "reason", 
                    "portfolio", "segment", "productFamily", "billingState", "billingCity", "billingCalendar"];
   snapshot.getRange(1, 1, 1, headers.length).setValues([headers]);
   
@@ -2776,7 +2776,7 @@ function buildAggregationSnapshot_(mode, runId) {
       item.oppKey || "", item.oppId || "", item.oppName || "", item.accName || "", item.owner || "",
       item.gross || 0, item.net || 0, item.products || "", item.stage || "", item.probabilidad || 0,
       item.closed || "", item.desc || "", item.created || "", item.inactiveDays || 0,
-      item.nextActivityDate || "", item.forecast_sf || "", item.ciclo || 0, item.reason || "",
+      item.nextActivityDate || "", item.forecast_sf || "", item.fiscalQ || "", item.ciclo || 0, item.reason || "",
       item.portfolio || "", item.segment || "", item.productFamily || "",
       item.billingState || "", item.billingCity || "", item.billingCalendar || ""
     ]);
@@ -5286,12 +5286,20 @@ function syncBaseToAnalysis_(mode) {
         net: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Net')),
         status: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Status')),
         stage: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Stage') || normText_(String(h)).includes('FASE')),
+        fiscalQ: analysisHeaders.findIndex(h => normText_(String(h)).includes('FISCAL') && normText_(String(h)).includes('Q')),
         closeDate: analysisHeaders.findIndex(h => normText_(String(h)).includes('DATA') && normText_(String(h)).includes('FECHAMENTO')),
         predictedDate: analysisHeaders.findIndex(h => normText_(String(h)).includes('DATA') && normText_(String(h)).includes('PREVISTA')),
         createdDate: analysisHeaders.findIndex(h => normText_(String(h)).includes('DATA') && normText_(String(h)).includes('CRIACAO')),
         owner: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Vendedor')),
         account: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Conta')),
         products: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Produtos')),
+        ownerPreventa: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Owner Preventa')),
+        billingCity: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Cidade de cobrança')),
+        billingState: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Estado/Província de cobrança')),
+        verticalIA: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Vertical IA')),
+        subVerticalIA: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Sub-vertical IA')),
+        subSubVerticalIA: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Sub-sub-vertical IA')),
+        justificativaIAFinal: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Justificativa IA')),
         portfolio: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Portfólio')),
         segment: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Segmento')),
         forecast: analysisHeaders.findIndex(h => normText_(String(h)).includes('FORECAST') && normText_(String(h)).includes('SF')),
@@ -5310,6 +5318,11 @@ function syncBaseToAnalysis_(mode) {
       const hoje = new Date();
       const hojeSP = Utilities.formatDate(hoje, 'America/Sao_Paulo', 'yyyy-MM-dd HH:mm:ss');
       console.log(`  🕐 Data atual (São Paulo): ${hojeSP}`);
+
+      // Contexto de atividades para recálculo de Idle no quick update
+      const rawActivities = getSheetData(SHEETS.ATIVIDADES);
+      const activitiesHeaders = rawActivities ? rawActivities.headers : [];
+      const activitiesMap = indexDataByMultiKey_(rawActivities);
       
       // Agregar dados da BASE por oportunidade
       const baseAggregated = new Map();
@@ -5328,6 +5341,8 @@ function syncBaseToAnalysis_(mode) {
           const createdDateRaw = cols.p_created > -1 ? baseData[i][cols.p_created] : null;
           const closeDateRaw = baseData[i][cols.p_date];
           const predictedDateRaw = cols.p_predicted_date > -1 ? baseData[i][cols.p_predicted_date] : null;
+          const fiscalQRaw = cols.p_fiscal_q > -1 ? String(baseData[i][cols.p_fiscal_q] || '').trim() : '';
+          const fiscalQParsed = (typeof parsePipelineFiscalQuarter_ === 'function') ? parsePipelineFiscalQuarter_(fiscalQRaw) : null;
           
           // PADRONIZAR: Converter TODAS as datas para string DD/MM/AAAA
           // Isso evita que Google Sheets interprete como MM/DD/AAAA
@@ -5345,6 +5360,7 @@ function syncBaseToAnalysis_(mode) {
           
           baseAggregated.set(normName, {
             name: oppName,
+            oppId: cols.p_id > -1 ? String(baseData[i][cols.p_id] || '').trim() : '',
             gross: 0,
             net: 0,
             products: [],
@@ -5352,11 +5368,16 @@ function syncBaseToAnalysis_(mode) {
             closeDate: closeDateStd,  // ✅ PADRONIZADO DD/MM/AAAA
             predictedDate: predictedDateStd,  // ✅ PADRONIZADO DD/MM/AAAA
             createdDate: createdDateStd,  // ✅ PADRONIZADO DD/MM/AAAA
+            fiscalQ: (fiscalQParsed && fiscalQParsed.label) ? fiscalQParsed.label : fiscalQRaw,
             owner: String(baseData[i][cols.p_owner] || '').trim(),
+            ownerPreventa: cols.p_owner_preventa > -1 ? String(baseData[i][cols.p_owner_preventa] || '').trim() : '',
             account: String(baseData[i][cols.p_acc] || '').trim(),
             portfolio: String(baseData[i][cols.p_portfolio] || '').trim(),
             segment: String(baseData[i][cols.p_segment] || '').trim(),
-            forecast: cols.p_forecast > -1 ? String(baseData[i][cols.p_forecast] || '').trim() : ''
+            billingCity: cols.p_billing_city > -1 ? String(baseData[i][cols.p_billing_city] || '').trim() : '',
+            billingState: cols.p_billing_state > -1 ? String(baseData[i][cols.p_billing_state] || '').trim() : '',
+            forecast: cols.p_forecast > -1 ? String(baseData[i][cols.p_forecast] || '').trim() : '',
+            inactiveDays: cols.p_inactive > -1 ? (parseInt(baseData[i][cols.p_inactive], 10) || 0) : 0
           });
         }
         
@@ -5451,6 +5472,36 @@ function syncBaseToAnalysis_(mode) {
             hasChanges = true;
           }
         }
+
+        // Atualizar OWNER PREVENTA
+        if (colMap.ownerPreventa > -1 && baseData_opp.ownerPreventa) {
+          const currentOwnerPreventa = String(analysisData[i][colMap.ownerPreventa] || '').trim();
+          if (currentOwnerPreventa !== baseData_opp.ownerPreventa) {
+            analysisData[i][colMap.ownerPreventa] = baseData_opp.ownerPreventa;
+            changes.push(`Owner Preventa: "${currentOwnerPreventa}" → "${baseData_opp.ownerPreventa}"`);
+            hasChanges = true;
+          }
+        }
+
+        // Atualizar CIDADE DE COBRANÇA
+        if (colMap.billingCity > -1 && baseData_opp.billingCity) {
+          const currentBillingCity = String(analysisData[i][colMap.billingCity] || '').trim();
+          if (currentBillingCity !== baseData_opp.billingCity) {
+            analysisData[i][colMap.billingCity] = baseData_opp.billingCity;
+            changes.push(`Cidade cobrança: "${currentBillingCity}" → "${baseData_opp.billingCity}"`);
+            hasChanges = true;
+          }
+        }
+
+        // Atualizar ESTADO/PROVÍNCIA DE COBRANÇA
+        if (colMap.billingState > -1 && baseData_opp.billingState) {
+          const currentBillingState = String(analysisData[i][colMap.billingState] || '').trim();
+          if (currentBillingState !== baseData_opp.billingState) {
+            analysisData[i][colMap.billingState] = baseData_opp.billingState;
+            changes.push(`Estado cobrança: "${currentBillingState}" → "${baseData_opp.billingState}"`);
+            hasChanges = true;
+          }
+        }
         
         // Atualizar SEGMENTO
         if (colMap.segment > -1 && baseData_opp.segment) {
@@ -5464,12 +5515,37 @@ function syncBaseToAnalysis_(mode) {
         
         // Atualizar DATA FECHAMENTO
         if (colMap.closeDate > -1 && baseData_opp.closeDate) {
-          analysisData[i][colMap.closeDate] = baseData_opp.closeDate;
+          const currentCloseDate = formatDateRobust(analysisData[i][colMap.closeDate]);
+          const nextCloseDate = formatDateRobust(baseData_opp.closeDate);
+          if (nextCloseDate && currentCloseDate !== nextCloseDate) {
+            analysisData[i][colMap.closeDate] = nextCloseDate;
+            changes.push(`Data Fechamento: "${currentCloseDate || '-'}" → "${nextCloseDate}"`);
+            hasChanges = true;
+          }
         }
         
         // Atualizar DATA PREVISTA
-        if (colMap.predictedDate > -1 && baseData_opp.predictedDate) {
-          analysisData[i][colMap.predictedDate] = baseData_opp.predictedDate;
+        // Regra: Data de Fechamento é a fonte de verdade para Data Prevista no sync rápido.
+        // Se Close Date existir, espelha em Data Prevista; fallback para Predicted da base apenas se Close estiver vazio.
+        const targetPredictedDate = baseData_opp.closeDate || baseData_opp.predictedDate;
+        if (colMap.predictedDate > -1 && targetPredictedDate) {
+          const currentPredictedDate = formatDateRobust(analysisData[i][colMap.predictedDate]);
+          const nextPredictedDate = formatDateRobust(targetPredictedDate);
+          if (nextPredictedDate && currentPredictedDate !== nextPredictedDate) {
+            analysisData[i][colMap.predictedDate] = nextPredictedDate;
+            changes.push(`Data Prevista: "${currentPredictedDate || '-'}" → "${nextPredictedDate}"`);
+            hasChanges = true;
+          }
+        }
+
+        // Atualizar FISCAL Q
+        if (colMap.fiscalQ > -1 && baseData_opp.fiscalQ) {
+          const currentFiscalQ = String(analysisData[i][colMap.fiscalQ] || '').trim();
+          if (currentFiscalQ !== baseData_opp.fiscalQ) {
+            analysisData[i][colMap.fiscalQ] = baseData_opp.fiscalQ;
+            changes.push(`Fiscal Q: "${currentFiscalQ}" → "${baseData_opp.fiscalQ}"`);
+            hasChanges = true;
+          }
         }
         
         // Atualizar FORECAST SF
@@ -5499,7 +5575,7 @@ function syncBaseToAnalysis_(mode) {
         // CICLO (dias) = CLOSE DATE - CREATED DATE
         if (colMap.ciclo > -1 && baseData_opp.closeDate && baseData_opp.createdDate) {
           const closeDateParsed = baseData_opp.closeDate instanceof Date ? baseData_opp.closeDate : parseDate(baseData_opp.closeDate);
-          const createdDateParsed = baseData_opp.createdDate;
+          const createdDateParsed = baseData_opp.createdDate instanceof Date ? baseData_opp.createdDate : parseDate(baseData_opp.createdDate);
           
           if (closeDateParsed && createdDateParsed) {
             const rawCiclo = Math.ceil((closeDateParsed - createdDateParsed) / MS_PER_DAY);
@@ -5523,7 +5599,11 @@ function syncBaseToAnalysis_(mode) {
         
         // DIAS FUNIL = HOJE - CREATED DATE (apenas para OPEN)
         if (mode === 'OPEN' && colMap.diasFunil > -1 && baseData_opp.createdDate) {
-          const rawDiasFunil = Math.ceil((hoje - baseData_opp.createdDate) / MS_PER_DAY);
+          const createdDateForFunil = baseData_opp.createdDate instanceof Date ? baseData_opp.createdDate : parseDate(baseData_opp.createdDate);
+          if (!createdDateForFunil) {
+            continue;
+          }
+          const rawDiasFunil = Math.ceil((hoje - createdDateForFunil) / MS_PER_DAY);
           const newDiasFunil = Math.max(0, rawDiasFunil); // NÃO PERMITIR NEGATIVOS
           const currentDiasFunil = parseInt(analysisData[i][colMap.diasFunil]) || 0;
           
@@ -5541,9 +5621,39 @@ function syncBaseToAnalysis_(mode) {
             hasChanges = true;
           }
         }
-        
-        // NOTA: Dias Funil Idle depende da última atividade (requer acesso à aba Activities)
-        // Este campo será atualizado apenas no reprocessamento completo com IA
+
+        // IDLE (Dias) = hoje - data da última atividade
+        // Fonte de vínculo com atividades:
+        // 1) Opportunity ID (quando disponível)
+        // 2) Nome da oportunidade (fallback)
+        if (mode === 'OPEN' && colMap.diasIdle > -1) {
+          const activityKeyById = baseData_opp.oppId ? normText_(baseData_opp.oppId) : '';
+          const activityKeyByName = normText_(baseData_opp.name || analysisOppName);
+          const relatedActivities =
+            (activityKeyById && activitiesMap.get(activityKeyById)) ||
+            activitiesMap.get(activityKeyByName) ||
+            [];
+
+          const activityStats = processActivityStatsSmart(relatedActivities, activitiesHeaders, hoje);
+          let newIdle = calculateIdleDays(activityStats.lastDate, hoje);
+
+          // Mesmo fallback do motor principal para OPEN sem atividade registrada
+          if (newIdle === 'SEM REGISTRO' && baseData_opp.inactiveDays > 0) {
+            newIdle = baseData_opp.inactiveDays;
+          }
+
+          const currentIdleRaw = analysisData[i][colMap.diasIdle];
+          const currentIdle = (currentIdleRaw === null || currentIdleRaw === undefined || currentIdleRaw === '')
+            ? ''
+            : String(currentIdleRaw).trim();
+          const nextIdle = (newIdle === null || newIdle === undefined) ? '' : String(newIdle).trim();
+
+          if (currentIdle !== nextIdle) {
+            analysisData[i][colMap.diasIdle] = (typeof newIdle === 'number') ? newIdle : nextIdle;
+            changes.push(`Idle (Dias): "${currentIdle || '-'}" → "${nextIdle || '-'}"`);
+            hasChanges = true;
+          }
+        }
         
         if (hasChanges) {
           quickUpdates++;
@@ -6261,7 +6371,7 @@ function processarAnaliseCompleta_(oppName, mode, config) {
   
   if (oppRows.length === 0) throw new Error(`${oppName} não encontrada`);
   
-  const aggregatedData = aggregateOpportunities(oppRows, cols);
+  const aggregatedData = aggregateOpportunities(oppRows, cols, mode);
   if (aggregatedData.length === 0) throw new Error(`Falha ao agregar ${oppName}`);
   
   const item = aggregatedData[0];
@@ -6285,7 +6395,7 @@ function processarAnaliseCompleta_(oppName, mode, config) {
   const baseClients = getBaseClientsCache();
   const isBaseClient = baseClients.has(item.accName.toLowerCase());
   const clientProfile = isBaseClient ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT;
-  const fiscal = calculateFiscalQuarter(item.closed);
+  const fiscal = calculateFiscalQuarterForItem_(item, mode);
   const hoje = new Date();
   const runId = getRunId_(mode);
   

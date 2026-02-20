@@ -2,7 +2,7 @@
 Sales Intelligence API - FastAPI com Filtros Dinâmicos por Data
 Filtros: year (2024-2030), month (1-12), seller
 """
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -70,6 +70,11 @@ if GEMINI_API_KEY:
 CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "120"))
 CACHE: Dict[str, Dict[str, Any]] = {}
 
+FORCED_ACTIVE_SELLERS = {"rayssa zevolli"}
+SELLER_DISPLAY_OVERRIDES = {
+    "rayssa zevolli": "Rayssa Zevolli",
+}
+
 def build_cache_key(endpoint: str, params: Dict[str, Any]) -> str:
     parts = []
     for key in sorted(params.keys()):
@@ -95,6 +100,41 @@ def set_cached_response(cache_key: str, data: Any, ttl_seconds: int = CACHE_TTL_
         "data": data,
         "expires_at": time.time() + ttl_seconds
     }
+
+
+def _normalize_seller_key(name: Optional[str]) -> str:
+    return str(name or "").strip().lower()
+
+
+def _display_seller_name(name: Optional[str]) -> str:
+    original = str(name or "").strip()
+    if not original:
+        return ""
+    normalized = _normalize_seller_key(original)
+    return SELLER_DISPLAY_OVERRIDES.get(normalized, original)
+
+
+def _normalize_email(raw_email: Optional[str]) -> Optional[str]:
+    email = str(raw_email or "").strip().lower()
+    if not email:
+        return None
+    if ":" in email:
+        email = email.split(":")[-1].strip().lower()
+    return email or None
+
+
+def _extract_request_email(request: Request) -> Optional[str]:
+    candidates = [
+        request.headers.get("x-goog-authenticated-user-email"),
+        request.headers.get("x-authenticated-user-email"),
+        request.headers.get("x-forwarded-email"),
+        request.headers.get("x-user-email"),
+    ]
+    for value in candidates:
+        normalized = _normalize_email(value)
+        if normalized:
+            return normalized
+    return None
 
 def get_bq_client():
     return bigquery.Client(project=PROJECT_ID)
@@ -180,6 +220,15 @@ async def dashboard():
     else:
         raise HTTPException(status_code=404, detail="Dashboard not found")
 
+
+@app.get("/api/user-context")
+async def get_user_context(request: Request):
+    email = _extract_request_email(request)
+    return {
+        "email": email,
+        "can_access_salesforce_indicators": email == "amalia.silva@xertica.com"
+    }
+
 # Serve CSS files from public directory
 @app.get("/loader.css")
 async def serve_loader_css():
@@ -232,11 +281,56 @@ def get_sellers(nocache: bool = False):
         ORDER BY deals_pipeline DESC, deals_won DESC
         """
         
-        sellers = query_to_dict(query)
+        sellers_raw = query_to_dict(query)
+
+        normalized_index: Dict[str, Dict[str, Any]] = {}
+        for seller in sellers_raw:
+            seller_name = _display_seller_name(seller.get("Vendedor"))
+            seller_key = _normalize_seller_key(seller_name)
+            if not seller_key:
+                continue
+
+            if seller_key not in normalized_index:
+                normalized_index[seller_key] = {
+                    "Vendedor": seller_name,
+                    "deals_pipeline": int(seller.get("deals_pipeline") or 0),
+                    "deals_won": int(seller.get("deals_won") or 0),
+                    "deals_lost": int(seller.get("deals_lost") or 0),
+                    "total_net": float(seller.get("total_net") or 0),
+                }
+            else:
+                normalized_index[seller_key]["deals_pipeline"] += int(seller.get("deals_pipeline") or 0)
+                normalized_index[seller_key]["deals_won"] += int(seller.get("deals_won") or 0)
+                normalized_index[seller_key]["deals_lost"] += int(seller.get("deals_lost") or 0)
+                normalized_index[seller_key]["total_net"] += float(seller.get("total_net") or 0)
+
+        # Garante presença explícita de vendedores forçados como ativos
+        for forced_key in FORCED_ACTIVE_SELLERS:
+            if forced_key not in normalized_index:
+                forced_name = SELLER_DISPLAY_OVERRIDES.get(forced_key, forced_key.title())
+                synthetic = {
+                    "Vendedor": forced_name,
+                    "deals_pipeline": 0,
+                    "deals_won": 0,
+                    "deals_lost": 0,
+                    "total_net": 0,
+                }
+                normalized_index[forced_key] = synthetic
+
+        sellers = list(normalized_index.values())
         
-        # Separar vendedores ativos (com pipeline) dos históricos (sem pipeline)
-        active_sellers = [s for s in sellers if s['deals_pipeline'] > 0]
-        historical_sellers = [s for s in sellers if s['deals_pipeline'] == 0]
+        # Separar vendedores ativos (com pipeline + exceções manuais) dos históricos
+        active_sellers = [
+            s for s in sellers
+            if (s['deals_pipeline'] > 0) or (_normalize_seller_key(s.get("Vendedor")) in FORCED_ACTIVE_SELLERS)
+        ]
+        historical_sellers = [
+            s for s in sellers
+            if (s['deals_pipeline'] == 0) and (_normalize_seller_key(s.get("Vendedor")) not in FORCED_ACTIVE_SELLERS)
+        ]
+
+        active_sellers.sort(key=lambda s: s.get("Vendedor", ""))
+        historical_sellers.sort(key=lambda s: s.get("Vendedor", ""))
         
         result = {
             "active": active_sellers,
@@ -281,12 +375,20 @@ def get_metrics(
         pipeline_filters = ["Fase_Atual NOT IN ('Closed Won', 'Closed Lost')"]
         closed_won_filters = []
         closed_lost_filters = []
+        closed_date_expr = "COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento), SAFE.PARSE_DATE('%d/%m/%Y', Data_Fechamento), SAFE.PARSE_DATE('%Y/%m/%d', Data_Fechamento))"
+        activities_expr = "SAFE_CAST(REPLACE(REGEXP_EXTRACT(CAST(Atividades AS STRING), r'-?[0-9]+(?:[\\.,][0-9]+)?'), ',', '.') AS FLOAT64)"
         
+        fiscal_q_exact = f"FY{str(year)[-2:]}-Q{quarter}" if (year and quarter) else None
+
         if year:
             # Filtrar por ano usando Data_Prevista (pipeline) e Data_Fechamento (closed)
             pipeline_filters.append(f"EXTRACT(YEAR FROM PARSE_DATE('%Y-%m-%d', Data_Prevista)) = {year}")
-            closed_won_filters.append(f"EXTRACT(YEAR FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) = {year}")
-            closed_lost_filters.append(f"EXTRACT(YEAR FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) = {year}")
+            if fiscal_q_exact:
+                closed_won_filters.append(f"(EXTRACT(YEAR FROM {closed_date_expr}) = {year} OR Fiscal_Q = '{fiscal_q_exact}')")
+                closed_lost_filters.append(f"(EXTRACT(YEAR FROM {closed_date_expr}) = {year} OR Fiscal_Q = '{fiscal_q_exact}')")
+            else:
+                closed_won_filters.append(f"EXTRACT(YEAR FROM {closed_date_expr}) = {year}")
+                closed_lost_filters.append(f"EXTRACT(YEAR FROM {closed_date_expr}) = {year}")
         
         # Quarter tem prioridade sobre month (Calendar Quarters: Q1=Jan-Mar, Q2=Abr-Jun, Q3=Jul-Set, Q4=Out-Dez)
         if quarter:
@@ -301,14 +403,17 @@ def get_metrics(
                 # Pipeline: filtrar por Data_Prevista
                 pipeline_filters.append(f"EXTRACT(MONTH FROM PARSE_DATE('%Y-%m-%d', Data_Prevista)) BETWEEN {start_month} AND {end_month}")
                 # Closed Won: filtrar por Data_Fechamento
-                closed_won_filters.append(f"EXTRACT(MONTH FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) BETWEEN {start_month} AND {end_month}")
-                # Closed Lost: filtrar por Data_Fechamento
-                closed_lost_filters.append(f"EXTRACT(MONTH FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) BETWEEN {start_month} AND {end_month}")
+                if fiscal_q_exact:
+                    closed_won_filters.append(f"(EXTRACT(MONTH FROM {closed_date_expr}) BETWEEN {start_month} AND {end_month} OR Fiscal_Q = '{fiscal_q_exact}')")
+                    closed_lost_filters.append(f"(EXTRACT(MONTH FROM {closed_date_expr}) BETWEEN {start_month} AND {end_month} OR Fiscal_Q = '{fiscal_q_exact}')")
+                else:
+                    closed_won_filters.append(f"(EXTRACT(MONTH FROM {closed_date_expr}) BETWEEN {start_month} AND {end_month} OR REGEXP_CONTAINS(COALESCE(Fiscal_Q, ''), r'-Q{quarter}$'))")
+                    closed_lost_filters.append(f"(EXTRACT(MONTH FROM {closed_date_expr}) BETWEEN {start_month} AND {end_month} OR REGEXP_CONTAINS(COALESCE(Fiscal_Q, ''), r'-Q{quarter}$'))")
         elif month:
             # Se quarter não definido, usar month específico
             pipeline_filters.append(f"EXTRACT(MONTH FROM PARSE_DATE('%Y-%m-%d', Data_Prevista)) = {month}")
-            closed_won_filters.append(f"EXTRACT(MONTH FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) = {month}")
-            closed_lost_filters.append(f"EXTRACT(MONTH FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) = {month}")
+            closed_won_filters.append(f"EXTRACT(MONTH FROM {closed_date_expr}) = {month}")
+            closed_lost_filters.append(f"EXTRACT(MONTH FROM {closed_date_expr}) = {month}")
         
         if seller:
             # Support multiple sellers: "Alex Araujo,Carlos Moll" -> IN ('Alex Araujo', 'Carlos Moll')
@@ -350,7 +455,7 @@ def get_metrics(
           ROUND(SUM(Gross), 2) as gross,
           ROUND(SUM(Net), 2) as net,
           ROUND(AVG(SAFE_CAST(Ciclo_dias AS FLOAT64)), 1) as avg_cycle_days,
-          ROUND(AVG(SAFE_CAST(Atividades AS FLOAT64)), 1) as avg_activities
+          ROUND(AVG({activities_expr}), 1) as avg_activities
         FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`
         {won_where}
         """
@@ -360,8 +465,9 @@ def get_metrics(
         SELECT 
           COUNT(*) as deals_count,
           ROUND(SUM(Gross), 2) as gross,
+                    ROUND(SUM(Net), 2) as net,
           ROUND(AVG(SAFE_CAST(Ciclo_dias AS FLOAT64)), 1) as avg_cycle_days,
-          ROUND(AVG(SAFE_CAST(Atividades AS FLOAT64)), 1) as avg_activities,
+          ROUND(AVG({activities_expr}), 1) as avg_activities,
           COUNTIF(Evitavel = 'Sim') as evitavel_count,
           ROUND(SAFE_DIVIDE(COUNTIF(Evitavel = 'Sim'), COUNT(*)) * 100, 1) as evitavel_pct
         FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`
@@ -379,8 +485,19 @@ def get_metrics(
         {pipeline_where} AND SAFE_CAST(Confianca AS FLOAT64) >= 50
         """
         
+        # Pipeline TOTAL (sem filtros - sempre retorna todos os deals)
+        pipeline_total_query = f"""
+        SELECT 
+            COUNT(*) as deals_count,
+            ROUND(SUM(Gross), 2) as gross,
+            ROUND(SUM(Net), 2) as net
+        FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
+        WHERE Fase_Atual NOT IN ('Closed Won', 'Closed Lost')
+        """
+        
         # Execute queries
         pipeline_result = query_to_dict(pipeline_query)[0]
+        pipeline_total_result = query_to_dict(pipeline_total_query)[0]
         won_result = query_to_dict(won_query)[0]
         lost_result = query_to_dict(lost_query)[0]
         high_conf_result = query_to_dict(high_confidence_query)[0]
@@ -395,9 +512,9 @@ def get_metrics(
         
         result = {
             "pipeline_total": {
-                "deals_count": 272,  # Total fixo
-                "gross": 74523511.67,
-                "net": 29192396.4
+                "deals_count": pipeline_total_result['deals_count'] or 0,
+                "gross": pipeline_total_result['gross'] or 0,
+                "net": pipeline_total_result['net'] or 0
             },
             "pipeline_filtered": {
                 "deals_count": pipeline_result['deals_count'] or 0,
@@ -420,6 +537,7 @@ def get_metrics(
             "closed_lost": {
                 "deals_count": lost_result['deals_count'] or 0,
                 "gross": lost_result['gross'] or 0,
+                "net": lost_result['net'] or 0,
                 "avg_cycle_days": lost_result['avg_cycle_days'] or 0,
                 "avg_activities": lost_result['avg_activities'] or 0,
                 "evitavel_count": lost_result['evitavel_count'] or 0,
@@ -533,8 +651,13 @@ def get_closed_won(
             return cached
     try:
         closed_filters = []
+        closed_date_expr = "COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento), SAFE.PARSE_DATE('%d/%m/%Y', Data_Fechamento), SAFE.PARSE_DATE('%Y/%m/%d', Data_Fechamento))"
+        fiscal_q_exact = f"FY{str(year)[-2:]}-Q{quarter}" if (year and quarter) else None
         if year:
-            closed_filters.append(f"EXTRACT(YEAR FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) = {year}")
+            if fiscal_q_exact:
+                closed_filters.append(f"(EXTRACT(YEAR FROM {closed_date_expr}) = {year} OR Fiscal_Q = '{fiscal_q_exact}')")
+            else:
+                closed_filters.append(f"EXTRACT(YEAR FROM {closed_date_expr}) = {year}")
         if quarter:
             quarter_months = {
                 1: (1, 3),   # Q1: Janeiro-Março
@@ -544,9 +667,12 @@ def get_closed_won(
             }
             if quarter in quarter_months:
                 start_month, end_month = quarter_months[quarter]
-                closed_filters.append(f"EXTRACT(MONTH FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) BETWEEN {start_month} AND {end_month}")
+                if fiscal_q_exact:
+                    closed_filters.append(f"(EXTRACT(MONTH FROM {closed_date_expr}) BETWEEN {start_month} AND {end_month} OR Fiscal_Q = '{fiscal_q_exact}')")
+                else:
+                    closed_filters.append(f"(EXTRACT(MONTH FROM {closed_date_expr}) BETWEEN {start_month} AND {end_month} OR REGEXP_CONTAINS(COALESCE(Fiscal_Q, ''), r'-Q{quarter}$'))")
         if month:
-            closed_filters.append(f"EXTRACT(MONTH FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) = {month}")
+            closed_filters.append(f"EXTRACT(MONTH FROM {closed_date_expr}) = {month}")
         if seller:
             seller_filter = build_seller_filter(seller)
             if seller_filter:
@@ -557,8 +683,9 @@ def get_closed_won(
         query = f"""
         SELECT 
             Oportunidade, Vendedor, Status, Conta,
+            Fiscal_Q,
             Data_Fechamento, SAFE_CAST(Ciclo_dias AS FLOAT64) as Ciclo_dias,
-            Gross, Net, Tipo_Resultado, Fatores_Sucesso
+            Gross, Net, Tipo_Resultado, Fatores_Sucesso, Atividades
         FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`
         {where_clause}
         ORDER BY Gross DESC
@@ -597,8 +724,13 @@ def get_closed_lost(
             return cached
     try:
         closed_filters = []
+        closed_date_expr = "COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento), SAFE.PARSE_DATE('%d/%m/%Y', Data_Fechamento), SAFE.PARSE_DATE('%Y/%m/%d', Data_Fechamento))"
+        fiscal_q_exact = f"FY{str(year)[-2:]}-Q{quarter}" if (year and quarter) else None
         if year:
-            closed_filters.append(f"EXTRACT(YEAR FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) = {year}")
+            if fiscal_q_exact:
+                closed_filters.append(f"(EXTRACT(YEAR FROM {closed_date_expr}) = {year} OR Fiscal_Q = '{fiscal_q_exact}')")
+            else:
+                closed_filters.append(f"EXTRACT(YEAR FROM {closed_date_expr}) = {year}")
         if quarter:
             quarter_months = {
                 1: (1, 3),   # Q1: Janeiro-Março
@@ -608,9 +740,12 @@ def get_closed_lost(
             }
             if quarter in quarter_months:
                 start_month, end_month = quarter_months[quarter]
-                closed_filters.append(f"EXTRACT(MONTH FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) BETWEEN {start_month} AND {end_month}")
+                if fiscal_q_exact:
+                    closed_filters.append(f"(EXTRACT(MONTH FROM {closed_date_expr}) BETWEEN {start_month} AND {end_month} OR Fiscal_Q = '{fiscal_q_exact}')")
+                else:
+                    closed_filters.append(f"(EXTRACT(MONTH FROM {closed_date_expr}) BETWEEN {start_month} AND {end_month} OR REGEXP_CONTAINS(COALESCE(Fiscal_Q, ''), r'-Q{quarter}$'))")
         if month:
-            closed_filters.append(f"EXTRACT(MONTH FROM COALESCE(SAFE.PARSE_DATE('%Y-%m-%d', Data_Fechamento), SAFE.PARSE_DATE('%d-%m-%Y', Data_Fechamento))) = {month}")
+            closed_filters.append(f"EXTRACT(MONTH FROM {closed_date_expr}) = {month}")
         if seller:
             seller_filter = build_seller_filter(seller)
             if seller_filter:
@@ -621,8 +756,9 @@ def get_closed_lost(
         query = f"""
         SELECT 
             Oportunidade, Vendedor, Status, Conta,
+            Fiscal_Q,
             Data_Fechamento, SAFE_CAST(Ciclo_dias AS FLOAT64) as Ciclo_dias,
-            Gross, Net, Tipo_Resultado, Causa_Raiz
+            Gross, Net, Tipo_Resultado, Causa_Raiz, Atividades
         FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`
         {where_clause}
         ORDER BY Gross DESC

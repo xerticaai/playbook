@@ -1037,6 +1037,12 @@ function buildOpenOutputRow(runId, item, profile, fiscal, activity, meddic, ia, 
   
   // Pré-formatar datas uma única vez
   const closedDateFormatted = item.closed ? formatDateRobust(item.closed) : "-";
+  const createdDateFormatted = item.created ? formatDateRobust(item.created) : "-";
+  const categoriaFDM = deriveCategoriaFDM_(item.productFamily, item.products);
+  const verticalIA = item.verticalIA || "-";
+  const subVerticalIA = item.subVerticalIA || "-";
+  const subSubVerticalIA = item.subSubVerticalIA || "-";
+  const justificativaSegmentacaoIA = item.justificativaIA || "-";
   const lastUpdateFormatted = formatDateRobust(new Date());
 
   return [
@@ -1094,8 +1100,83 @@ function buildOpenOutputRow(runId, item, profile, fiscal, activity, meddic, ia, 
     quarterRecognition.q2 || 0,
     quarterRecognition.q3 || 0,
     quarterRecognition.q4 || 0,
-    lastUpdateFormatted  // Col 54: Timestamp da última análise
+    createdDateFormatted,
+    item.subsegmentoMercado || "-",
+    item.segmentoConsolidado || "-",
+    item.portfolio || "-",
+    categoriaFDM,
+    item.ownerPreventa || "-",
+    item.products || "-",
+    item.billingCity || "-",
+    item.billingState || "-",
+    verticalIA,
+    subVerticalIA,
+    subSubVerticalIA,
+    justificativaSegmentacaoIA,
+    lastUpdateFormatted
   ];
+}
+
+function deriveCategoriaFDM_(productFamily, products) {
+  const normalize = (input) => normText_(String(input || ''));
+
+  const familyRaw = String(productFamily || '').trim();
+  const family = normalize(productFamily);
+  const productText = normalize(products);
+
+  const plataformaFamilies = ['GWS LICENSING', 'GCP CONSUMPTION'];
+  if (plataformaFamilies.includes(family)) return 'Plataforma';
+
+  const servicesFamilies = [
+    'GCP SERVICES',
+    'GWS SERVICES',
+    'INCENTIVES',
+    'MSP SERVICES',
+    'SMART PRODUCTS'
+  ];
+  if (servicesFamilies.includes(family)) return 'Services';
+
+  if (family === 'ACELERADORES' || productText.includes('ACELERADOR')) {
+    const specificMap = {
+      'ACELERADOR AVANCADO PARA MAPEAMENTO E ANALISE DE RISCOS AMBIENTAIS': 'FDM + GIS',
+      'ACELERADOR INTEGRADO PARA DETECCAO E ANALISE DE RISCOS': 'FDM + GIS',
+      'ACELERADOR SEMANTICO DE DADOS': 'FDM',
+      'ACELERADOR SEMANTICO DE DADOS C IA': 'FDM',
+      'ACELERADOR DE LAYERS CARTOGRAFICOS': 'FDM + GIS',
+      'ACELERADOR PARA COLETA DE DADOS': 'FDM',
+      'ACELERADOR PARA DESENVOLVIMENTO SOCIOECONOMICO': 'FDM + GIS',
+      'ACELERADOR PARA GEOLOCALIZACAO DE ATIVOS': 'FDM + GIS',
+      'ACELERADOR PARA INTEGRACAO E CONSOLIDACAO DE DADOS': 'FDM',
+      'ACELERADOR PARA MAPAS TERMICOS': 'FDM + GIS',
+      'ACELERADOR PARA O APOIO A TOMADA DE DECISOES ESTRATEGICAS': 'FDM',
+      'ANALISE DE PRECEDENTES': 'FDM',
+      'APLICATIVO DE BOT E ACELERADOR CCAI': 'FDM',
+      'CENTRO DE EXCELENCIA COE': 'CoE',
+      'CLASSIFICACAO DE EMAIL E CHAT': 'FDM',
+      'DOC INTELLIGENCE': 'FDM',
+      'GENAI SEARCH': 'FDM',
+      'INSPECAO VISUAL': 'FDM',
+      'PESQUISA CONTEXTUAL': 'FDM',
+      'RESUMO DE DOCUMENTOS': 'FDM',
+      'SOLUCAO VERTICAL JUSTICE': 'FDM',
+      'SOLUCAO VERTICAL LEGAL': 'FDM',
+      'SOLUCAO VERTICAL PQRS': 'FDM',
+      'TRANSCRICAO DE VIDEO': 'FDM',
+      'VIRTUAL CAREER CENTER': 'Carreira',
+      'VIRTUAL CAREER CENTER GERACAO CV': 'Carreira',
+      'VIRTUAL CAREER CENTER MATCH CANDIDATOS': 'Carreira',
+      'VIRTUAL CAREER CENTER MATCH VAGAS': 'Carreira'
+    };
+
+    const searchable = [normalize(familyRaw), productText].filter(Boolean).join(' | ');
+    const matchedKey = Object.keys(specificMap).find((key) => searchable.includes(key));
+    if (matchedKey) {
+      return specificMap[matchedKey];
+    }
+    return 'Outros Aceleradores';
+  }
+
+  return 'Outros Portfólios';
 }
 
 function buildClosedOutputRow(runId, mode, item, profile, fiscal, ia, labels, activityData, detailedChanges, activityBreakdown) {
@@ -1122,6 +1203,10 @@ function buildClosedOutputRow(runId, mode, item, profile, fiscal, ia, labels, ac
   
   // Pré-formatar datas uma única vez
   const closedDateFormatted = item.closed ? formatDateRobust(item.closed) : "-";
+  const verticalIA = item.verticalIA || "-";
+  const subVerticalIA = item.subVerticalIA || "-";
+  const subSubVerticalIA = item.subSubVerticalIA || "-";
+  const justificativaSegmentacaoIA = item.justificativaIA || "-";
   const lastUpdateFormatted = formatDateRobust(new Date());
 
   return [
@@ -1164,6 +1249,13 @@ function buildClosedOutputRow(runId, mode, item, profile, fiscal, ia, labels, ac
     detailedChanges.changeFrequency || "-",
     detailedChanges.uniqueEditors || 0,
     labels.join(", "),
+    item.ownerPreventa || "-",
+    item.billingCity || "-",
+    item.billingState || "-",
+    verticalIA,
+    subVerticalIA,
+    subSubVerticalIA,
+    justificativaSegmentacaoIA,
     lastUpdateFormatted  // Col 40: Timestamp da última análise
   ];
 }
@@ -1217,6 +1309,71 @@ function calculateFiscalQuarter(date) {
     start: start,
     end: end
   };
+}
+
+/**
+ * Converte o texto do Pipeline_Aberto "Período fiscal" para o padrão FYyy-Qn.
+ * Exemplos aceitos: "T1-2026", "T2/2026", "T3 2026", "Q4-2027", "FY26-Q1".
+ * Retorna objeto compatível com calculateFiscalQuarter() ou null se não reconhecido.
+ */
+function parsePipelineFiscalQuarter_(rawFiscal) {
+  if (rawFiscal === null || rawFiscal === undefined) return null;
+  const s0 = String(rawFiscal).trim();
+  if (!s0) return null;
+
+  // Normaliza: remove espaços, troca travessões por '-', uppercase
+  const s = s0
+    .toUpperCase()
+    .replace(/[–—]/g, "-")
+    .replace(/\s+/g, "");
+
+  // Já está no formato final
+  const fy = s.match(/^FY(\d{2})-Q([1-4])$/);
+  if (fy) {
+    const year = 2000 + parseInt(fy[1], 10);
+    const q = parseInt(fy[2], 10);
+    const startMonth = (q - 1) * 3;
+    const endMonth = q * 3;
+    return {
+      label: `FY${String(year).slice(-2)}-Q${q}`,
+      year: year,
+      q: q,
+      start: new Date(year, startMonth, 1),
+      end: new Date(year, endMonth, 0)
+    };
+  }
+
+  // Aceita Tn-YYYY, Tn/YYYY, TnYYYY, Qn-YYYY...
+  const m = s.match(/^(?:T|Q)([1-4])[-/]?(\d{2}|\d{4})$/);
+  if (!m) return null;
+
+  const q = parseInt(m[1], 10);
+  let year = parseInt(m[2], 10);
+  if (year < 100) year += 2000;
+  if (!year || year < 2000 || year > 2100) return null;
+
+  const startMonth = (q - 1) * 3;
+  const endMonth = q * 3;
+  return {
+    label: `FY${String(year).slice(-2)}-Q${q}`,
+    year: year,
+    q: q,
+    start: new Date(year, startMonth, 1),
+    end: new Date(year, endMonth, 0)
+  };
+}
+
+/**
+ * Fiscal Q para OPEN: usa EXCLUSIVAMENTE item.fiscalQ (Período fiscal).
+ * Para WON/LOST, mantém cálculo por data de fechamento quando necessário.
+ */
+function calculateFiscalQuarterForItem_(item, mode) {
+  const parsed = parsePipelineFiscalQuarter_(item && item.fiscalQ);
+  if (parsed) return parsed;
+  if (mode === 'OPEN') {
+    return { label: "N/A", year: 0, q: 0 };
+  }
+  return calculateFiscalQuarter(item ? item.closed : null);
 }
 
 /**
@@ -1856,6 +2013,9 @@ function getColumnMapping(headers) {
       // Português
       "Data de criação", "Data de criacao", "Data Criação", "Data Criacao", "Criada", "Criado", 
       "Data de Criação", "Data de Criacao", "Data Criada", "Data Criado",
+      "Data de criação (DE ONDE PEGAR)", "Data de criacao (DE ONDE PEGAR)",
+      "Data de criação (de onde pegar)", "Data de criacao (de onde pegar)",
+      "Data de criação de onde pegar", "Data de criacao de onde pegar",
       // Español
       "Fecha de creación", "Fecha creación", "Fecha de creacion", "Fecha Creacion", "Creado", "Creada",
       "Fecha de Creación", "Fecha de Creacion", "Fecha Creada"
@@ -1865,7 +2025,10 @@ function getColumnMapping(headers) {
     p_next_activity: find(["Next Activity Date", "Data da próxima atividade", "Data da proxima atividade", "Próxima Atividade", "Proxima Atividade"]),
     p_forecast: find(["Forecast", "Forecast SF", "Forecast IA"]),
     p_portfolio: find(["Portafolio", "Portfólio", "Portfolio"]),
-    p_segment: find(["Segmento Consolidado", "Subsegmento de mercado", "Segmento"]),
+    p_owner_preventa: find(["Owner Preventa", "Preventa", "Preventa principal", "Owner Pre Sales", "Pre Sales Owner"]),
+    p_segment: find(["Segmento", "Segment", "Segmento Consolidado", "Subsegmento de mercado"]),
+    p_subsegmento_mercado: find(["Subsegmento de mercado", "Subsegmento", "Subsegmento Mercado"]),
+    p_segmento_consolidado: find(["Segmento Consolidado", "Segmento_Consolidado"]),
     p_id: find(["Opportunity ID", "Opportunity: ID", "Record ID", "Id"]),
     p_prod_family: find(["Product Family", "Família de produtos", "Familia de Producto", "Família de Produto"]),
     p_ciclo: find([
@@ -1954,6 +2117,7 @@ function aggregateOpportunities(values, cols, mode = 'UNKNOWN') {
   
   let skipped = 0;
   let processed = 0;
+  let dateWarnCount = 0;
 
   values.forEach((row, idx) => {
     const name = String(row[cols.p_opp] || "").trim();
@@ -1969,6 +2133,9 @@ function aggregateOpportunities(values, cols, mode = 'UNKNOWN') {
     
     const oppId = cols.p_id > -1 ? String(row[cols.p_id] || "").trim() : "";
     const createdDate = cols.p_created > -1 ? parseDate(row[cols.p_created]) : null;
+    const fiscalQRaw = cols.p_fiscal_q > -1 ? String(row[cols.p_fiscal_q] || "").trim() : "";
+    const fiscalQParsed = (typeof parsePipelineFiscalQuarter_ === 'function') ? parsePipelineFiscalQuarter_(fiscalQRaw) : null;
+    const fiscalQ = fiscalQParsed && fiscalQParsed.label ? fiscalQParsed.label : fiscalQRaw;
     
     // Para forecast (pipeline), usa "Data Prevista" se disponível, senão "Close Date"
     // Ordem de prioridade: Data Prevista > Close Date
@@ -1979,8 +2146,28 @@ function aggregateOpportunities(values, cols, mode = 'UNKNOWN') {
     } else if (cols.p_date > -1) {
       closeDate = parseDate(row[cols.p_date]); // Fallback para Close Date
     }
+
+    if (dateWarnCount < 10) {
+      const warnDateField_ = (raw, fieldName) => {
+        if (typeof raw !== 'string') return;
+        const txt = String(raw).trim();
+        if (!txt) return;
+        if (parseDate(txt)) return;
+        // Ignora ISO, que parseDate já aceita
+        if (/^\d{4}-\d{2}-\d{2}(T.*)?$/.test(txt)) return;
+        logToSheet("WARN", "DateNormalization", `Data não normalizada em ${fieldName} (${mode}): "${txt}" | Opp: ${name}`);
+        dateWarnCount++;
+      };
+
+      if (cols.p_created > -1) warnDateField_(row[cols.p_created], "Created Date");
+      if (cols.p_predicted_date > -1) warnDateField_(row[cols.p_predicted_date], "Data Prevista");
+      if (cols.p_date > -1) warnDateField_(row[cols.p_date], "Close Date");
+      if (cols.p_next_activity > -1) warnDateField_(row[cols.p_next_activity], "Next Activity Date");
+    }
     
-    const key = oppId || buildOppKey_(row[cols.p_acc], name, createdDate);
+    const baseKey = oppId || buildOppKey_(row[cols.p_acc], name, createdDate);
+    const fiscalBucket = normText_(fiscalQ || "SEM_FISCAL");
+    const key = (mode === 'OPEN') ? `${baseKey}|FQ:${fiscalBucket}` : baseKey;
     
     const curProd = cols.p_prod > -1 ? String(row[cols.p_prod] || "").trim() : "";
     const curGross = parseMoney(row[cols.p_gross]);
@@ -2014,7 +2201,6 @@ function aggregateOpportunities(values, cols, mode = 'UNKNOWN') {
 
     // Captura Forecast e Created Date
     const forecastSF = cols.p_forecast > -1 ? String(row[cols.p_forecast] || "") : "-";
-    const fiscalQ = cols.p_fiscal_q > -1 ? String(row[cols.p_fiscal_q] || "").trim() : "";
     const activities = cols.p_activities > -1 ? parseInt(row[cols.p_activities]) || 0 : 0;
     const activities7d = cols.p_activities_7d > -1 ? parseInt(row[cols.p_activities_7d]) || 0 : 0;
     const activities30d = cols.p_activities_30d > -1 ? parseInt(row[cols.p_activities_30d]) || 0 : 0;
@@ -2037,7 +2223,10 @@ function aggregateOpportunities(values, cols, mode = 'UNKNOWN') {
     const tipoResultado = cols.p_tipo_resultado > -1 ? String(row[cols.p_tipo_resultado] || "").trim() : "";
     const labels = cols.p_labels > -1 ? String(row[cols.p_labels] || "").trim() : "";
     const portfolio = cols.p_portfolio > -1 ? String(row[cols.p_portfolio] || "") : "";
+    const ownerPreventa = cols.p_owner_preventa > -1 ? String(row[cols.p_owner_preventa] || "").trim() : "";
     const segment = cols.p_segment > -1 ? String(row[cols.p_segment] || "") : "";
+    const subsegmentoMercado = cols.p_subsegmento_mercado > -1 ? String(row[cols.p_subsegmento_mercado] || "") : "";
+    const segmentoConsolidado = cols.p_segmento_consolidado > -1 ? String(row[cols.p_segmento_consolidado] || "") : "";
     const productFamily = cols.p_prod_family > -1 ? String(row[cols.p_prod_family] || "") : "";
     const billingState = cols.p_billing_state > -1 ? String(row[cols.p_billing_state] || "").trim() : "";
     const billingCity = cols.p_billing_city > -1 ? String(row[cols.p_billing_city] || "").trim() : "";
@@ -2125,7 +2314,10 @@ function aggregateOpportunities(values, cols, mode = 'UNKNOWN') {
         ciclo: ciclo,
         reason: cols.p_reason > -1 ? String(row[cols.p_reason] || "") : "",
         portfolio: portfolio,
+        ownerPreventa: ownerPreventa,
         segment: segment,
+        subsegmentoMercado: subsegmentoMercado,
+        segmentoConsolidado: segmentoConsolidado,
         productFamily: productFamily,
         billingState: billingState,
         billingCity: billingCity,
@@ -2148,6 +2340,15 @@ function aggregateOpportunities(values, cols, mode = 'UNKNOWN') {
       }
       if (productFamily && !item.productFamily.includes(productFamily)) {
         item.productFamily += item.productFamily ? (" | " + productFamily) : productFamily;
+      }
+      if (!item.subsegmentoMercado && subsegmentoMercado) {
+        item.subsegmentoMercado = subsegmentoMercado;
+      }
+      if (!item.segmentoConsolidado && segmentoConsolidado) {
+        item.segmentoConsolidado = segmentoConsolidado;
+      }
+      if (!item.ownerPreventa && ownerPreventa) {
+        item.ownerPreventa = ownerPreventa;
       }
     }
   });
@@ -2563,8 +2764,30 @@ function validateCiclo_(ciclo, created, closed, oppName) {
   if (ciclo < 0) {
     result.isValid = false;
     result.issue = "CICLO NEGATIVO";
-    result.correctedCiclo = Math.abs(ciclo); // Corrige invertendo
-    logToSheet("ERROR", "CicloValidation", 
+
+    // Tentar corrigir usando inversão DD/MM↔MM/DD (mesma linha do CorrigirFiscalQ)
+    const createdDate = created instanceof Date ? created : parseDate(created);
+    const closedDate = closed instanceof Date ? closed : parseDate(closed);
+    if (createdDate && closedDate) {
+      const fix = tryFixInvertedDates_(createdDate, closedDate);
+      if (fix.fixed && typeof fix.ciclo === 'number' && isFinite(fix.ciclo)) {
+        result.issue = "CICLO NEGATIVO (CORRIGIDO)";
+        result.correctedCiclo = fix.ciclo;
+        logToSheet(
+          "WARN",
+          "CicloValidation",
+          `Ciclo negativo corrigido via inversão (ciclo=${ciclo} → ${fix.ciclo})`,
+          { oportunidade: oppName }
+        );
+        return result;
+      }
+    }
+
+    // Fallback: mantém o comportamento anterior (não quebra pipeline)
+    result.correctedCiclo = Math.abs(ciclo);
+    logToSheet(
+      "ERROR",
+      "CicloValidation",
       `Ciclo negativo detectado (${ciclo} dias) - datas invertidas?`,
       { oportunidade: oppName }
     );
@@ -2899,17 +3122,8 @@ function parseDate(d) {
   const str = String(d).trim();
   if (!str) return null;
 
-  // dd/mm/yyyy ou dd-mm-yyyy (pt_BR)
-  let m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (m) {
-    const day = parseInt(m[1], 10);
-    const month = parseInt(m[2], 10);
-    const year = parseInt(m[3], 10);
-    return dateFromYMD_(year, month, day);
-  }
-
   // yyyy-mm-dd (ISO date)
-  m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  let m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (m) {
     const year = parseInt(m[1], 10);
     const month = parseInt(m[2], 10);
@@ -2926,7 +3140,8 @@ function parseDate(d) {
     return normalized;
   }
 
-  // Evitar Date.parse em strings ambíguas (ex: 01/04/2026 pode virar MM/DD)
+  // Strings locais (dd/mm, dd-mm, mm/dd etc.) devem ser padronizadas previamente
+  // por normalizarDatasTodasAbas() com locale pt_BR.
   return null;
 }
 
@@ -2938,11 +3153,30 @@ function tryFixInvertedDates_(created, closed) {
   result.ciclo = ciclo;
   if (ciclo >= 0) return result;
 
-  // Tenta a mesma heurística do CorrigirFiscalQ: inverter DD/MM↔MM/DD em ambas
-  const createdInv = new Date(created.getFullYear(), created.getDate() - 1, created.getMonth() + 1);
-  const closedInv = new Date(closed.getFullYear(), closed.getDate() - 1, closed.getMonth() + 1);
-  createdInv.setHours(0, 0, 0, 0);
-  closedInv.setHours(0, 0, 0, 0);
+  const invertDayMonth_ = (dt) => {
+    if (!(dt instanceof Date) || isNaN(dt.getTime())) return null;
+    const year = dt.getFullYear();
+    const monthIndex = dt.getMonth(); // 0-11
+    const day = dt.getDate(); // 1-31
+
+    // Só faz sentido inverter quando o dia pode ser um mês (1-12)
+    if (day < 1 || day > 12) return null;
+
+    // Inversão DD/MM ↔ MM/DD: new Date(ano, mesIndex, dia)
+    const inv = new Date(year, day - 1, monthIndex + 1);
+    inv.setHours(0, 0, 0, 0);
+
+    // Validar que não houve overflow (ou seja, a troca foi exata)
+    if (inv.getFullYear() !== year) return null;
+    if (inv.getMonth() !== (day - 1)) return null;
+    if (inv.getDate() !== (monthIndex + 1)) return null;
+    return inv;
+  };
+
+  // Tenta a mesma heurística do CorrigirFiscalQ, mas com guardrails
+  const createdInv = invertDayMonth_(created);
+  const closedInv = invertDayMonth_(closed);
+  if (!createdInv || !closedInv) return result;
 
   const cicloInv = Math.ceil((closedInv - createdInv) / MS_PER_DAY);
   if (cicloInv >= 0 && cicloInv < 1000) {

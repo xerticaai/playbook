@@ -138,6 +138,35 @@
       box-shadow: 0 0 15px rgba(0,190,255,0.2);
       transform: translateX(2px);
     }
+    .nav-group-title {
+      margin: 16px 10px 6px;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-gray);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      opacity: 0.8;
+      pointer-events: none;
+    }
+    .admin-validate-btn {
+      width: calc(100% - 20px);
+      margin: 8px 10px 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(0,190,255,0.35);
+      background: rgba(0,190,255,0.08);
+      color: var(--primary-cyan);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      transition: all 0.25s ease;
+    }
+    .admin-validate-btn:hover {
+      background: rgba(0,190,255,0.16);
+      border-color: var(--primary-cyan);
+      box-shadow: 0 0 10px rgba(0,190,255,0.2);
+    }
 
     .header-back {
       display: flex;
@@ -315,13 +344,6 @@
       </svg>
       Visao Executiva
     </div>
-    <div class="nav-item" onclick="window.location.href='index.html'">
-      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <rect x="3" y="3" width="18" height="18" rx="2"/>
-        <path d="M9 9h6M9 15h6"/>
-      </svg>
-      Indicadores L10
-    </div>
     <div class="nav-item active">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="10"/>
@@ -335,7 +357,7 @@
         <circle cx="9" cy="7" r="4"/>
         <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
       </svg>
-      Performance FSR
+      Performance Equipe
     </div>
     <div class="nav-item" onclick="window.location.href='index.html'">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -353,13 +375,24 @@
       </svg>
       Pauta Semanal
     </div>
-    <div class="nav-item" onclick="window.location.href='index.html'">
+    <div id="nav-em-construcao-title" class="nav-group-title" style="display:none;">Em construção</div>
+    <div id="nav-dashboard-item" class="nav-item" onclick="window.location.href='index.html'" style="display:none;">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <path d="M9 9h6M9 15h6"/>
+      </svg>
+      Indicadores L10
+    </div>
+    <div id="nav-ml-item" class="nav-item" onclick="window.location.href='index.html'" style="display:none;">
       <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <circle cx="12" cy="12" r="2"/>
         <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
       </svg>
       Inteligencia ML
     </div>
+    <button id="nav-admin-validate-btn" class="admin-validate-btn" onclick="toggleAdminPreview()" style="display:none;">
+      Validação ADM: oculto
+    </button>
   </div>
 
   <button class="sidebar-toggle" onclick="toggleSidebar()" title="Expandir/Recolher Menu">
@@ -429,7 +462,15 @@
     const API_BASE_URL = window.location.hostname === 'localhost'
       ? 'http://localhost:8080'
       : 'https://sales-intelligence-api-j7loux7yta-uc.a.run.app';
+    const USER_CONTEXT_ENDPOINTS = [
+      `${API_BASE_URL}/api/user-context`,
+      '/api/user-context'
+    ];
     const DEBUG_MODE = false;
+    const ADMIN_ALLOWED_EMAIL = 'amalia.silva@xertica.com';
+    let currentUserEmail = null;
+    let isAdminUser = false;
+    let adminPreviewEnabled = false;
 
     const log = DEBUG_MODE ? console.log.bind(console, '[APRENDIZADOS]') : () => {};
     const formatMoney = (value) => {
@@ -455,6 +496,67 @@
       if (item.avg_gross > 0) parts.push(`Ticket medio ${formatMoney(item.avg_gross)}`);
       return parts.join(' · ');
     };
+
+    function normalizeUserEmail(rawEmail) {
+      const value = String(rawEmail || '').trim().toLowerCase();
+      if (!value) return null;
+      if (value.includes(':')) return value.split(':').pop().trim().toLowerCase();
+      return value;
+    }
+
+    function updateAdminValidateButton() {
+      const adminBtn = document.getElementById('nav-admin-validate-btn');
+      if (!adminBtn) return;
+      adminBtn.textContent = adminPreviewEnabled ? 'Validação ADM: visível' : 'Validação ADM: oculto';
+    }
+
+    function applyAdminVisibility() {
+      const navDashboardItem = document.getElementById('nav-dashboard-item');
+      const navMlItem = document.getElementById('nav-ml-item');
+      const navGroupTitle = document.getElementById('nav-em-construcao-title');
+      const adminBtn = document.getElementById('nav-admin-validate-btn');
+      const shouldShowUnderConstruction = isAdminUser && adminPreviewEnabled;
+
+      if (navDashboardItem) navDashboardItem.style.display = shouldShowUnderConstruction ? '' : 'none';
+      if (navMlItem) navMlItem.style.display = shouldShowUnderConstruction ? '' : 'none';
+      if (navGroupTitle) navGroupTitle.style.display = shouldShowUnderConstruction ? '' : 'none';
+      if (adminBtn) adminBtn.style.display = isAdminUser ? '' : 'none';
+    }
+
+    function toggleAdminPreview() {
+      if (!isAdminUser) return;
+      adminPreviewEnabled = !adminPreviewEnabled;
+      updateAdminValidateButton();
+      applyAdminVisibility();
+    }
+
+    async function resolveAdminAccess() {
+      isAdminUser = false;
+      adminPreviewEnabled = false;
+      currentUserEmail = null;
+
+      try {
+        for (const endpoint of USER_CONTEXT_ENDPOINTS) {
+          try {
+            const response = await fetch(endpoint, { cache: 'no-store' });
+            if (!response.ok) continue;
+
+            const data = await response.json();
+            currentUserEmail = normalizeUserEmail(data.email);
+            isAdminUser = currentUserEmail === ADMIN_ALLOWED_EMAIL;
+            adminPreviewEnabled = isAdminUser;
+            break;
+          } catch (innerError) {
+            log('Tentativa de user-context falhou:', endpoint, innerError?.message || innerError);
+          }
+        }
+      } catch (e) {
+        log('Nao foi possivel validar acesso admin:', e.message || e);
+      }
+
+      updateAdminValidateButton();
+      applyAdminVisibility();
+    }
 
     async function loadInsights() {
       try {
@@ -587,11 +689,12 @@
     }
 
     // Carregar insights ao abrir a página
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
       const params = new URLSearchParams(window.location.search);
       if (params.get('embedded') === '1' || window.self !== window.top) {
         document.body.classList.add('embedded');
       }
+      await resolveAdminAccess();
       loadInsights();
     });
 

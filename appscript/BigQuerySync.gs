@@ -83,19 +83,18 @@ function loadSheetData(sheetName) {
           // Se não é campo de data, manter valor numérico (ex: Mudancas_Close_Date = 3)
           obj[header] = val.getTime ? Math.floor((val - new Date(1899, 11, 30)) / 86400000) : val;
         }
-      } else if (typeof val === 'number' && isDateField && val > 1000) {
-        // Número grande em campo de data: serial date do Excel/Sheets → dd/mm/yyyy
-        try {
-          const dateFromSerial = new Date((val - 25569) * 86400 * 1000);
-          if (!isNaN(dateFromSerial.getTime())) {
-            const day = String(dateFromSerial.getDate()).padStart(2, '0');
-            const month = String(dateFromSerial.getMonth() + 1).padStart(2, '0');
-            const year = dateFromSerial.getFullYear();
-            obj[header] = `${day}/${month}/${year}`;
-          } else {
-            obj[header] = null;
-          }
-        } catch (e) {
+      } else if (typeof val === 'number' && isDateField) {
+        // Exceção controlada para Atividades: alguns conectores trazem Date como serial numérico.
+        // Convertemos somente valores plausíveis de serial Excel/Sheets para preservar data da atividade.
+        if (sheetName === 'Atividades' && val >= 20000 && val <= 80000) {
+          const serialDate = new Date(1899, 11, 30);
+          serialDate.setDate(serialDate.getDate() + Math.floor(val));
+          const day = String(serialDate.getDate()).padStart(2, '0');
+          const month = String(serialDate.getMonth() + 1).padStart(2, '0');
+          const year = serialDate.getFullYear();
+          obj[header] = `${day}/${month}/${year}`;
+        } else {
+          // Mantém comportamento conservador para as demais abas.
           obj[header] = null;
         }
       } else if (typeof val === 'number') {
@@ -184,17 +183,18 @@ function syncToBigQueryScheduled() {
   try {
     // ETAPA 1: Carregar dados brutos das abas
     const pipelineRaw = loadSheetData('🎯 Análise Forecast IA');
+    const pipelinePrepared = preparePipelineDataForBigQuery_(pipelineRaw);
     const wonRaw = loadSheetData('📈 Análise Ganhas');
     const lostRaw = loadSheetData('📉 Análise Perdidas');
-    const atividadesRaw = loadSheetData('Atividades');
+    const atividadesRaw = prepareAtividadesData();
     
     console.log(`📊 Dados carregados do Sheet:`);
-    console.log(`   • Pipeline: ${pipelineRaw.length} deals`);
+    console.log(`   • Pipeline: ${pipelinePrepared.length} deals`);
     console.log(`   • Won: ${wonRaw.length} deals`);
     console.log(`   • Lost: ${lostRaw.length} deals`);
     console.log(`   • Atividades: ${atividadesRaw.length} registros`);
     
-    if (pipelineRaw.length === 0 && wonRaw.length === 0 && lostRaw.length === 0) {
+    if (pipelinePrepared.length === 0 && wonRaw.length === 0 && lostRaw.length === 0) {
       throw new Error('Nenhum dado encontrado nas abas de análise');
     }
     
@@ -241,7 +241,7 @@ function syncToBigQueryScheduled() {
 
     const pipelineResult = loadToBigQuery(
       `${BQ_PROJECT}.${BQ_DATASET}.pipeline`,
-      pipelineRaw,
+      pipelinePrepared,
       'WRITE_TRUNCATE'
     );
 
@@ -315,6 +315,177 @@ function syncToBigQueryScheduled() {
   }
 }
 
+/**
+ * Normaliza aliases de colunas do Pipeline para garantir estabilidade de schema no BigQuery.
+ * Em especial, padroniza a nova coluna "Data de criação (DE ONDE PEGAR)" em `Data_de_criacao`.
+ */
+function preparePipelineDataForBigQuery_(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  return rows.map((row) => {
+    const dataCriacao =
+      row.Data_de_criacao_DE_ONDE_PEGAR ||
+      row.Data_de_criacao ||
+      row.Created_Date ||
+      row.Date_Created ||
+      row.Created;
+
+    return {
+      ...row,
+      Data_de_criacao: dataCriacao || null
+    };
+  });
+}
+
+/**
+ * Prepara dados da aba Atividades para o schema real do BigQuery
+ * com mapeamento tolerante a variações de cabeçalho.
+ * @returns {Array} Array de objetos prontos para carga em sales_intelligence.atividades
+ */
+function prepareAtividadesData() {
+  const rawRows = loadSheetData('Atividades');
+  if (!rawRows || rawRows.length === 0) {
+    return [];
+  }
+
+  const normalizeKey = (value) => String(value || '')
+    .toLowerCase()
+    .trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+
+  const canonicalFields = [
+    'Atribuido',
+    'Data',
+    'Data_de_criacao',
+    'EmpresaConta',
+    'Tipo_de_Actividad',
+    'Comentarios_completos',
+    'Comentarios',
+    'Assunto',
+    'Local',
+    'Oportunidade',
+    'Contato',
+    'Status'
+  ];
+
+  const canonicalByNorm = {};
+  canonicalFields.forEach(field => {
+    canonicalByNorm[normalizeKey(field)] = field;
+  });
+
+  const aliasByNorm = {
+    atribuido: 'Atribuido',
+    atribuidoa: 'Atribuido',
+    assigned: 'Atribuido',
+    assignedto: 'Atribuido',
+    assignedowner: 'Atribuido',
+    assigneduser: 'Atribuido',
+    owner: 'Atribuido',
+    vendedor: 'Atribuido',
+
+    data: 'Data',
+    date: 'Data',
+    fecha: 'Data',
+    activitydate: 'Data',
+    datadaatividade: 'Data',
+
+    datadecriacao: 'Data_de_criacao',
+    datacriacao: 'Data_de_criacao',
+    createddate: 'Data_de_criacao',
+    creationdate: 'Data_de_criacao',
+
+    empresaconta: 'EmpresaConta',
+    companyaccount: 'EmpresaConta',
+    company: 'EmpresaConta',
+    empresa: 'EmpresaConta',
+    conta: 'EmpresaConta',
+    account: 'EmpresaConta',
+    accountname: 'EmpresaConta',
+
+    tipodeactividad: 'Tipo_de_Actividad',
+    tipodeatividade: 'Tipo_de_Actividad',
+    tipoatividade: 'Tipo_de_Actividad',
+    tipo: 'Tipo_de_Actividad',
+    activitytype: 'Tipo_de_Actividad',
+
+    comentarioscompletos: 'Comentarios_completos',
+    fullcomments: 'Comentarios_completos',
+    commentsfull: 'Comentarios_completos',
+    completecomments: 'Comentarios_completos',
+    detalhes: 'Comentarios_completos',
+
+    comentarios: 'Comentarios',
+    comentario: 'Comentarios',
+    comments: 'Comentarios',
+    notes: 'Comentarios',
+
+    assunto: 'Assunto',
+    subject: 'Assunto',
+
+    local: 'Local',
+    location: 'Local',
+
+    oportunidade: 'Oportunidade',
+    opportunity: 'Oportunidade',
+    opportunityname: 'Oportunidade',
+    deal: 'Oportunidade',
+
+    contato: 'Contato',
+    contact: 'Contato',
+
+    status: 'Status'
+  };
+
+  const mappedRows = rawRows.map((row) => {
+    const mapped = {};
+
+    Object.keys(row || {}).forEach(sourceKey => {
+      const sourceVal = row[sourceKey];
+      if (sourceVal === null || sourceVal === undefined || sourceVal === '') {
+        return;
+      }
+
+      const norm = normalizeKey(sourceKey);
+      const targetKey = canonicalByNorm[norm] || aliasByNorm[norm];
+      if (!targetKey) {
+        return;
+      }
+
+      // Preserva primeiro valor útil quando houver múltiplos aliases da mesma coluna.
+      if (mapped[targetKey] === null || mapped[targetKey] === undefined || mapped[targetKey] === '') {
+        mapped[targetKey] = sourceVal;
+      }
+    });
+
+    return mapped;
+  }).filter(row => {
+    return !!(
+      row.Atribuido ||
+      row.Data ||
+      row.Data_de_criacao ||
+      row.Oportunidade ||
+      row.EmpresaConta ||
+      row.Comentarios ||
+      row.Comentarios_completos
+    );
+  });
+
+  const countNonNull = (field) => mappedRows.reduce((acc, row) => {
+    const val = row[field];
+    return (val === null || val === undefined || val === '') ? acc : acc + 1;
+  }, 0);
+
+  console.log(`📊 Atividades mapeadas para schema BQ: ${mappedRows.length}/${rawRows.length} registros válidos`);
+  console.log(`   • Atribuido preenchido: ${countNonNull('Atribuido')}`);
+  console.log(`   • Data preenchida: ${countNonNull('Data')}`);
+  console.log(`   • Data_de_criacao preenchida: ${countNonNull('Data_de_criacao')}`);
+  console.log(`   • Oportunidade preenchida: ${countNonNull('Oportunidade')}`);
+  console.log(`   • Comentarios preenchido: ${countNonNull('Comentarios')}`);
+
+  return mappedRows;
+}
+
 // ==================== LOADER BIGQUERY ====================
 
 /**
@@ -353,52 +524,34 @@ function loadToBigQuery(tableId, records, writeDisposition) {
 function loadUsingJob(projectId, datasetId, tableName, records, runId) {
   console.log(`🔄 Usando load job para ${tableName} (suporta WRITE_TRUNCATE)...`);
 
-  // Normaliza strings de data para ISO (YYYY-MM-DD), suportando formatos com "/" ou "-".
-  // Regra para formatos ambíguos:
-  // - Com "/" ou ".": assume DD/MM/YYYY (pt_BR)
-  // - Com "-": assume MM-DD-YYYY, a menos que o dia > 12.
+  // Normaliza strings de data para ISO (YYYY-MM-DD) de forma estrita.
+  // Aceita apenas DD/MM/YYYY (ou DD.MM.YYYY) e YYYY-MM-DD.
+  // Não aplica heurísticas ambíguas (ex.: MM-DD-YYYY).
   const normalizeDateStringToIso_ = (raw) => {
     if (raw === null || raw === undefined) return null;
     const s = String(raw).trim();
     if (!s) return null;
 
-    // YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    // YYYY-MM-DD (com ou sem sufixo de horário)
+    const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/);
+    if (isoMatch) {
+      const year = parseInt(isoMatch[1], 10);
+      const month = parseInt(isoMatch[2], 10);
+      const day = parseInt(isoMatch[3], 10);
+      if (year >= 1900 && year <= 2100 && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+      }
+      return null;
+    }
 
-    // DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY (ou MM-DD-YYYY etc)
-    // Captura o separador para decidir regra (pt_BR vs ambíguo).
-    const m = s.match(/^(\d{1,2})([\/\-\.])(\d{1,2})\2(\d{4})$/);
+    // DD/MM/YYYY, DD.MM.YYYY ou DD-MM-YYYY (com ou sem sufixo de horário)
+    const m = s.match(/^(\d{1,2})([\/\.\-])(\d{1,2})\2(\d{4})(?:\s+.*)?$/);
     if (!m) return null;
 
-    const p1 = parseInt(m[1], 10);
-    const sep = m[2];
-    const p2 = parseInt(m[3], 10);
+    const day = parseInt(m[1], 10);
+    const month = parseInt(m[3], 10);
     const year = parseInt(m[4], 10);
     if (!year || year < 1900 || year > 2100) return null;
-
-    let day;
-    let month;
-
-    if (sep === '/' || sep === '.') {
-      // pt_BR: DD/MM/YYYY
-      day = p1;
-      month = p2;
-    } else {
-      // "-" pode ser ambíguo.
-      // Se um dos lados > 12, dá para inferir.
-      if (p1 > 12 && p2 >= 1 && p2 <= 12) {
-        day = p1;
-        month = p2;
-      } else if (p2 > 12 && p1 >= 1 && p1 <= 12) {
-        // MM-DD-YYYY
-        month = p1;
-        day = p2;
-      } else {
-        // Ambíguo: assume MM-DD-YYYY (compatível com exemplos 02-17-2025)
-        month = p1;
-        day = p2;
-      }
-    }
 
     if (month < 1 || month > 12) return null;
     if (day < 1 || day > 31) return null;
@@ -447,23 +600,9 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
           }
         } else if (typeof value === 'number' && !isFinite(value)) {
           sanitized[key] = null; // NaN or Infinity
-        } else if (typeof value === 'number' && isDateField && value > 1000) {
-          // Número grande em campo de data: provavelmente serial date do Excel/Sheets
-          // Serial date: dias desde 30/12/1899 (Excel) ou 01/01/1900 (Sheets)
-          // Fórmula: (serial - 25569) * 86400000 = timestamp Unix
-          try {
-            const dateFromSerial = new Date((value - 25569) * 86400 * 1000);
-            if (!isNaN(dateFromSerial.getTime())) {
-              const year = dateFromSerial.getFullYear();
-              const month = String(dateFromSerial.getMonth() + 1).padStart(2, '0');
-              const day = String(dateFromSerial.getDate()).padStart(2, '0');
-              sanitized[key] = `${year}-${month}-${day}`;
-            } else {
-              sanitized[key] = null;
-            }
-          } catch (e) {
-            sanitized[key] = null;
-          }
+        } else if (typeof value === 'number' && isDateField) {
+          // Não inferir serial date no sync: normalização é responsabilidade do CorrigirFiscalQ.
+          sanitized[key] = null;
         } else if (typeof value === 'string') {
           const strVal = String(value).trim();
           
@@ -523,7 +662,7 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
       console.log(`   📝 Registro ${i+1}/${sanitizedRecords.length}:`);
       
       // Mostrar campos relevantes para debug
-      const debugFields = ['Oportunidade', 'Data_Fechamento', 'Data_Prevista', 'closed_date', 
+      const debugFields = ['Atribuido', 'Data', 'Data_de_criacao', 'EmpresaConta', 'Tipo_de_Actividad', 'Comentarios', 'Oportunidade', 'Data_Fechamento', 'Data_Prevista', 'closed_date', 
                           'Gross', 'Net', 'Fiscal_Q', 'Confianca', 'Ciclo_dias', 'Mudancas_Close_Date',
                           'opportunity_name', 'booking_total_gross', 'fiscal_quarter'];
       debugFields.forEach(field => {
@@ -684,6 +823,12 @@ function loadUsingStreamingInsert(projectId, datasetId, tableName, records, runI
       const numericFields = ['_dias', '_Score', '_Peso', 'Atividades', 'Mudancas', 'Editores', 'Confianca', 
                             'Gross', 'Net', 'Total_', 'Valor_', 'Billing_', 'Booking_', 'Idle_'];
       const isNumericField = numericFields.some(pattern => key.includes(pattern));
+      const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Date', '_Data', 'Fecha_', 'closed_date', 'created_date'];
+      const excludeFields = ['Mudancas_', 'Total_', 'Ativ_', 'Distribuicao_'];
+      const isDateField = (key === 'Data') || (
+        dateFields.some(pattern => key.includes(pattern)) &&
+        !excludeFields.some(pattern => key.startsWith(pattern))
+      );
       
       if (value instanceof Date) {
         const year = value.getFullYear();
@@ -696,12 +841,8 @@ function loadUsingStreamingInsert(projectId, datasetId, tableName, records, runI
         sanitized[key] = null;
       } else if (typeof value === 'string') {
         const strVal = String(value).trim();
-        const dateMatch = strVal.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-        if (dateMatch) {
-          const day = dateMatch[1];
-          const month = dateMatch[2];
-          const year = dateMatch[3];
-          sanitized[key] = `${year}-${month}-${day}`;
+        if (isDateField) {
+          sanitized[key] = parseDateForBQ(strVal);
         } else if (isNumericField) {
           const numVal = parseNumberForBQ(strVal);
           sanitized[key] = numVal;
@@ -801,9 +942,32 @@ function mapToPipelineSchema(row) {
     'Fase_Atual': parse(row['Fase_Atual'] || row['Stage'], 'STRING'),
     'Forecast_SF': parse(row['Forecast_SF'] || row['Forecast'], 'STRING'),
     'Fiscal_Q': parse(row['Fiscal_Q'] || row['Fiscal Quarter'], 'STRING'),
+    'Data_de_criacao': parse(
+      row['Data_de_criacao'] ||
+      row['Data_de_criacao_DE_ONDE_PEGAR'] ||
+      row['Created_Date'] ||
+      row['Date_Created'],
+      'DATE'
+    ),
     'Data_Prevista': parse(row['Data_Prevista'] || row['Expected Close'], 'DATE'),
     'Ciclo_dias': parse(row['Ciclo_dias'] || row['Cycle Days'], 'INTEGER'),
     'Dias_Funil': parse(row['Dias_Funil'] || row['Days in Funnel'], 'INTEGER'),
+    'Subsegmento_de_mercado': parse(
+      row['Subsegmento_de_mercado'] || row['Subsegmento_mercado'] || row['Subsegmento_de_Mercado'],
+      'STRING'
+    ),
+    'Segmento_Consolidado': parse(
+      row['Segmento_Consolidado'] || row['Segmento_consolidado'],
+      'STRING'
+    ),
+    'Portfolio': parse(
+      row['Portfólio'] || row['Portfolio'] || row['Portafolio'] || row['Categoria_SDR'] || row['CategoriaSDR'],
+      'STRING'
+    ),
+    'Portfolio_FDM': parse(
+      row['Portfolio_FDM'] || row['Portfolio_Fdm'] || row['Portfolio FDM'] || row['Categoria_FDM'] || row['CategoriaFDM'],
+      'STRING'
+    ),
     
     // Atividades (podem vir do Sheet ou da Cloud Function)
     'Atividades': parse(row['Atividades'], 'INTEGER'),
@@ -929,15 +1093,6 @@ function parseDateForBQ(val) {
       if (!isNaN(date.getTime())) {
         return str;
       }
-    }
-    
-    // Tentar parse como ISO
-    const isoDate = new Date(str);
-    if (!isNaN(isoDate.getTime())) {
-      const year = isoDate.getFullYear();
-      const month = String(isoDate.getMonth() + 1).padStart(2, '0');
-      const day = String(isoDate.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
     }
     
     return null;
