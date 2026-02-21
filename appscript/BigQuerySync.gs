@@ -65,9 +65,11 @@ function loadSheetData(sheetName) {
       // Detectar se o campo é de data baseado no nome
       // EXCLUSÕES: Mudancas_Close_Date é INTEGER, não DATE
       const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Date', '_Data', 'Fecha_', 'fecha_', 'closed_date', 'created_date'];
-             dateFields.some(pattern => header.includes(pattern)) && 
-             !excludeFields.some(pattern => header.startsWith(pattern))
-             );
+      const excludeFields = ['Mudancas_', 'Total_', 'Ativ_', 'Distribuicao_'];
+      const isDateField = (header === 'Data') || (
+        dateFields.some(pattern => header.includes(pattern)) &&
+        !excludeFields.some(pattern => header.startsWith(pattern))
+      );
       
       if (val === null || val === undefined || val === '') {
         obj[header] = null;
@@ -821,6 +823,77 @@ function ensureEnrichmentColumnsForTable_(projectId, datasetId, tableName) {
   }
 }
 
+function normalizeRecordKeysForBigQuery_(record) {
+  const source = record && typeof record === 'object' ? record : {};
+  const normalized = {};
+  const selectedByLower = {};
+  const preferredNames = {
+    'segmento_consolidado': 'Segmento_consolidado'
+  };
+
+  Object.keys(source).forEach((rawKey) => {
+    const safeKey = String(rawKey || '').trim();
+    if (!safeKey) return;
+
+    const lowerKey = safeKey.toLowerCase();
+    const canonicalKey = preferredNames[lowerKey] || safeKey;
+    const value = source[rawKey];
+
+    if (!Object.prototype.hasOwnProperty.call(selectedByLower, lowerKey)) {
+      selectedByLower[lowerKey] = canonicalKey;
+      normalized[canonicalKey] = value;
+      return;
+    }
+
+    const existingKey = selectedByLower[lowerKey];
+    const existingValue = normalized[existingKey];
+    const hasExisting = !(existingValue === null || existingValue === undefined || existingValue === '');
+    const hasIncoming = !(value === null || value === undefined || value === '');
+
+    if (!hasExisting && hasIncoming) {
+      normalized[existingKey] = value;
+    }
+  });
+
+  return normalized;
+}
+
+function isNumericFieldForBQ_(key) {
+  const keyStr = String(key || '');
+  const lowerKey = keyStr.toLowerCase();
+
+  const numericPatterns = [
+    '_dias', '_score', '_peso', 'atividades', 'mudancas', 'editores',
+    'confianca', 'gross', 'net', 'total_', 'valor_', 'billing_', 'booking_', 'idle_'
+  ];
+  if (numericPatterns.some(pattern => lowerKey.includes(pattern))) {
+    return true;
+  }
+
+  const explicitNumericFields = new Set([
+    'mes',
+    'ano_oportunidade',
+    'valor_fatura_moeda_local_sem_iva',
+    'percentual_margem',
+    'percentual_desconto_xertica_ns',
+    'tipo_cambio_ajustado',
+    'tipo_cambio_diario',
+    'valor_fatura_usd_comercial',
+    'net_revenue',
+    'net_ajustado_usd',
+    'backlog_nomeado',
+    'margem_percentual_final',
+    'desconto_xertica',
+    'custo_percentual',
+    'custo_moeda_local',
+    'backlog_comissao',
+    'net_comissoes',
+    'percentual_margem_net_comissoes'
+  ]);
+
+  return explicitNumericFields.has(lowerKey);
+}
+
 /**
  * Carrega dados usando load job com WRITE_TRUNCATE nativo
  * Mais lento (~5-10s) mas suporta truncate sem problema de streaming buffer
@@ -869,13 +942,12 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
   const sanitizedRecords = records.map((record, idx) => {
     try {
       const sanitized = {};
-      Object.keys(record).forEach(key => {
-        const value = record[key];
+      const normalizedRecord = normalizeRecordKeysForBigQuery_(record);
+      Object.keys(normalizedRecord).forEach(key => {
+        const value = normalizedRecord[key];
         
         // Detectar se o campo deve ser numérico baseado no nome
-        const numericFields = ['_dias', '_Score', '_Peso', 'Atividades', 'Mudancas', 'Editores', 'Confianca', 
-                              'Gross', 'Net', 'Total_', 'Valor_', 'Billing_', 'Booking_', 'Idle_'];
-        const isNumericField = numericFields.some(pattern => key.includes(pattern));
+        const isNumericField = isNumericFieldForBQ_(key);
         
         // Detectar se o campo é de data baseado no nome
         // EXCLUSÕES: Mudancas_Close_Date, Mudancas_Stage, etc são INTEGER
@@ -1070,6 +1142,9 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
         console.log(`⏳ Job ainda processando (${attempts}/${maxAttempts})...`);
       } catch (pollError) {
         console.warn(`⚠️ Erro no polling (tentativa ${attempts}): ${pollError.message}`);
+        if (String((pollError && pollError.message) || '').indexOf('Load job failed:') > -1) {
+          throw pollError;
+        }
         if (attempts >= maxAttempts - 1) {
           // Última tentativa: tentar contar linhas diretamente na tabela
           console.log('⏳ Aguardando 5s extras para job completar...');
@@ -1122,12 +1197,11 @@ function loadUsingStreamingInsert(projectId, datasetId, tableName, records, runI
   // Sanitizar dados
   const sanitizedRecords = records.map(record => {
     const sanitized = {};
-    Object.keys(record).forEach(key => {
-      const value = record[key];
+    const normalizedRecord = normalizeRecordKeysForBigQuery_(record);
+    Object.keys(normalizedRecord).forEach(key => {
+      const value = normalizedRecord[key];
       
-      const numericFields = ['_dias', '_Score', '_Peso', 'Atividades', 'Mudancas', 'Editores', 'Confianca', 
-                            'Gross', 'Net', 'Total_', 'Valor_', 'Billing_', 'Booking_', 'Idle_'];
-      const isNumericField = numericFields.some(pattern => key.includes(pattern));
+      const isNumericField = isNumericFieldForBQ_(key);
       const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Date', '_Data', 'Fecha_', 'fecha_', 'closed_date', 'created_date'];
       const excludeFields = ['Mudancas_', 'Total_', 'Ativ_', 'Distribuicao_'];
       const isDateField = (key === 'Data') || (
