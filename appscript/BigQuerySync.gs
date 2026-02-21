@@ -26,6 +26,8 @@ function loadSheetData(sheetName) {
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       // Remover caracteres especiais (mantém apenas letras, números, espaços, underscores e hífens)
       .replace(/[^a-zA-Z0-9\s_-]/g, '')
+      // Substituir hífens por underscores (nomes de colunas BQ não suportam hífen)
+      .replace(/-+/g, '_')
       // Substituir espaços por underscores
       .replace(/\s+/g, '_')
       // Remover underscores duplicados
@@ -62,9 +64,7 @@ function loadSheetData(sheetName) {
       
       // Detectar se o campo é de data baseado no nome
       // EXCLUSÕES: Mudancas_Close_Date é INTEGER, não DATE
-      const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Date', '_Data', 'Fecha_', 'closed_date', 'created_date'];
-      const excludeFields = ['Mudancas_', 'Total_', 'Ativ_', 'Distribuicao_'];
-      const isDateField = (header === 'Data') || (
+      const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Date', '_Data', 'Fecha_', 'fecha_', 'closed_date', 'created_date'];
              dateFields.some(pattern => header.includes(pattern)) && 
              !excludeFields.some(pattern => header.startsWith(pattern))
              );
@@ -187,12 +187,14 @@ function syncToBigQueryScheduled() {
     const wonRaw = loadSheetData('📈 Análise Ganhas');
     const lostRaw = loadSheetData('📉 Análise Perdidas');
     const atividadesRaw = prepareAtividadesData();
+    const metaRaw = prepareMetaData();
     
     console.log(`📊 Dados carregados do Sheet:`);
     console.log(`   • Pipeline: ${pipelinePrepared.length} deals`);
     console.log(`   • Won: ${wonRaw.length} deals`);
     console.log(`   • Lost: ${lostRaw.length} deals`);
     console.log(`   • Atividades: ${atividadesRaw.length} registros`);
+    console.log(`   • Meta: ${metaRaw.length} registros`);
     
     if (pipelinePrepared.length === 0 && wonRaw.length === 0 && lostRaw.length === 0) {
       throw new Error('Nenhum dado encontrado nas abas de análise');
@@ -235,6 +237,9 @@ function syncToBigQueryScheduled() {
 
     const wonFiltered = wonRaw;
     const lostFiltered = lostRaw;
+
+    // Garantir tabela Meta no dataset antes da carga
+    ensureMetaTableExists_();
     
     // ETAPA 3: Carregar para BigQuery
     console.log('📤 Sincronizando com BigQuery (WRITE_TRUNCATE para evitar duplicação)...');
@@ -262,6 +267,12 @@ function syncToBigQueryScheduled() {
       atividadesRaw,
       'WRITE_TRUNCATE'
     );
+
+    const metaResult = loadToBigQuery(
+      `${BQ_PROJECT}.${BQ_DATASET}.meta`,
+      metaRaw,
+      'WRITE_TRUNCATE'
+    );
     
     // ETAPA 5: Carregar Sales Specialist (se existir)
     let salesSpecResult = { rowsInserted: 0, status: 'SKIPPED' };
@@ -277,6 +288,24 @@ function syncToBigQueryScheduled() {
     } catch (e) {
       console.warn('⚠️ Sales Specialist não processado:', e.message);
     }
+
+    // ETAPA 6: Carregar Faturamento 2026
+    let faturamentoResult = { rowsInserted: 0, status: 'SKIPPED' };
+    try {
+      ensureFaturamento2026TableExists_();
+      const faturamentoData = prepareFaturamento2026Data();
+      if (faturamentoData.length > 0) {
+        faturamentoResult = loadToBigQuery(
+          `${BQ_PROJECT}.${BQ_DATASET}.faturamento_2026`,
+          faturamentoData,
+          'WRITE_TRUNCATE'
+        );
+      } else {
+        console.warn('⚠️ Aba Faturamento_2026 vazia ou não encontrada — sync ignorado');
+      }
+    } catch (e) {
+      console.warn('⚠️ Faturamento 2026 não sincronizado:', e.message);
+    }
     
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
     
@@ -285,7 +314,9 @@ function syncToBigQueryScheduled() {
     console.log(`   • Closed Won: ${wonResult.rowsInserted} linhas`);
     console.log(`   • Closed Lost: ${lostResult.rowsInserted} linhas`);
     console.log(`   • Atividades: ${atividadesResult.rowsInserted} linhas`);
+    console.log(`   • Meta: ${metaResult.rowsInserted} linhas`);
     console.log(`   • Sales Specialist: ${salesSpecResult.rowsInserted} linhas`);
+    console.log(`   • Faturamento 2026: ${faturamentoResult.rowsInserted} linhas`);
     
     // Salvar timestamp da última sync
     PropertiesService.getScriptProperties().setProperty(
@@ -299,7 +330,9 @@ function syncToBigQueryScheduled() {
       wonRows: wonResult.rowsInserted,
       lostRows: lostResult.rowsInserted,
       atividadesRows: atividadesResult.rowsInserted,
+      metaRows: metaResult.rowsInserted,
       salesSpecRows: salesSpecResult.rowsInserted,
+      faturamentoRows: faturamentoResult.rowsInserted,
       duration: duration
     };
     
@@ -330,9 +363,48 @@ function preparePipelineDataForBigQuery_(rows) {
       row.Date_Created ||
       row.Created;
 
+    const cidadeCobranca =
+      row.Cidade_de_cobranca ||
+      row.Cidade_cobranca ||
+      row.Billing_City ||
+      row.BillingCity ||
+      null;
+
+    const estadoProvinciaCobranca =
+      row.Estado_Provincia_de_cobranca ||
+      row.EstadoProvincia_de_cobranca ||
+      row.Estado_Provincia_cobranca ||
+      row.EstadoProvincia_cobranca ||
+      row.Billing_State ||
+      row.BillingState ||
+      null;
+
+    const subsegmentoMercado =
+      row.Subsegmento_de_mercado ||
+      row.Subsegmento_mercado ||
+      row.Subsegmento ||
+      null;
+
+    const segmentoConsolidado =
+      row.Segmento_consolidado ||
+      row.Segmento_Consolidado ||
+      row.SegmentoConsolidado ||
+      null;
+
+    const portfolioFdm =
+      row.Portfolio_FDM ||
+      row.PortfolioFDM ||
+      row.Portfolio ||
+      null;
+
     return {
       ...row,
-      Data_de_criacao: dataCriacao || null
+      Data_de_criacao: dataCriacao || null,
+      Cidade_de_cobranca: cidadeCobranca,
+      Estado_Provincia_de_cobranca: estadoProvinciaCobranca,
+      Subsegmento_de_mercado: subsegmentoMercado,
+      Segmento_consolidado: segmentoConsolidado,
+      Portfolio_FDM: portfolioFdm
     };
   });
 }
@@ -486,6 +558,192 @@ function prepareAtividadesData() {
   return mappedRows;
 }
 
+function prepareMetaData() {
+  const metaSheetName = resolveMetaSheetName_();
+  if (!metaSheetName) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const available = ss.getSheets().map(s => s.getName()).join(', ');
+    console.warn(`⚠️ Aba de Meta não encontrada. Abas disponíveis: ${available}`);
+    return [];
+  }
+
+  if (metaSheetName !== 'Meta') {
+    console.log(`ℹ️ Aba de Meta detectada automaticamente: "${metaSheetName}"`);
+  }
+
+  const rawRows = loadSheetData(metaSheetName);
+  if (!rawRows || rawRows.length === 0) {
+    return [];
+  }
+
+  const normalizeKey = (value) => String(value || '')
+    .toLowerCase()
+    .trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+
+  const aliases = {
+    tipodemeta: 'Tipo_de_meta',
+    tipodemeta_: 'Tipo_de_meta',
+    tipo_meta: 'Tipo_de_meta',
+    mesano: 'Mes_Ano',
+    mes_ano: 'Mes_Ano',
+    monthyear: 'Mes_Ano',
+    gross: 'Gross',
+    net: 'Net',
+    periodofiscal: 'Periodo_Fiscal',
+    fiscalquarter: 'Periodo_Fiscal',
+    fiscal_q: 'Periodo_Fiscal'
+  };
+
+  const padMesAno_ = (val) => {
+    if (val === null || val === undefined || val === '') return null;
+
+    if (val instanceof Date) {
+      const mes = String(val.getMonth() + 1).padStart(2, '0');
+      const ano = val.getFullYear();
+      return `${mes}/${ano}`;
+    }
+
+    if (typeof val === 'number' && isFinite(val) && val >= 20000 && val <= 80000) {
+      const serialDate = new Date(1899, 11, 30);
+      serialDate.setDate(serialDate.getDate() + Math.floor(val) + 1);
+      const mes = String(serialDate.getMonth() + 1).padStart(2, '0');
+      const ano = serialDate.getFullYear();
+      return `${mes}/${ano}`;
+    }
+
+    const str = String(val).trim();
+
+    if (/^\d{5}$/.test(str)) {
+      const serial = parseInt(str, 10);
+      if (serial >= 20000 && serial <= 80000) {
+        const serialDate = new Date(1899, 11, 30);
+        serialDate.setDate(serialDate.getDate() + serial + 1);
+        const mes = String(serialDate.getMonth() + 1).padStart(2, '0');
+        const ano = serialDate.getFullYear();
+        return `${mes}/${ano}`;
+      }
+    }
+
+    const m = str.match(/^(\d{1,2})\/(\d{4})$/);
+    if (!m) return str;
+    const mes = String(parseInt(m[1], 10)).padStart(2, '0');
+    return `${mes}/${m[2]}`;
+  };
+
+  const mappedRows = rawRows.map((row) => {
+    const mapped = {
+      Tipo_de_meta: null,
+      Mes_Ano: null,
+      Gross: null,
+      Net: null,
+      Periodo_Fiscal: null
+    };
+
+    Object.keys(row || {}).forEach((sourceKey) => {
+      const sourceVal = row[sourceKey];
+      if (sourceVal === null || sourceVal === undefined || sourceVal === '') return;
+
+      const norm = normalizeKey(sourceKey);
+      const target = aliases[norm] || null;
+      if (!target) return;
+
+      if (target === 'Gross' || target === 'Net') {
+        mapped[target] = parseNumberForBQ(sourceVal);
+      } else if (target === 'Mes_Ano') {
+        mapped[target] = padMesAno_(sourceVal);
+      } else {
+        mapped[target] = String(sourceVal).trim();
+      }
+    });
+
+    return mapped;
+  }).filter((row) => {
+    return !!(row.Tipo_de_meta || row.Mes_Ano || row.Gross !== null || row.Net !== null || row.Periodo_Fiscal);
+  });
+
+  console.log(`📊 Meta mapeada para schema BQ: ${mappedRows.length}/${rawRows.length} registros válidos`);
+  return mappedRows;
+}
+
+function resolveMetaSheetName_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheets = ss.getSheets().map(s => s.getName());
+
+  const preferredNames = [
+    'Meta',
+    'META',
+    'Metas',
+    '📊 Meta',
+    '📈 Meta',
+    'Meta 2026',
+    'Metas 2026'
+  ];
+
+  for (let i = 0; i < preferredNames.length; i++) {
+    const candidate = preferredNames[i];
+    if (sheets.indexOf(candidate) > -1) return candidate;
+  }
+
+  const normalize = (value) => String(value || '')
+    .toLowerCase()
+    .trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u{1F300}-\u{1FAFF}]/gu, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const scored = sheets
+    .map((name) => ({ raw: name, norm: normalize(name) }))
+    .filter((item) => item.norm.indexOf('meta') > -1)
+    .sort((a, b) => a.norm.length - b.norm.length);
+
+  return scored.length > 0 ? scored[0].raw : null;
+}
+
+function ensureMetaTableExists_() {
+  const tableName = 'meta';
+  try {
+    BigQuery.Tables.get(BQ_PROJECT, BQ_DATASET, tableName);
+    return;
+  } catch (e) {
+    const msg = String((e && e.message) || e || '');
+    if (msg.indexOf('Not found') === -1 && msg.indexOf('404') === -1) {
+      console.warn(`⚠️ Falha ao verificar tabela ${tableName}: ${msg}`);
+      return;
+    }
+  }
+
+  const tableResource = {
+    tableReference: {
+      projectId: BQ_PROJECT,
+      datasetId: BQ_DATASET,
+      tableId: tableName
+    },
+    description: 'Metas mensais (Budget Board) sincronizadas da aba Meta do Google Sheets',
+    timePartitioning: {
+      type: 'DAY',
+      field: 'data_carga'
+    },
+    schema: {
+      fields: [
+        { name: 'Tipo_de_meta', type: 'STRING', mode: 'NULLABLE' },
+        { name: 'Mes_Ano', type: 'STRING', mode: 'NULLABLE' },
+        { name: 'Gross', type: 'FLOAT', mode: 'NULLABLE' },
+        { name: 'Net', type: 'FLOAT', mode: 'NULLABLE' },
+        { name: 'Periodo_Fiscal', type: 'STRING', mode: 'NULLABLE' },
+        { name: 'Run_ID', type: 'TIMESTAMP', mode: 'NULLABLE' },
+        { name: 'data_carga', type: 'TIMESTAMP', mode: 'NULLABLE' }
+      ]
+    }
+  };
+
+  BigQuery.Tables.insert(tableResource, BQ_PROJECT, BQ_DATASET);
+  console.log('✅ Tabela meta criada em BigQuery');
+}
+
 // ==================== LOADER BIGQUERY ====================
 
 /**
@@ -505,6 +763,10 @@ function loadToBigQuery(tableId, records, writeDisposition) {
     console.warn(`⚠️ Nenhum registro para carregar em ${tableName}`);
     return { rowsInserted: 0, jobId: null, status: 'SKIPPED' };
   }
+
+  // Garantir colunas novas de enriquecimento IA antes da carga.
+  // Sem isso, BigQuery descarta campos desconhecidos quando ignoreUnknownValues=true.
+  ensureEnrichmentColumnsForTable_(projectId, datasetId, tableName);
   
   // ESTRATÉGIA:
   // - WRITE_TRUNCATE: usar load job (suporta truncate nativo, sem problema de streaming buffer)
@@ -514,6 +776,48 @@ function loadToBigQuery(tableId, records, writeDisposition) {
     return loadUsingJob(projectId, datasetId, tableName, records, runId);
   } else {
     return loadUsingStreamingInsert(projectId, datasetId, tableName, records, runId);
+  }
+}
+
+function ensureEnrichmentColumnsForTable_(projectId, datasetId, tableName) {
+  try {
+    const targetTables = new Set(['pipeline', 'closed_deals_won', 'closed_deals_lost']);
+    if (!targetTables.has(tableName)) return;
+
+    const requiredFields = [
+      { name: 'Vertical_IA', type: 'STRING', mode: 'NULLABLE' },
+      { name: 'Sub_vertical_IA', type: 'STRING', mode: 'NULLABLE' },
+      { name: 'Sub_sub_vertical_IA', type: 'STRING', mode: 'NULLABLE' },
+      { name: 'Justificativa_IA', type: 'STRING', mode: 'NULLABLE' },
+      { name: 'Owner_Preventa', type: 'STRING', mode: 'NULLABLE' },
+      { name: 'Cidade_de_cobranca', type: 'STRING', mode: 'NULLABLE' },
+      { name: 'Estado_Provincia_de_cobranca', type: 'STRING', mode: 'NULLABLE' },
+      { name: 'Subsegmento_de_mercado', type: 'STRING', mode: 'NULLABLE' },
+      { name: 'Segmento_consolidado', type: 'STRING', mode: 'NULLABLE' },
+      { name: 'Portfolio_FDM', type: 'STRING', mode: 'NULLABLE' }
+    ];
+
+    const table = BigQuery.Tables.get(projectId, datasetId, tableName);
+    const schema = table && table.schema && Array.isArray(table.schema.fields)
+      ? table.schema.fields
+      : [];
+    const existing = new Set(schema.map(f => String(f.name || '').trim()));
+
+    const missing = requiredFields.filter(f => !existing.has(f.name));
+    if (missing.length === 0) {
+      return;
+    }
+
+    const updated = {
+      schema: {
+        fields: schema.concat(missing)
+      }
+    };
+
+    BigQuery.Tables.patch(updated, projectId, datasetId, tableName);
+    console.log(`🧩 Schema atualizado em ${tableName}: adicionadas colunas ${missing.map(f => f.name).join(', ')}`);
+  } catch (e) {
+    console.warn(`⚠️ Não foi possível garantir schema enriquecido em ${tableName}: ${e.message}`);
   }
 }
 
@@ -575,7 +879,7 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
         
         // Detectar se o campo é de data baseado no nome
         // EXCLUSÕES: Mudancas_Close_Date, Mudancas_Stage, etc são INTEGER
-        const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Data', 'Fecha_', 'closed_date', 'created_date'];
+        const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Data', 'Fecha_', 'fecha_', 'closed_date', 'created_date'];
         const excludeFields = ['Mudancas_', 'Total_', 'Ativ_', 'Distribuicao_'];
         const isDateField = (key === 'Data') || (
                dateFields.some(pattern => key.includes(pattern)) && 
@@ -664,7 +968,8 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
       // Mostrar campos relevantes para debug
       const debugFields = ['Atribuido', 'Data', 'Data_de_criacao', 'EmpresaConta', 'Tipo_de_Actividad', 'Comentarios', 'Oportunidade', 'Data_Fechamento', 'Data_Prevista', 'closed_date', 
                           'Gross', 'Net', 'Fiscal_Q', 'Confianca', 'Ciclo_dias', 'Mudancas_Close_Date',
-                          'opportunity_name', 'booking_total_gross', 'fiscal_quarter'];
+                          'opportunity_name', 'booking_total_gross', 'fiscal_quarter',
+                          'Vertical_IA', 'Sub_vertical_IA', 'Sub_sub_vertical_IA', 'Owner_Preventa'];
       debugFields.forEach(field => {
         if (rec.hasOwnProperty(field)) {
           const val = rec[field];
@@ -823,7 +1128,7 @@ function loadUsingStreamingInsert(projectId, datasetId, tableName, records, runI
       const numericFields = ['_dias', '_Score', '_Peso', 'Atividades', 'Mudancas', 'Editores', 'Confianca', 
                             'Gross', 'Net', 'Total_', 'Valor_', 'Billing_', 'Booking_', 'Idle_'];
       const isNumericField = numericFields.some(pattern => key.includes(pattern));
-      const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Date', '_Data', 'Fecha_', 'closed_date', 'created_date'];
+      const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Date', '_Data', 'Fecha_', 'fecha_', 'closed_date', 'created_date'];
       const excludeFields = ['Mudancas_', 'Total_', 'Ativ_', 'Distribuicao_'];
       const isDateField = (key === 'Data') || (
         dateFields.some(pattern => key.includes(pattern)) &&
@@ -908,6 +1213,20 @@ function loadUsingStreamingInsert(projectId, datasetId, tableName, records, runI
  * Lida com conversão de tipos e nomes de colunas
  */
 function mapToPipelineSchema(row) {
+  const aliasValue = (aliasKey, fallbackList) => {
+    if (typeof getFieldByAlias_ === 'function') {
+      return getFieldByAlias_(row, aliasKey, fallbackList);
+    }
+    const list = Array.isArray(fallbackList) ? fallbackList : [];
+    for (let i = 0; i < list.length; i++) {
+      const candidate = list[i];
+      if (Object.prototype.hasOwnProperty.call(row, candidate) && row[candidate] !== '') {
+        return row[candidate];
+      }
+    }
+    return null;
+  };
+
   const parse = (val, type) => {
     if (val === null || val === undefined || val === '') return null;
     switch(type) {
@@ -952,22 +1271,10 @@ function mapToPipelineSchema(row) {
     'Data_Prevista': parse(row['Data_Prevista'] || row['Expected Close'], 'DATE'),
     'Ciclo_dias': parse(row['Ciclo_dias'] || row['Cycle Days'], 'INTEGER'),
     'Dias_Funil': parse(row['Dias_Funil'] || row['Days in Funnel'], 'INTEGER'),
-    'Subsegmento_de_mercado': parse(
-      row['Subsegmento_de_mercado'] || row['Subsegmento_mercado'] || row['Subsegmento_de_Mercado'],
-      'STRING'
-    ),
-    'Segmento_Consolidado': parse(
-      row['Segmento_Consolidado'] || row['Segmento_consolidado'],
-      'STRING'
-    ),
-    'Portfolio': parse(
-      row['Portfólio'] || row['Portfolio'] || row['Portafolio'] || row['Categoria_SDR'] || row['CategoriaSDR'],
-      'STRING'
-    ),
-    'Portfolio_FDM': parse(
-      row['Portfolio_FDM'] || row['Portfolio_Fdm'] || row['Portfolio FDM'] || row['Categoria_FDM'] || row['CategoriaFDM'],
-      'STRING'
-    ),
+    'Subsegmento_de_mercado': parse(aliasValue('subsegmento_mercado'), 'STRING'),
+    'Segmento_Consolidado': parse(aliasValue('segmento_consolidado'), 'STRING'),
+    'Portfolio': parse(aliasValue('portfolio', ['Categoria_SDR', 'CategoriaSDR']), 'STRING'),
+    'Portfolio_FDM': parse(aliasValue('portfolio_fdm'), 'STRING'),
     
     // Atividades (podem vir do Sheet ou da Cloud Function)
     'Atividades': parse(row['Atividades'], 'INTEGER'),
@@ -983,7 +1290,14 @@ function mapToPipelineSchema(row) {
     // Risco & Ação
     'Flags_de_Risco': parse(row['Flags_de_Risco'], 'STRING'),
     'Cd_Ao': parse(row['Cd_Ao'], 'STRING'), // ⚠️ Sem tilde!
-    'Risco_Principal': parse(row['Risco_Principal'], 'STRING')
+    'Risco_Principal': parse(row['Risco_Principal'], 'STRING'),
+
+    // Segmentação IA (preenchidos por CorrigirFiscalQ.gs)
+    'Vertical_IA': parse(aliasValue('vertical_ia'), 'STRING'),
+    'Sub_vertical_IA': parse(aliasValue('sub_vertical_ia'), 'STRING'),
+    'Sub_sub_vertical_IA': parse(aliasValue('sub_sub_vertical_ia'), 'STRING'),
+    'Justificativa_IA': parse(aliasValue('justificativa_ia'), 'STRING'),
+    'Owner_Preventa': parse(aliasValue('owner_preventa'), 'STRING')
   };
 }
 
@@ -991,6 +1305,20 @@ function mapToPipelineSchema(row) {
  * Mapeia dados para schema de closed deals (won ou lost)
  */
 function mapToClosedDealsSchema(row, outcome) {
+  const aliasValue = (aliasKey, fallbackList) => {
+    if (typeof getFieldByAlias_ === 'function') {
+      return getFieldByAlias_(row, aliasKey, fallbackList);
+    }
+    const list = Array.isArray(fallbackList) ? fallbackList : [];
+    for (let i = 0; i < list.length; i++) {
+      const candidate = list[i];
+      if (Object.prototype.hasOwnProperty.call(row, candidate) && row[candidate] !== '') {
+        return row[candidate];
+      }
+    }
+    return null;
+  };
+
   const parse = (val, type) => {
     if (val === null || val === undefined || val === '') return null;
     switch(type) {
@@ -1015,8 +1343,11 @@ function mapToClosedDealsSchema(row, outcome) {
     
     'Gross': parse(row['Gross'] || row['Valor Bruto'], 'FLOAT'),
     'Net': parse(row['Net'] || row['Valor Líquido'], 'FLOAT'),
-    'Portfolio': parse(row['Portfólio'] || row['Portfolio'] || row['Portafolio'], 'STRING'),
+    'Portfolio': parse(aliasValue('portfolio', ['Categoria_SDR', 'CategoriaSDR']), 'STRING'),
     'Segmento': parse(row['Segmento'], 'STRING'),
+    'Subsegmento_de_mercado': parse(aliasValue('subsegmento_mercado'), 'STRING'),
+    'Segmento_Consolidado': parse(aliasValue('segmento_consolidado'), 'STRING'),
+    'Portfolio_FDM': parse(aliasValue('portfolio_fdm'), 'STRING'),
     'Familia_Produto': parse(row['Família Produto'] || row['Familia Produto'] || row['Familia_Produto'], 'STRING'),
     'Status': parse(row['Status'], 'STRING'),
     
@@ -1052,7 +1383,14 @@ function mapToClosedDealsSchema(row, outcome) {
     'Labels': parse(row['Labels'], 'STRING'),
     'Ultima_Atualizacao': parse(row['Ultima_Atualizacao'] || row['Última Atualização'], 'STRING'),
     
-    'outcome': outcome // WON ou LOST
+    'outcome': outcome, // WON ou LOST
+
+    // Segmentação IA (preenchidos por CorrigirFiscalQ.gs)
+    'Vertical_IA': parse(aliasValue('vertical_ia'), 'STRING'),
+    'Sub_vertical_IA': parse(aliasValue('sub_vertical_ia'), 'STRING'),
+    'Sub_sub_vertical_IA': parse(aliasValue('sub_sub_vertical_ia'), 'STRING'),
+    'Justificativa_IA': parse(aliasValue('justificativa_ia'), 'STRING'),
+    'Owner_Preventa': parse(aliasValue('owner_preventa'), 'STRING')
   };
 }
 
@@ -1319,6 +1657,165 @@ function prepareSalesSpecialistData() {
   }
   
   return records;
+}
+
+// ==================== FATURAMENTO 2026 ====================
+
+/**
+ * Garante que a tabela faturamento_2026 existe no BigQuery.
+ * Cria com schema completo (48 colunas nomeadas + Run_ID + data_carga) se não existir.
+ * Se a tabela já existir, só adiciona colunas novas que estiverem faltando.
+ */
+function ensureFaturamento2026TableExists_() {
+  const tableName = 'faturamento_2026';
+
+  // Schema baseado nos aliases de FaturamentoSync.gs + campos BQ padrão
+  const schemaFields = [
+    // ── Identificação ─────────────────────────────────────────────────
+    { name: 'mes',                              type: 'INTEGER',  mode: 'NULLABLE' },
+    { name: 'pais',                             type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'cuenta_financeira',                type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'tipo_documento',                   type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'fecha_factura',                    type: 'STRING',   mode: 'NULLABLE' }, // dd/mm/yyyy
+    { name: 'poliza_pais',                      type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'cuenta_contable',                  type: 'STRING',   mode: 'NULLABLE' },
+    // ── Valores Financeiros ───────────────────────────────────────────
+    { name: 'valor_fatura_moeda_local_sem_iva', type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'percentual_margem',                type: 'FLOAT64',  mode: 'NULLABLE' },
+    // ── Produto / Oportunidade ────────────────────────────────────────
+    { name: 'produto',                          type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'oportunidade',                     type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'cliente',                          type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'tipo_oportunidade_ns',             type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'folio_salesforce_ns',              type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'percentual_desconto_xertica_ns',   type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'tipo_produto',                     type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'portafolio',                       type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'timbradas',                        type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'estado_pagamento',                 type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'fecha_doc_timbrado',               type: 'STRING',   mode: 'NULLABLE' }, // dd/mm/yyyy
+    { name: 'familia',                          type: 'STRING',   mode: 'NULLABLE' },
+    // ── Câmbio ────────────────────────────────────────────────────────
+    { name: 'tipo_cambio_ajustado',             type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'tipo_cambio_diario',               type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'valor_fatura_usd_comercial',       type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'net_revenue',                      type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'net_ajustado_usd',                 type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'backlog_nomeado',                  type: 'FLOAT64',  mode: 'NULLABLE' },
+    // ── Comercial ─────────────────────────────────────────────────────
+    { name: 'pais_comercial',                   type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'comercial',                        type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'ano_oportunidade',                 type: 'INTEGER',  mode: 'NULLABLE' },
+    { name: 'tipo_oportunidade_line',           type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'dominio',                          type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'segmento',                         type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'concatenar',                       type: 'STRING',   mode: 'NULLABLE' },
+    // ── Margens e Etapas ──────────────────────────────────────────────
+    { name: 'margem_percentual_final',          type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'revisao_margem',                   type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'etapa_oportunidade',               type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'desconto_xertica',                 type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'cenario_nr',                       type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'q',                                type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'validacao_custo_margem',           type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'processo',                         type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'coluna_extra',                     type: 'STRING',   mode: 'NULLABLE' }, // coluna vazia original
+    // ── Custos ────────────────────────────────────────────────────────
+    { name: 'custo_percentual',                 type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'custo_moeda_local',                type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'generales_budget',                 type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'backlog_comissao',                 type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'net_comissoes',                    type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'percentual_margem_net_comissoes',  type: 'FLOAT64',  mode: 'NULLABLE' },
+    // ── Metadados BQ ─────────────────────────────────────────────────
+    { name: 'Run_ID',                           type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'data_carga',                       type: 'TIMESTAMP', mode: 'NULLABLE' }
+  ];
+
+  // Verificar se a tabela já existe
+  let tableExists = false;
+  let existingFields = [];
+  try {
+    const existingTable = BigQuery.Tables.get(BQ_PROJECT, BQ_DATASET, tableName);
+    tableExists = true;
+    existingFields = (existingTable.schema && existingTable.schema.fields) || [];
+  } catch (e) {
+    const msg = String((e && e.message) || e || '');
+    if (msg.indexOf('Not found') === -1 && msg.indexOf('404') === -1) {
+      console.warn(`⚠️ Falha ao verificar ${tableName}: ${msg}`);
+      return;
+    }
+    // Tabela não existe → criar
+  }
+
+  if (!tableExists) {
+    const tableResource = {
+      tableReference: { projectId: BQ_PROJECT, datasetId: BQ_DATASET, tableId: tableName },
+      description: 'Faturamento consolidado 2026 — migrado de Faturamento Consolidado (Vizualização Brasil)',
+      schema: { fields: schemaFields }
+    };
+    BigQuery.Tables.insert(tableResource, BQ_PROJECT, BQ_DATASET);
+    console.log(`✅ Tabela ${tableName} criada no BigQuery (${schemaFields.length} colunas)`);
+    return;
+  }
+
+  // Tabela existe → adicionar apenas colunas novas
+  const existingNames = new Set(existingFields.map(f => String(f.name || '').trim()));
+  const missing = schemaFields.filter(f => !existingNames.has(f.name));
+  if (missing.length === 0) return;
+
+  BigQuery.Tables.patch(
+    { schema: { fields: existingFields.concat(missing) } },
+    BQ_PROJECT, BQ_DATASET, tableName
+  );
+  console.log(`🧩 ${tableName}: ${missing.length} coluna(s) adicionada(s) — ${missing.map(f => f.name).join(', ')}`);
+}
+
+/**
+ * Lê a aba Faturamento_2026 (já com headers padronizados gravados por FaturamentoSync.gs)
+ * e retorna o array pronto para loadToBigQuery.
+ * @returns {Array<Object>}
+ */
+function prepareFaturamento2026Data() {
+  const sheetName = 'Faturamento_2026';
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(sheetName);
+
+  if (!sheet || sheet.getLastRow() <= 1) {
+    console.warn(`⚠️ [Faturamento2026] Aba "${sheetName}" vazia ou não encontrada.`);
+    return [];
+  }
+
+  const data    = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const rows    = data.slice(1);
+
+  const result = rows
+    .filter(row => row.some(v => v !== '' && v !== null && v !== undefined))
+    .map(row => {
+      const obj = {};
+      headers.forEach((h, idx) => {
+        const key = String(h).trim();
+        if (!key) return; // ignorar colunas sem header
+        const val = row[idx];
+        if (val === null || val === undefined || val === '') {
+          obj[key] = null;
+        } else if (val instanceof Date) {
+          // Datas: converter para dd/mm/yyyy (mantém padrão já usado na aba)
+          const d = String(val.getDate()).padStart(2, '0');
+          const m = String(val.getMonth() + 1).padStart(2, '0');
+          obj[key] = `${d}/${m}/${val.getFullYear()}`;
+        } else if (typeof val === 'number') {
+          obj[key] = val;
+        } else {
+          obj[key] = String(val).trim() || null;
+        }
+      });
+      return obj;
+    });
+
+  console.log(`📊 [Faturamento2026] ${result.length} registros lidos de "${sheetName}"`);
+  return result;
 }
 
 // ==================== FUNÇÕES AUXILIARES ====================

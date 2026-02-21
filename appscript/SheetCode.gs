@@ -893,7 +893,10 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
 
     // --- ANÁLISE DETERMINÍSTICA (HARD GATES) ---
     const isBaseClient = baseClients.has(item.accName.toLowerCase());
-    const clientProfile = isBaseClient ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT;
+    const _contaFoco1 = classificarContaFoco2026_(item.accName);
+    const clientProfile = _contaFoco1
+      ? (_contaFoco1.tipo === 'BASE INSTALADA' ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT)
+      : (isBaseClient ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT);
     const fiscal = calculateFiscalQuarterForItem_(item, mode);
     const rulesApplied = [];
     
@@ -1249,7 +1252,7 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
     const personas = mode === 'OPEN' ? extractPersonasFromActivities(activityData.fullText, item.desc) : null;
     const bant = mode === 'OPEN' ? calculateBANTScore_(item, activityData) : null;
     const nextStepCheck = mode === 'OPEN' ? validateNextStepConsistency(item.nextStep || item.stage, activityData.fullText, activityData.lastDate) : null;
-    const inactivityGate = mode === 'OPEN' ? checkInactivityGate(idleDays, item.forecast_ia || item.probabilidad > 40 ? (item.probabilidad > 60 ? 'UPSIDE' : 'PIPELINE') : 'PIPELINE', activityData.lastDate, item.stage, daysInFunnel) : null;
+    const inactivityGate = mode === 'OPEN' ? checkInactivityGate(idleDays, (item.probabilidad > 60 ? 'UPSIDE' : 'PIPELINE'), activityData.lastDate, item.stage, daysInFunnel) : null;
     
     // Se inactivityGate detectar bloqueio crítico, adiciona às issues
     if (inactivityGate && inactivityGate.isBlocked) {
@@ -1536,7 +1539,10 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
     }
 
     const isBaseClient = baseClients.has(item.accName.toLowerCase());
-    const clientProfile = isBaseClient ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT;
+    const _contaFoco2 = classificarContaFoco2026_(item.accName);
+    const clientProfile = _contaFoco2
+      ? (_contaFoco2.tipo === 'BASE INSTALADA' ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT)
+      : (isBaseClient ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT);
     const fiscal = calculateFiscalQuarterForItem_(item, mode);
     const rulesApplied = [];
 
@@ -1851,7 +1857,7 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
     const personas = mode === 'OPEN' ? extractPersonasFromActivities(activityData.fullText, item.desc) : null;
     const bant = mode === 'OPEN' ? calculateBANTScore_(item, activityData) : null;
     const nextStepCheck = mode === 'OPEN' ? validateNextStepConsistency(item.nextStep || item.stage, activityData.fullText, activityData.lastDate) : null;
-    const inactivityGate = mode === 'OPEN' ? checkInactivityGate(idleDays, item.forecast_ia || item.probabilidad > 40 ? (item.probabilidad > 60 ? 'UPSIDE' : 'PIPELINE') : 'PIPELINE', activityData.lastDate, item.stage, daysInFunnel) : null;
+    const inactivityGate = mode === 'OPEN' ? checkInactivityGate(idleDays, (item.probabilidad > 60 ? 'UPSIDE' : 'PIPELINE'), activityData.lastDate, item.stage, daysInFunnel) : null;
     
     // Se inactivityGate detectar bloqueio crítico, adiciona às issues
     if (inactivityGate && inactivityGate.isBlocked) {
@@ -2250,11 +2256,11 @@ function setupAnalysisSheet(mode, preserve) {
   if (!preserve) s.clear();
   
   const h = mode === 'OPEN' ? [
-    ["Run ID", "Oportunidade", "Conta", "Perfil", "Produtos", "Vendedor", "Gross", "Net", "Fase Atual", "Forecast SF", "Fiscal Q", "Data Prevista", "Ciclo (dias)", "Dias Funil", "Atividades", "Atividades (Peso)", "Mix Atividades", "Idle (Dias)", "Qualidade Engajamento", "Forecast IA", "Confiança (%)", "Motivo Confiança", "MEDDIC Score", "MEDDIC Gaps", "MEDDIC Evidências", "BANT Score", "BANT Gaps", "BANT Evidências", "Justificativa IA", "Regras Aplicadas", "Incoerência Detectada", "Perguntas de Auditoria IA", "Flags de Risco", "Gaps Identificados", "Cód Ação", "Ação Sugerida", "Risco Principal", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "🚨 Anomalias Detectadas", "Velocity Predição", "Velocity Detalhes", "Território Correto?", "Vendedor Designado", "Estado/Cidade Detectado", "Fonte Detecção", "Calendário Faturação", "Valor Reconhecido Q1", "Valor Reconhecido Q2", "Valor Reconhecido Q3", "Valor Reconhecido Q4", "Data de criação", "Subsegmento de mercado", "Segmento Consolidado", "Portfólio", "Portfolio FDM", "Owner Preventa", "Produtos", "Cidade de cobrança", "Estado/Província de cobrança", "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "Justificativa IA", "🕐 Última Atualização"]
+    ["Run ID", "Oportunidade", "Conta", "Perfil", "Produtos", "Vendedor", "Gross", "Net", "Fase Atual", "Forecast SF", "Fiscal Q", "Data Prevista", "Ciclo (dias)", "Dias Funil", "Atividades", "Atividades (Peso)", "Mix Atividades", "Idle (Dias)", "Qualidade Engajamento", "Forecast IA", "Confiança (%)", "Motivo Confiança", "MEDDIC Score", "MEDDIC Gaps", "MEDDIC Evidências", "BANT Score", "BANT Gaps", "BANT Evidências", "Justificativa IA", "Regras Aplicadas", "Incoerência Detectada", "Perguntas de Auditoria IA", "Flags de Risco", "Gaps Identificados", "Cód Ação", "Ação Sugerida", "Risco Principal", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "🚨 Anomalias Detectadas", "Velocity Predição", "Velocity Detalhes", "Território Correto?", "Vendedor Designado", "Estado/Cidade Detectado", "Fonte Detecção", "Calendário Faturação", "Valor Reconhecido Q1", "Valor Reconhecido Q2", "Valor Reconhecido Q3", "Valor Reconhecido Q4", "Data de criação", "Subsegmento de mercado", "Segmento Consolidado", "Portfólio", "Portfolio FDM", "Owner Preventa", "Produtos (Base)", "Cidade de cobrança", "Estado/Província de cobrança", "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "Justificativa Segmentação", "Evidência Citada IA", "Avaliação Personas IA", "🕐 Última Atualização"]
   ] : mode === 'WON' ? [
-    ["Run ID", "Oportunidade", "Conta", "Perfil Cliente", "Vendedor", "Gross", "Net", "Portfólio", "Segmento", "Família Produto", "Status", "Fiscal Q", "Data Fechamento", "Ciclo (dias)", "Produtos", "📝 Resumo Análise", "🎯 Causa Raiz", "✨ Fatores Sucesso", "Tipo Resultado", "Qualidade Engajamento", "Gestão Oportunidade", "-", "💡 Lições Aprendidas", "# Atividades", "Ativ. 7d", "Ativ. 30d", "Distribuição Tipos", "Período Pico", "Cadência Média (dias)", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "Campos + Alterados", "Padrão Mudanças", "Freq. Mudanças", "# Editores", "🏷️ Labels", "Owner Preventa", "Cidade de cobrança", "Estado/Província de cobrança", "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "Justificativa IA", "🕐 Última Atualização"]
+    ["Run ID", "Oportunidade", "Conta", "Perfil Cliente", "Vendedor", "Gross", "Net", "Portfólio", "Segmento", "Família Produto", "Status", "Fiscal Q", "Data Fechamento", "Ciclo (dias)", "Produtos", "📝 Resumo Análise", "🎯 Causa Raiz", "✨ Fatores Sucesso", "Tipo Resultado", "Qualidade Engajamento", "Gestão Oportunidade", "-", "💡 Lições Aprendidas", "# Atividades", "Ativ. 7d", "Ativ. 30d", "Distribuição Tipos", "Período Pico", "Cadência Média (dias)", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "Campos + Alterados", "Padrão Mudanças", "Freq. Mudanças", "# Editores", "🏷️ Labels", "Owner Preventa", "Cidade de cobrança", "Estado/Província de cobrança", "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "🕐 Última Atualização"]
   ] : [
-    ["Run ID", "Oportunidade", "Conta", "Perfil Cliente", "Vendedor", "Gross", "Net", "Portfólio", "Segmento", "Família Produto", "Status", "Fiscal Q", "Data Fechamento", "Ciclo (dias)", "Produtos", "📝 Resumo Análise", "🎯 Causa Raiz", "⚠️ Causas Secundárias", "Tipo Resultado", "Evitável?", "🚨 Sinais Alerta", "Momento Crítico", "💡 Lições Aprendidas", "# Atividades", "Ativ. 7d", "Ativ. 30d", "Distribuição Tipos", "Período Pico", "Cadência Média (dias)", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "Campos + Alterados", "Padrão Mudanças", "Freq. Mudanças", "# Editores", "🏷️ Labels", "Owner Preventa", "Cidade de cobrança", "Estado/Província de cobrança", "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "Justificativa IA", "🕐 Última Atualização"]
+    ["Run ID", "Oportunidade", "Conta", "Perfil Cliente", "Vendedor", "Gross", "Net", "Portfólio", "Segmento", "Família Produto", "Status", "Fiscal Q", "Data Fechamento", "Ciclo (dias)", "Produtos", "📝 Resumo Análise", "🎯 Causa Raiz", "⚠️ Causas Secundárias", "Tipo Resultado", "Evitável?", "🚨 Sinais Alerta", "Momento Crítico", "💡 Lições Aprendidas", "# Atividades", "Ativ. 7d", "Ativ. 30d", "Distribuição Tipos", "Período Pico", "Cadência Média (dias)", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "Campos + Alterados", "Padrão Mudanças", "Freq. Mudanças", "# Editores", "🏷️ Labels", "Owner Preventa", "Cidade de cobrança", "Estado/Província de cobrança", "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "🕐 Última Atualização"]
   ];
 
   s.getRange(1, 1, 1, h[0].length).setValues(h)
@@ -5293,15 +5299,18 @@ function syncBaseToAnalysis_(mode) {
         owner: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Vendedor')),
         account: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Conta')),
         products: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Produtos')),
-        ownerPreventa: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Owner Preventa')),
-        billingCity: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Cidade de cobrança')),
-        billingState: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Estado/Província de cobrança')),
-        verticalIA: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Vertical IA')),
-        subVerticalIA: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Sub-vertical IA')),
-        subSubVerticalIA: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Sub-sub-vertical IA')),
-        justificativaIAFinal: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Justificativa IA')),
-        portfolio: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Portfólio')),
+        ownerPreventa: (typeof findColumnByAlias_ === 'function') ? findColumnByAlias_(analysisHeaders, 'owner_preventa') : analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Owner Preventa')),
+        billingCity: (typeof findColumnByAlias_ === 'function') ? findColumnByAlias_(analysisHeaders, 'billing_city') : analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Cidade de cobrança')),
+        billingState: (typeof findColumnByAlias_ === 'function') ? findColumnByAlias_(analysisHeaders, 'billing_state') : analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Estado/Província de cobrança')),
+        verticalIA: (typeof findColumnByAlias_ === 'function') ? findColumnByAlias_(analysisHeaders, 'vertical_ia') : analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Vertical IA')),
+        subVerticalIA: (typeof findColumnByAlias_ === 'function') ? findColumnByAlias_(analysisHeaders, 'sub_vertical_ia') : analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Sub-vertical IA')),
+        subSubVerticalIA: (typeof findColumnByAlias_ === 'function') ? findColumnByAlias_(analysisHeaders, 'sub_sub_vertical_ia') : analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Sub-sub-vertical IA')),
+        justificativaIAFinal: (typeof findColumnByAlias_ === 'function') ? findColumnByAlias_(analysisHeaders, 'justificativa_ia') : analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Justificativa IA')),
+        portfolio: (typeof findColumnByAlias_ === 'function') ? findColumnByAlias_(analysisHeaders, 'portfolio') : analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Portfólio')),
         segment: analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Segmento')),
+        subsegmentoMercado: (typeof findColumnByAlias_ === 'function') ? findColumnByAlias_(analysisHeaders, 'subsegmento_mercado') : analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Subsegmento de mercado')),
+        segmentoConsolidado: (typeof findColumnByAlias_ === 'function') ? findColumnByAlias_(analysisHeaders, 'segmento_consolidado') : analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Segmento Consolidado')),
+        portfolioFDM: (typeof findColumnByAlias_ === 'function') ? findColumnByAlias_(analysisHeaders, 'portfolio_fdm') : analysisHeaders.findIndex(h => normText_(String(h)) === normText_('Portfolio FDM')),
         forecast: analysisHeaders.findIndex(h => normText_(String(h)).includes('FORECAST') && normText_(String(h)).includes('SF')),
         ciclo: analysisHeaders.findIndex(h => normText_(String(h)).includes('CICLO') && normText_(String(h)).includes('DIAS')),
         diasFunil: analysisHeaders.findIndex(h => normText_(String(h)).includes('DIAS') && normText_(String(h)).includes('FUNIL')),
@@ -5334,6 +5343,9 @@ function syncBaseToAnalysis_(mode) {
         const gross = parseFloat(baseData[i][cols.p_gross]) || 0;
         const net = parseFloat(baseData[i][cols.p_net]) || 0;
         const product = String(baseData[i][cols.p_prod] || '').trim();
+        const portfolioFromCategoriaSDR = cols.p_categoria_sdr > -1 ? String(baseData[i][cols.p_categoria_sdr] || '').trim() : '';
+        const portfolioFromBase = cols.p_portfolio > -1 ? String(baseData[i][cols.p_portfolio] || '').trim() : '';
+        const portfolioResolved = (mode === 'OPEN' || mode === 'WON') ? portfolioFromCategoriaSDR : portfolioFromBase;
         
         if (!baseAggregated.has(normName)) {
           // === PADRONIZAÇÃO FORÇADA DE DATAS PARA DD/MM/AAAA ===
@@ -5372,8 +5384,11 @@ function syncBaseToAnalysis_(mode) {
             owner: String(baseData[i][cols.p_owner] || '').trim(),
             ownerPreventa: cols.p_owner_preventa > -1 ? String(baseData[i][cols.p_owner_preventa] || '').trim() : '',
             account: String(baseData[i][cols.p_acc] || '').trim(),
-            portfolio: String(baseData[i][cols.p_portfolio] || '').trim(),
+            portfolio: portfolioResolved,
             segment: String(baseData[i][cols.p_segment] || '').trim(),
+            subsegmentoMercado: cols.p_subsegmento_mercado > -1 ? String(baseData[i][cols.p_subsegmento_mercado] || '').trim() : '',
+            segmentoConsolidado: cols.p_segmento_consolidado > -1 ? String(baseData[i][cols.p_segmento_consolidado] || '').trim() : '',
+            productFamily: cols.p_prod_family > -1 ? String(baseData[i][cols.p_prod_family] || '').trim() : '',
             billingCity: cols.p_billing_city > -1 ? String(baseData[i][cols.p_billing_city] || '').trim() : '',
             billingState: cols.p_billing_state > -1 ? String(baseData[i][cols.p_billing_state] || '').trim() : '',
             forecast: cols.p_forecast > -1 ? String(baseData[i][cols.p_forecast] || '').trim() : '',
@@ -5384,6 +5399,18 @@ function syncBaseToAnalysis_(mode) {
         const agg = baseAggregated.get(normName);
         agg.gross += gross;
         agg.net += net;
+        if (!agg.portfolio) {
+          agg.portfolio = portfolioResolved;
+        }
+        if (!agg.subsegmentoMercado && cols.p_subsegmento_mercado > -1) {
+          agg.subsegmentoMercado = String(baseData[i][cols.p_subsegmento_mercado] || '').trim();
+        }
+        if (!agg.segmentoConsolidado && cols.p_segmento_consolidado > -1) {
+          agg.segmentoConsolidado = String(baseData[i][cols.p_segmento_consolidado] || '').trim();
+        }
+        if (!agg.productFamily && cols.p_prod_family > -1) {
+          agg.productFamily = String(baseData[i][cols.p_prod_family] || '').trim();
+        }
         if (product && !agg.products.includes(product)) {
           agg.products.push(product);
         }
@@ -5509,6 +5536,40 @@ function syncBaseToAnalysis_(mode) {
           if (currentSegment !== baseData_opp.segment) {
             analysisData[i][colMap.segment] = baseData_opp.segment;
             changes.push(`Segmento: "${currentSegment}" → "${baseData_opp.segment}"`);
+            hasChanges = true;
+          }
+        }
+
+        // Atualizar SUBSEGMENTO DE MERCADO
+        if (colMap.subsegmentoMercado > -1 && baseData_opp.subsegmentoMercado) {
+          const currentSubsegmento = String(analysisData[i][colMap.subsegmentoMercado] || '').trim();
+          if (currentSubsegmento !== baseData_opp.subsegmentoMercado) {
+            analysisData[i][colMap.subsegmentoMercado] = baseData_opp.subsegmentoMercado;
+            changes.push(`Subsegmento de mercado: "${currentSubsegmento}" → "${baseData_opp.subsegmentoMercado}"`);
+            hasChanges = true;
+          }
+        }
+
+        // Atualizar SEGMENTO CONSOLIDADO
+        if (colMap.segmentoConsolidado > -1 && baseData_opp.segmentoConsolidado) {
+          const currentSegmentoCons = String(analysisData[i][colMap.segmentoConsolidado] || '').trim();
+          if (currentSegmentoCons !== baseData_opp.segmentoConsolidado) {
+            analysisData[i][colMap.segmentoConsolidado] = baseData_opp.segmentoConsolidado;
+            changes.push(`Segmento Consolidado: "${currentSegmentoCons}" → "${baseData_opp.segmentoConsolidado}"`);
+            hasChanges = true;
+          }
+        }
+
+        // Atualizar PORTFOLIO FDM (derivado)
+        if (colMap.portfolioFDM > -1) {
+          const produtosConcat = (baseData_opp.products && baseData_opp.products.length > 0)
+            ? baseData_opp.products.join(' | ')
+            : '';
+          const novoPortfolioFDM = deriveCategoriaFDM_(baseData_opp.productFamily, produtosConcat);
+          const currentPortfolioFDM = String(analysisData[i][colMap.portfolioFDM] || '').trim();
+          if (novoPortfolioFDM && currentPortfolioFDM !== novoPortfolioFDM) {
+            analysisData[i][colMap.portfolioFDM] = novoPortfolioFDM;
+            changes.push(`Portfolio FDM: "${currentPortfolioFDM}" → "${novoPortfolioFDM}"`);
             hasChanges = true;
           }
         }
@@ -6033,21 +6094,6 @@ function recalcularChangeTrackingClosedDeals_() {
 }
 
 /**
- * Obtém o Run ID da execução atual (criando se não existir)
- * @private
- */
-function getRunId_(mode) {
-  const props = PropertiesService.getScriptProperties();
-  const key = `RUN_ID_${mode}`;
-  let runId = props.getProperty(key);
-  if (!runId) {
-    runId = new Date().toISOString();
-    props.setProperty(key, runId);
-  }
-  return runId;
-}
-
-/**
  * Recalcula datas de fechamento para deals Won/Lost usando data da última mudança de fase
  * @private
  */
@@ -6394,7 +6440,10 @@ function processarAnaliseCompleta_(oppName, mode, config) {
   
   const baseClients = getBaseClientsCache();
   const isBaseClient = baseClients.has(item.accName.toLowerCase());
-  const clientProfile = isBaseClient ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT;
+  const _contaFoco3 = classificarContaFoco2026_(item.accName);
+  const clientProfile = _contaFoco3
+    ? (_contaFoco3.tipo === 'BASE INSTALADA' ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT)
+    : (isBaseClient ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT);
   const fiscal = calculateFiscalQuarterForItem_(item, mode);
   const hoje = new Date();
   const runId = getRunId_(mode);
@@ -6448,7 +6497,7 @@ function processarAnaliseCompleta_(oppName, mode, config) {
     const personas = extractPersonasFromActivities(activityData.fullText, item.desc);
     const bant = calculateBANTScore_(item, activityData);
     const nextStepCheck = validateNextStepConsistency(item.nextStep || item.stage, activityData.fullText, activityData.lastDate);
-    const inactivityGate = checkInactivityGate(idleDays, item.forecast_ia || item.probabilidad > 40 ? (item.probabilidad > 60 ? 'UPSIDE' : 'PIPELINE') : 'PIPELINE', activityData.lastDate, item.stage, daysInFunnel);
+    const inactivityGate = checkInactivityGate(idleDays, (item.probabilidad > 60 ? 'UPSIDE' : 'PIPELINE'), activityData.lastDate, item.stage, daysInFunnel);
     
     if (inactivityGate && inactivityGate.isBlocked) {
       governanceIssues.push("INATIVIDADE-GATE-CRÍTICO");

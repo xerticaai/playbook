@@ -10,116 +10,14 @@
  * 3. CICLO: Recalcula dias entre data de criação e data de fechamento
  * 
  * Esta correção atualiza todas as análises existentes em uma única execução
+ * 
+ * DEPENDÊNCIAS:
+ * - ShareCode.gs: callGeminiAPI, cleanAndParseJSON, normText_
+ * - SheetCode.gs: findColumnByPatterns_, logToSheet
  */
 
-/**
- * Diagnóstico completo de datas em todas as abas
- */
-function diagnosticarTodasDatas() {
-  console.log('\n🔍 ========================================');
-  console.log('🔍 DIAGNÓSTICO COMPLETO DE DATAS');
-  console.log('🔍 ========================================\n');
-  
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  
-  // Diagnosticar TODAS as abas da base
-  const abasDiagnostico = ss.getSheets().map(sheet => sheet.getName());
-  
-  const relatorio = [];
-  const violacoes = [];
-  const today = normalizeDateToNoon_(new Date());
-  
-  for (const abaNome of abasDiagnostico) {
-    const sheet = ss.getSheetByName(abaNome);
-    
-    if (!sheet) {
-      console.log(`⚠️ Aba "${abaNome}" não encontrada - PULANDO\n`);
-      continue;
-    }
-    
-    console.log(`\n📋 ==================== ${abaNome} ====================`);
-    
-    const data = sheet.getDataRange().getValues();
-    const displayData = sheet.getDataRange().getDisplayValues();
-    
-    if (data.length <= 1) {
-      console.log('   ⚠️ Aba vazia ou só com header\n');
-      continue;
-    }
-    
-    const headers = data[0];
-    const rows = data.slice(1);
-    const displayRows = displayData.slice(1);
-    
-    // Identificar colunas de data
-    const dateColumns = identificarColunasDatas_(headers);
-    
-    console.log(`   📊 Total de colunas: ${headers.length}`);
-    console.log(`   📅 Colunas de data identificadas: ${dateColumns.length}\n`);
-    
-    if (dateColumns.length === 0) {
-      console.log('   ⚠️ Nenhuma coluna de data encontrada\n');
-      continue;
-    }
-    
-    // Diagnosticar cada coluna de data
-    for (const colInfo of dateColumns) {
-      const idx = colInfo.idx;
-      const nome = colInfo.name;
-      
-      console.log(`   🔍 Coluna [${idx + 1}]: "${nome}"`);
-      
-      const diagnostico = diagnosticarColuna_(rows, displayRows, idx, nome, abaNome, today);
-      
-      console.log(`      📊 Total valores: ${diagnostico.total}`);
-      console.log(`      📊 Vazios: ${diagnostico.vazios}`);
-      console.log(`      📊 Date objects: ${diagnostico.dateObjects}`);
-      console.log(`      📊 Strings: ${diagnostico.strings}`);
-      console.log(`      📊 Numbers: ${diagnostico.numbers}`);
-      console.log(`      📊 Numbers < 1000: ${diagnostico.numbersSmall}`);
-      
-      if (diagnostico.formatosString.size > 0) {
-        console.log(`      📝 Formatos de string detectados:`);
-        diagnostico.formatosString.forEach((count, formato) => {
-          console.log(`         • ${formato}: ${count} ocorrências`);
-        });
-      }
-      
-      if (diagnostico.amostras.length > 0) {
-        console.log(`      🔬 Amostras (primeiras 5 não-vazias):`);
-        diagnostico.amostras.forEach((amostra, i) => {
-          console.log(`         [${i+1}] RAW: ${JSON.stringify(amostra.raw)} | DISPLAY: "${amostra.display}" | TIPO: ${amostra.tipo}`);
-        });
-      }
-      
-      console.log('');
-      
-      relatorio.push({
-        aba: abaNome,
-        coluna: nome,
-        indice: idx + 1,
-        diagnostico: diagnostico
-      });
-
-      if (diagnostico.violacoes && diagnostico.violacoes.length > 0) {
-        violacoes.push(...diagnostico.violacoes);
-      }
-    }
-  }
-
-  if (violacoes.length > 0) {
-    writeDateDiagnosticsReport_(violacoes);
-    console.log(`✅ Relatorio de violacoes gerado: ${violacoes.length} registros`);
-  } else {
-    console.log('✅ Nenhuma violacao de formato ou data futura encontrada');
-  }
-  
-  console.log('\n✅ ========================================');
-  console.log('✅ DIAGNÓSTICO COMPLETO');
-  console.log('✅ ========================================\n');
-  
-  return relatorio;
-}
+// Funções de diagnóstico movidas para:
+// appscript/backup/Backup_CorrigirFiscalQ_FuncoesRemovidas_2026_02_21.gs
 
 /**
  * Normaliza datas em todas as abas (sem recalcular Fiscal Q)
@@ -305,564 +203,10 @@ function normalizarDatasAba_(sheet) {
 /**
  * Configura trigger para normalizacao de datas a cada 30 minutos
  */
-function getUiIfAvailable_() {
-  try {
-    return SpreadsheetApp.getUi();
-  } catch (e) {
-    return null;
-  }
-}
-
-function configurarNormalizacaoDatasAutomatica() {
-  const ui = getUiIfAvailable_();
-
-  if (ui) {
-    const response = ui.alert(
-      '🧹 Normalizacao Automatica de Datas',
-      'Deseja ativar a normalizacao automatica de datas?\n\n' +
-      '⏰ Frequencia: a cada 30 minutos\n' +
-      '📋 Abrange todas as abas da base\n\n' +
-      'Continuar?',
-      ui.ButtonSet.YES_NO
-    );
-    if (response !== ui.Button.YES) return;
-  }
-
-  clearTriggersByHandler_('normalizarDatasTodasAbas');
-
-  ScriptApp.newTrigger('normalizarDatasTodasAbas')
-    .timeBased()
-    .everyMinutes(30)
-    .create();
-
-  if (ui) {
-    ui.alert(
-      '✅ Normalizacao Automatica Ativada',
-      'Trigger criado para normalizar datas a cada 30 minutos.',
-      ui.ButtonSet.OK
-    );
-  } else {
-    console.log('✅ Normalizacao automatica ativada (a cada 30 min).');
-  }
-}
-
-const FISCALQ_REFRESH_LOG_SHEET_ = 'Auto Refresh Execution Log';
-const FISCALQ_REFRESH_PROP_TS_ = 'FISCALQ_LAST_REFRESH_TS';
-const FISCALQ_REFRESH_MONITOR_HANDLER_ = 'monitorarRefreshSalesConnectorFiscalQ';
-const FISCALQ_REFRESH_TARGET_SHEETS_ = [
-  'Pipeline_Aberto',
-  'Historico_Ganhos',
-  'Historico_Perdidas',
-  'Historico_Alteracoes_Ganhos',
-  'Alteracoes_Oportunidade',
-  'Atividades'
-];
-
-function parsePtBrDateTime_(val) {
-  if (!val) return null;
-  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
-  const s = String(val).trim();
-  if (!s) return null;
-
-  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-  if (!m) return null;
-
-  const day = parseInt(m[1], 10);
-  const month = parseInt(m[2], 10);
-  const year = parseInt(m[3], 10);
-  const hh = parseInt(m[4], 10);
-  const mm = parseInt(m[5], 10);
-  const ss = parseInt(m[6] || '0', 10);
-
-  const dt = new Date(year, month - 1, day, hh, mm, ss, 0);
-  if (isNaN(dt.getTime())) return null;
-  if (dt.getFullYear() !== year || (dt.getMonth() + 1) !== month || dt.getDate() !== day) return null;
-  return dt;
-}
-
-function getRefreshLogLatestTimestamp_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const logSheet = ss.getSheetByName(FISCALQ_REFRESH_LOG_SHEET_);
-  if (!logSheet) return null;
-
-  const lastRow = logSheet.getLastRow();
-  const lastCol = logSheet.getLastColumn();
-  if (lastRow <= 1 || lastCol <= 0) return null;
-
-  const data = logSheet.getRange(1, 1, lastRow, lastCol).getValues();
-  const headers = data[0].map(h => String(h || '').trim().toLowerCase());
-  const colRefresh = headers.findIndex(h => h === 'refresh time' || h === 'refresh' || h.includes('refresh'));
-  if (colRefresh === -1) return null;
-
-  let maxTs = null;
-  for (let i = 1; i < data.length; i++) {
-    const dt = parsePtBrDateTime_(data[i][colRefresh]);
-    if (!dt) continue;
-    if (!maxTs || dt.getTime() > maxTs.getTime()) maxTs = dt;
-  }
-  return maxTs;
-}
-
-/**
- * Configura monitor do Sales Connector para disparar Corrigir Fiscal Q quando houver novo refresh.
- * Trigger time-based (15 min), sem onEdit.
- */
-function configurarMonitorRefreshFiscalQ() {
-  const ui = getUiIfAvailable_();
-  if (ui) {
-    const response = ui.alert(
-      '🔗 Monitor FiscalQ por Refresh Log',
-      'Ativar monitor automático baseado na aba "Auto Refresh Execution Log"?\n\n' +
-      '• Verificação a cada 15 minutos\n' +
-      '• Dispara normalização + recálculo somente se houver novo refresh SUCCESS\n' +
-      '• Não usa gatilho onEdit\n\n' +
-      'Continuar?',
-      ui.ButtonSet.YES_NO
-    );
-    if (response !== ui.Button.YES) return;
-  }
-
-  clearTriggersByHandler_(FISCALQ_REFRESH_MONITOR_HANDLER_);
-  // Evita concorrência com trigger antigo de normalização cega
-  clearTriggersByHandler_('normalizarDatasTodasAbas');
-
-  const latest = getRefreshLogLatestTimestamp_();
-  if (latest) {
-    PropertiesService.getScriptProperties().setProperty(FISCALQ_REFRESH_PROP_TS_, String(latest.getTime()));
-  }
-
-  ScriptApp.newTrigger(FISCALQ_REFRESH_MONITOR_HANDLER_)
-    .timeBased()
-    .everyMinutes(15)
-    .create();
-
-  if (ui) {
-    ui.alert(
-      '✅ Monitor Ativado',
-      'Monitor de refresh configurado (15 min).\n' +
-      'A rotina FiscalQ será executada quando houver novo SUCCESS nas abas-base.',
-      ui.ButtonSet.OK
-    );
-  } else {
-    console.log('✅ Monitor FiscalQ por refresh ativado (15 min).');
-  }
-}
-
-function desativarMonitorRefreshFiscalQ() {
-  const ui = getUiIfAvailable_();
-  if (ui) {
-    const response = ui.alert(
-      '⏸️ Desativar Monitor FiscalQ',
-      'Remover trigger de monitoramento por Refresh Log?\n\nContinuar?',
-      ui.ButtonSet.YES_NO
-    );
-    if (response !== ui.Button.YES) return;
-  }
-
-  clearTriggersByHandler_(FISCALQ_REFRESH_MONITOR_HANDLER_);
-  if (ui) {
-    ui.alert('✅ Monitor Desativado', 'Trigger removido com sucesso.', ui.ButtonSet.OK);
-  } else {
-    console.log('✅ Monitor FiscalQ desativado.');
-  }
-}
-
-/**
- * Trigger target: verifica Auto Refresh Execution Log e dispara rotina fiscal somente quando necessário.
- */
-function monitorarRefreshSalesConnectorFiscalQ() {
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(5000)) {
-    console.warn('⏳ monitorarRefreshSalesConnectorFiscalQ: execução já em andamento, pulando.');
-    return;
-  }
-
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const logSheet = ss.getSheetByName(FISCALQ_REFRESH_LOG_SHEET_);
-    if (!logSheet) {
-      console.warn(`⚠️ Aba "${FISCALQ_REFRESH_LOG_SHEET_}" não encontrada.`);
-      return;
-    }
-
-    const lastRow = logSheet.getLastRow();
-    const lastCol = logSheet.getLastColumn();
-    if (lastRow <= 1 || lastCol <= 0) return;
-
-    const data = logSheet.getRange(1, 1, lastRow, lastCol).getValues();
-    const headers = data[0].map(h => String(h || '').trim().toLowerCase());
-    const colRefresh = headers.findIndex(h => h === 'refresh time' || h.includes('refresh'));
-    const colSheet = headers.findIndex(h => h === 'sheet');
-    const colStatus = headers.findIndex(h => h === 'status');
-    if (colRefresh === -1 || colSheet === -1 || colStatus === -1) {
-      console.warn('⚠️ Colunas esperadas não encontradas em Auto Refresh Execution Log.');
-      return;
-    }
-
-    const props = PropertiesService.getScriptProperties();
-    const lastTs = parseInt(props.getProperty(FISCALQ_REFRESH_PROP_TS_) || '0', 10) || 0;
-
-    let hasNewSuccessInBase = false;
-    let maxSeenTs = lastTs;
-
-    // percorre de baixo para cima (mais recentes primeiro)
-    for (let i = data.length - 1; i >= 1; i--) {
-      const row = data[i];
-      const dt = parsePtBrDateTime_(row[colRefresh]);
-      if (!dt) continue;
-      const ts = dt.getTime();
-
-      if (ts <= lastTs) break;
-      if (ts > maxSeenTs) maxSeenTs = ts;
-
-      const sheetName = String(row[colSheet] || '').trim();
-      const status = String(row[colStatus] || '').trim().toLowerCase();
-      if (status === 'success' && FISCALQ_REFRESH_TARGET_SHEETS_.indexOf(sheetName) > -1) {
-        hasNewSuccessInBase = true;
-      }
-    }
-
-    if (!hasNewSuccessInBase) {
-      if (maxSeenTs > lastTs) {
-        props.setProperty(FISCALQ_REFRESH_PROP_TS_, String(maxSeenTs));
-      }
-      return;
-    }
-
-    console.log('🔄 Novo refresh SUCCESS detectado nas abas-base. Iniciando normalização + recálculo FiscalQ...');
-    normalizarDatasTodasAbas();
-    recalcularFiscalQTodasAnalises();
-
-    props.setProperty(FISCALQ_REFRESH_PROP_TS_, String(maxSeenTs));
-    console.log('✅ Rotina FiscalQ concluída após refresh do Sales Connector.');
-  } catch (e) {
-    console.error(`❌ monitorarRefreshSalesConnectorFiscalQ falhou: ${e.message}`);
-    logToSheet("ERROR", "FiscalQMonitor", `Falha no monitor de refresh: ${e.message}`);
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-/**
- * Desativa trigger automatico de normalizacao de datas
- */
-function desativarNormalizacaoDatasAutomatica() {
-  const ui = getUiIfAvailable_();
-
-  if (ui) {
-    const response = ui.alert(
-      '🛑 Desativar Normalizacao Automatica',
-      'Remover trigger de normalizacao automatica de datas?\n\n' +
-      'Continuar?',
-      ui.ButtonSet.YES_NO
-    );
-    if (response !== ui.Button.YES) return;
-  }
-
-  clearTriggersByHandler_('normalizarDatasTodasAbas');
-
-  if (ui) {
-    ui.alert(
-      '✅ Normalizacao Automatica Desativada',
-      'Trigger removido com sucesso.',
-      ui.ButtonSet.OK
-    );
-  } else {
-    console.log('✅ Normalizacao automatica desativada.');
-  }
-}
-
-/**
- * Identificar colunas que contêm datas (helper function)
- */
-function identificarColunasDatas_(headers) {
-  const dateColumns = [];
-  
-  headers.forEach((header, idx) => {
-    const headerLower = String(header).toLowerCase().trim();
-    
-    // EXCLUSÕES: Colunas que contêm palavras de data mas NÃO são datas reais
-    const isExcluded = (
-      headerLower.includes('mudanças') ||
-      headerLower.includes('mudancas') ||
-      headerLower.includes('total') ||
-      headerLower.includes('críticas') ||
-      headerLower.includes('criticas') ||
-      headerLower.includes('#') ||
-      headerLower.includes('freq') ||
-      headerLower.includes('padrão') ||
-      headerLower.includes('padrao') ||
-      headerLower.includes('duração') ||
-      headerLower.includes('duracao') ||
-      headerLower.includes('última atualização') ||
-      headerLower.includes('ultima atualizacao') ||
-      headerLower.includes('last updated') ||
-      headerLower.includes('🕐')  // Emoji de relógio usado em metadados
-    );
-    
-    if (isExcluded) return;
-    
-    // Padrões que indicam coluna de data REAL
-    const isDateColumn = (
-      headerLower.includes('data') ||
-      headerLower.includes('date') ||
-      headerLower.includes('fecha') ||
-      headerLower.includes('📅') ||
-      headerLower.includes('⏰')
-    );
-    
-    if (isDateColumn) {
-      dateColumns.push({ idx, name: header });
-    }
-  });
-  
-  return dateColumns;
-}
-
-/**
- * Diagnosticar uma coluna específica
- */
-function diagnosticarColuna_(rows, displayRows, idx, nome, sheetName, today) {
-  const resultado = {
-    total: rows.length,
-    vazios: 0,
-    dateObjects: 0,
-    strings: 0,
-    numbers: 0,
-    numbersSmall: 0,
-    formatosString: new Map(),
-    amostras: [],
-    violacoes: []
-  };
-  
-  let amostraCount = 0;
-  
-  for (let i = 0; i < rows.length; i++) {
-    const raw = rows[i][idx];
-    const display = displayRows[i][idx];
-    
-    // Contar vazios
-    if (!raw || raw === '') {
-      resultado.vazios++;
-      continue;
-    }
-    
-    // Identificar tipo
-    let tipo = 'unknown';
-    
-    if (raw instanceof Date) {
-      resultado.dateObjects++;
-      tipo = 'Date';
-    } else if (typeof raw === 'string') {
-      resultado.strings++;
-      tipo = 'string';
-      
-      // Detectar formato da string
-      const formato = detectarFormatoData_(raw);
-      if (formato) {
-        resultado.formatosString.set(formato, (resultado.formatosString.get(formato) || 0) + 1);
-      }
-
-      if (!isValidDateStringFormat_(raw)) {
-        resultado.violacoes.push({
-          aba: sheetName || '',
-          coluna: nome,
-          linha: i + 2,
-          valor_raw: raw,
-          valor_display: display,
-          tipo: tipo,
-          problema: 'Formato invalido (nao dd/mm/aaaa ou dd-mm-aaaa)',
-          formato_detectado: formato || 'Outro'
-        });
-      }
-    } else if (typeof raw === 'number') {
-      resultado.numbers++;
-      tipo = 'number';
-      
-      if (raw < 1000) {
-        resultado.numbersSmall++;
-      }
-
-      resultado.violacoes.push({
-        aba: sheetName || '',
-        coluna: nome,
-        linha: i + 2,
-        valor_raw: raw,
-        valor_display: display,
-        tipo: tipo,
-        problema: 'Numero em coluna de data',
-        formato_detectado: 'Numero'
-      });
-    }
-
-    if (display && !isValidDateDisplayFormat_(display)) {
-      resultado.violacoes.push({
-        aba: sheetName || '',
-        coluna: nome,
-        linha: i + 2,
-        valor_raw: raw,
-        valor_display: display,
-        tipo: tipo,
-        problema: 'Display fora do padrao (dd/mm/aaaa ou dd-mm-aaaa)',
-        formato_detectado: detectarFormatoDisplay_(display)
-      });
-    }
-
-    if (isAtividadesCreationColumn_(sheetName, nome)) {
-      const parsed = parseDateValueForCompare_(raw || display);
-      if (parsed && today && parsed.getTime() > today.getTime()) {
-        resultado.violacoes.push({
-          aba: sheetName || '',
-          coluna: nome,
-          linha: i + 2,
-          valor_raw: raw,
-          valor_display: display,
-          tipo: tipo,
-          problema: 'Data de criacao maior que hoje (Atividades)',
-          formato_detectado: tipo === 'string' ? detectarFormatoData_(raw) : tipo
-        });
-      }
-    }
-    
-    // Coletar amostras (primeiras 5 não-vazias)
-    if (amostraCount < 5) {
-      resultado.amostras.push({
-        raw: raw,
-        display: display,
-        tipo: tipo
-      });
-      amostraCount++;
-    }
-  }
-
-  resultado.formatosStringObj = {};
-  resultado.formatosString.forEach((count, formato) => {
-    resultado.formatosStringObj[formato] = count;
-  });
-  
-  return resultado;
-}
-
-/**
- * Detectar formato de string de data
- */
-function detectarFormatoData_(str) {
-  const s = String(str).trim();
-  
-  // DD/MM/AAAA ou DD/MM/AA
-  if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s)) {
-    return 'DD/MM/AAAA';
-  }
-  
-  // DD-MM-AAAA ou DD-MM-AA
-  if (/^\d{1,2}-\d{1,2}-\d{2,4}$/.test(s)) {
-    return 'DD-MM-AAAA';
-  }
-  
-  // AAAA-MM-DD
-  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)) {
-    return 'AAAA-MM-DD';
-  }
-  
-  // Formato longo: "Mon Jan 27 2026..."
-  if (/^[A-Za-z]{3}\s[A-Za-z]{3}\s\d{1,2}\s\d{4}/.test(s)) {
-    return 'Date.toString()';
-  }
-  
-  // Com prefixo de aspas
-  if (/^['"]/.test(s)) {
-    return 'Com prefixo aspas';
-  }
-  
-  return 'Outro';
-}
-
-function isValidDateStringFormat_(str) {
-  const s = String(str).trim();
-  return /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s) || /^\d{1,2}-\d{1,2}-\d{4}$/.test(s);
-}
-
-function isValidDateDisplayFormat_(str) {
-  const s = String(str).trim();
-  return /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s) || /^\d{1,2}-\d{1,2}-\d{4}$/.test(s);
-}
-
-function detectarFormatoDisplay_(str) {
-  const s = String(str).trim();
-  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) return 'DD/MM/AAAA';
-  if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(s)) return 'DD-MM-AAAA';
-  if (/^\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}/.test(s)) return 'DD/MM/AAAA HH:MM';
-  if (/^\d{1,2}-\d{1,2}-\d{4}\s+\d{1,2}:\d{2}/.test(s)) return 'DD-MM-AAAA HH:MM';
-  if (/^\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}\s*(AM|PM)$/i.test(s)) return 'MM/DD/AAAA HH:MM AM/PM';
-  if (/^\d{1,2}-\d{1,2}-\d{4}\s+\d{1,2}:\d{2}\s*(AM|PM)$/i.test(s)) return 'MM-DD-AAAA HH:MM AM/PM';
-  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)) return 'AAAA-MM-DD';
-  return 'Outro';
-}
-
-function isAtividadesCreationColumn_(sheetName, columnName) {
-  if (!sheetName || !columnName) return false;
-  if (String(sheetName).toLowerCase() !== 'atividades') return false;
-  const name = String(columnName).toLowerCase();
-  return name.includes('data de criação') ||
-    name.includes('data de criacao') ||
-    name.includes('created date');
-}
-
-function parseDateValueForCompare_(raw) {
-  if (!raw || raw === '') return null;
-  if (raw instanceof Date) return normalizeDateToNoon_(raw);
-  if (typeof raw === 'string') {
-    const s = String(raw).trim();
-    if (!s) return null;
-    if (/^\d{4}-\d{2}-\d{2}(T.*)?$/.test(s)) {
-      const parsed = new Date(s);
-      return isNaN(parsed.getTime()) ? null : normalizeDateToNoon_(parsed);
-    }
-    return null;
-  }
-  if (typeof raw === 'number' && isFinite(raw) && raw > 1000) {
-    return normalizeDateToNoon_(new Date((raw - 25569) * 86400 * 1000));
-  }
-  return null;
-}
-
-function writeDateDiagnosticsReport_(violacoes) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheetName = 'Diagnostico_Datas';
-  let sheet = ss.getSheetByName(sheetName);
-  if (!sheet) sheet = ss.insertSheet(sheetName);
-
-  sheet.clearContents();
-
-  const header = [
-    'Aba',
-    'Coluna',
-    'Linha',
-    'Valor Raw',
-    'Valor Display',
-    'Tipo',
-    'Problema',
-    'Formato Detectado'
-  ];
-
-  const rows = violacoes.map(v => [
-    v.aba || '',
-    v.coluna || '',
-    v.linha || '',
-    v.valor_raw === undefined ? '' : v.valor_raw,
-    v.valor_display === undefined ? '' : v.valor_display,
-    v.tipo || '',
-    v.problema || '',
-    v.formato_detectado || ''
-  ]);
-
-  sheet.getRange(1, 1, 1, header.length).setValues([header]);
-  if (rows.length > 0) {
-    sheet.getRange(2, 1, rows.length, header.length).setValues(rows);
-  }
-
-  sheet.setFrozenRows(1);
-}
+// [MOVIDO PARA BACKUP 2026-02-21]
+// Bloco de monitoramento/trigger e diagnóstico de datas removido do ativo.
+// Backup: appscript/backup/Backup_CorrigirFiscalQ_Monitoramento_2026_02_21.gs
+// Backup: appscript/backup/Backup_CorrigirFiscalQ_DiagnosticoDatas_2026_02_21.gs
 
 /**
  * Recalcular Fiscal Q de todas as análises (chamada pelo menu)
@@ -1912,7 +1256,7 @@ function preencherDataCriacaoPipelineAnaliseUnico_() {
     if (normalizedCreated !== null) createdByOpp.set(oppKey, normalizedCreated);
   });
 
-  let headers = analysisSheet.getRange(1, 1, 1, analysisSheet.getLastColumn()).getValues()[0];
+  let headers = analysisSheet.getRange(1, 1, 1, analysisSheet.getMaxColumns()).getValues()[0];
   let colCreatedAnalysis = findColumnByPatterns_(headers, [
     'data de criacao',
     'data de criação',
@@ -1925,7 +1269,7 @@ function preencherDataCriacaoPipelineAnaliseUnico_() {
   let colunaInserida = false;
 
   if (colCreatedAnalysis === -1) {
-    const insertAt = colLastUpdate >= 0 ? (colLastUpdate + 1) : (analysisSheet.getLastColumn() + 1);
+    const insertAt = colLastUpdate >= 0 ? (colLastUpdate + 1) : (analysisSheet.getMaxColumns() + 1);
     analysisSheet.insertColumnBefore(insertAt);
     analysisSheet.getRange(1, insertAt).setValue(CREATED_HEADER);
     analysisSheet.getRange(1, insertAt).setBackground('#134f5c').setFontColor('white').setFontWeight('bold');
@@ -1933,7 +1277,7 @@ function preencherDataCriacaoPipelineAnaliseUnico_() {
     SpreadsheetApp.flush();
   }
 
-  headers = analysisSheet.getRange(1, 1, 1, analysisSheet.getLastColumn()).getValues()[0];
+  headers = analysisSheet.getRange(1, 1, 1, analysisSheet.getMaxColumns()).getValues()[0];
   colCreatedAnalysis = findColumnByPatterns_(headers, [
     'data de criacao',
     'data de criação',
@@ -1964,7 +1308,7 @@ function preencherDataCriacaoPipelineAnaliseUnico_() {
     };
   }
 
-  const rows = analysisSheet.getRange(2, 1, lastRow - 1, analysisSheet.getLastColumn()).getValues();
+  const rows = analysisSheet.getRange(2, 1, lastRow - 1, analysisSheet.getMaxColumns()).getValues();
   const createdValues = rows.map(r => [r[colCreatedAnalysis]]);
 
   let atualizados = 0;
@@ -2018,6 +1362,13 @@ function preencherDataCriacaoPipelineAnaliseUnico_() {
   };
 }
 
+// [ATIVO TEMPORARIAMENTE NO CORE]
+// TODO (após finalização operacional): mover novamente este bloco para backup
+// em `appscript/backup/Backup_CorrigirFiscalQ_EnriquecimentoIA_YYYY_MM_DD.gs`.
+// Bloco de Enriquecimento IA (wrappers, limpeza/reenriquecimento, testes, trigger e core).
+
+const ENRIQUECER_PERDIDAS_TRIGGER_HANDLER_ = 'executarTriggerEnriquecimentoPerdidasIA_';
+
 function enriquecerForecastComSegmentacaoIA() {
   let ui = null;
   try {
@@ -2037,25 +1388,208 @@ function enriquecerForecastComSegmentacaoIA() {
   }
 
   const result = enriquecerForecastComSegmentacaoIA_();
-  const msg =
-    `✅ Enriquecimento concluído\n\n` +
-    `• Linhas avaliadas: ${result.total}\n` +
-    `• Colunas inseridas: ${result.colunasInseridas}\n` +
-    `• Campos base atualizados: ${result.baseAtualizados}\n` +
-    `• Classificações por regra: ${result.classificadosRegra}\n` +
-    `• Classificações por IA: ${result.classificadosIA}\n` +
-    `• Classificações por busca: ${result.classificadosBusca}\n` +
-    `• Pendentes revisão: ${result.pendentes}\n` +
-    `• Erros: ${result.erros}`;
+
+  let msg;
+  if (result.skipped) {
+    msg = `⏭️ Enriquecimento pulado\n\n${result.skipReason}`;
+  } else {
+    const taxaSucessoIA = result.tentativasIA > 0 ? Math.round((result.tentativasIA - result.falhasIA) / result.tentativasIA * 100) : 0;
+    msg =
+      `✅ Enriquecimento concluído\n\n` +
+      `• Linhas avaliadas: ${result.totalAvaliadas || result.total}\n` +
+      `• Linhas já classificadas (puladas): ${result.linhasPuladas || 0}\n` +
+      `• Linhas processadas agora: ${result.total}\n` +
+      `• Colunas inseridas: ${result.colunasInseridas}\n` +
+      `• Campos base atualizados: ${result.baseAtualizados}\n` +
+      `• Classificações por regra: ${result.classificadosRegra}\n` +
+      `• Classificações por IA: ${result.classificadosIA}\n` +
+      `• Tentativas de IA: ${result.tentativasIA} (${taxaSucessoIA}% sucesso)\n` +
+      `• Classificações por busca: ${result.classificadosBusca}\n` +
+      `• Pendentes revisão: ${result.pendentes}\n` +
+      `• Erros: ${result.erros}`;
+  }
 
   console.log(msg);
   if (ui) {
-    ui.alert('✅ Concluído', msg, ui.ButtonSet.OK);
+    ui.alert(result.skipped ? '⏭️ Pulado' : '✅ Concluído', msg, ui.ButtonSet.OK);
   }
 }
 
 function enriquecerForecastComSegmentacaoIA_() {
   return enriquecerAnaliseComSegmentacaoIA_('🎯 Análise Forecast IA', (typeof SHEETS !== 'undefined' && SHEETS.ABERTO) ? SHEETS.ABERTO : 'Pipeline_Aberto');
+}
+
+function enriquecerForecast_TESTE_5_LINHAS() {
+  console.log('🧪 ═══════════════════════════════════════════════════');
+  console.log('🧪 TESTE: Processando apenas as 5 primeiras linhas');
+  console.log('🧪 ═══════════════════════════════════════════════════\n');
+
+  const result = enriquecerAnaliseComSegmentacaoIA_('🎯 Análise Forecast IA', (typeof SHEETS !== 'undefined' && SHEETS.ABERTO) ? SHEETS.ABERTO : 'Pipeline_Aberto', 5);
+
+  console.log('\n🧪 ═══════════════════════════════════════════════════');
+  console.log('🧪 TESTE CONCLUÍDO - Resultados:');
+  console.log(`   • Linhas avaliadas: ${result.totalAvaliadas || result.total}`);
+  console.log(`   • Linhas puladas (já tinham classificação): ${result.linhasPuladas || 0}`);
+  console.log(`   • Linhas processadas: ${result.total}`);
+  console.log(`   • Classificações por regra: ${result.classificadosRegra}`);
+  console.log(`   • Classificações por IA: ${result.classificadosIA}`);
+  console.log(`   • Tentativas de IA: ${result.tentativasIA}`);
+  console.log(`   • Falhas de IA: ${result.falhasIA}`);
+  console.log(`   • Pendentes: ${result.pendentes}`);
+  console.log(`   • Erros: ${result.erros}`);
+  console.log('🧪 ═══════════════════════════════════════════════════');
+
+  return result;
+}
+
+function limparClassificacaoIA_(sheetName) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) throw new Error(`Aba "${sheetName}" não encontrada`);
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getMaxColumns()).getValues()[0];
+  const colV = headers.findIndex(h => String(h).trim() === 'Vertical IA');
+  const colSV = headers.findIndex(h => String(h).trim() === 'Sub-vertical IA');
+  const colSSV = headers.findIndex(h => String(h).trim() === 'Sub-sub-vertical IA');
+
+  if (colV === -1) {
+    console.warn(`⚠️ Coluna "Vertical IA" não encontrada em "${sheetName}"`);
+    return 0;
+  }
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return 0;
+
+  const numRows = lastRow - 1;
+  sheet.getRange(2, colV + 1, numRows, 1).clearContent();
+  if (colSV > -1) sheet.getRange(2, colSV + 1, numRows, 1).clearContent();
+  if (colSSV > -1) sheet.getRange(2, colSSV + 1, numRows, 1).clearContent();
+  SpreadsheetApp.flush();
+
+  console.log(`🗑️ Limpeza concluída: ${numRows} linhas de classificação removidas em "${sheetName}"`);
+  return numRows;
+}
+
+function limparEReenriquecerForecast() {
+  let ui = null;
+  try { ui = SpreadsheetApp.getUi(); } catch (e) {}
+  const sheetName = '🎯 Análise Forecast IA';
+
+  if (ui) {
+    const r = ui.alert('🔄 Limpar e Reclassificar Forecast',
+      `Esta ação vai APAGAR todas as classificações IA existentes em "${sheetName}" e reclassificar do zero.\n\nContinuar?`,
+      ui.ButtonSet.YES_NO);
+    if (r !== ui.Button.YES) return;
+  }
+
+  const cleared = limparClassificacaoIA_(sheetName);
+  console.log(`🔄 Iniciando reclassificação de ${cleared} linhas no Forecast...`);
+  enriquecerForecastComSegmentacaoIA();
+}
+
+function limparEReenriquecerGanhas() {
+  let ui = null;
+  try { ui = SpreadsheetApp.getUi(); } catch (e) {}
+  const sheetName = '📈 Análise Ganhas';
+
+  if (ui) {
+    const r = ui.alert('🔄 Limpar e Reclassificar Ganhas',
+      `Esta ação vai APAGAR todas as classificações IA existentes em "${sheetName}" e reclassificar do zero.\n\nContinuar?`,
+      ui.ButtonSet.YES_NO);
+    if (r !== ui.Button.YES) return;
+  }
+
+  const cleared = limparClassificacaoIA_(sheetName);
+  console.log(`🔄 Iniciando reclassificação de ${cleared} linhas em Ganhas...`);
+  enriquecerAnaliseGanhasComSegmentacaoIA();
+}
+
+function limparEReenriquecerPerdidas() {
+  let ui = null;
+  try { ui = SpreadsheetApp.getUi(); } catch (e) {}
+  const sheetName = '📉 Análise Perdidas';
+
+  if (ui) {
+    const r = ui.alert('🔄 Limpar e Reclassificar Perdidas',
+      `Esta ação vai APAGAR todas as classificações IA existentes em "${sheetName}" e reclassificar do zero.\n\nContinuar?`,
+      ui.ButtonSet.YES_NO);
+    if (r !== ui.Button.YES) return;
+  }
+
+  const cleared = limparClassificacaoIA_(sheetName);
+  console.log(`🔄 Iniciando reclassificação de ${cleared} linhas em Perdidas...`);
+  enriquecerAnalisePerdidasComSegmentacaoIA();
+}
+
+function limparEReenriquecerTodas() {
+  let ui = null;
+  try { ui = SpreadsheetApp.getUi(); } catch (e) {}
+
+  if (ui) {
+    const r = ui.alert('🔄 Limpar + Reclassificar Todas',
+      'Esta ação vai APAGAR todas as classificações IA de Forecast + Ganhas + Perdidas e reclassificar do zero.\n\nContinuar?',
+      ui.ButtonSet.YES_NO);
+    if (r !== ui.Button.YES) return;
+  }
+
+  console.log('🗑️ Limpando classificações de todas as abas...');
+  const c1 = limparClassificacaoIA_('🎯 Análise Forecast IA');
+  const c2 = limparClassificacaoIA_('📈 Análise Ganhas');
+  const c3 = limparClassificacaoIA_('📉 Análise Perdidas');
+  console.log(`🗑️ Limpas: Forecast ${c1} | Ganhas ${c2} | Perdidas ${c3} linhas`);
+
+  console.log('\n🔄 Reclassificando Forecast...');
+  enriquecerForecastComSegmentacaoIA();
+  console.log('\n🔄 Reclassificando Ganhas...');
+  enriquecerAnaliseGanhasComSegmentacaoIA();
+  console.log('\n🔄 Reclassificando Perdidas...');
+  enriquecerAnalisePerdidasComSegmentacaoIA();
+}
+
+function enriquecerGanhas_TESTE_5_LINHAS() {
+  console.log('🧪 ═══════════════════════════════════════════════════');
+  console.log('🧪 TESTE GANHAS: Processando apenas as 5 primeiras linhas');
+  console.log('🧪 ═══════════════════════════════════════════════════\n');
+
+  const result = enriquecerAnaliseComSegmentacaoIA_('📈 Análise Ganhas', (typeof SHEETS !== 'undefined' && SHEETS.GANHAS) ? SHEETS.GANHAS : 'Historico_Ganhos', 5);
+
+  console.log('\n🧪 ═══════════════════════════════════════════════════');
+  console.log('🧪 TESTE GANHAS CONCLUÍDO - Resultados:');
+  console.log(`   • Linhas avaliadas: ${result.totalAvaliadas || result.total}`);
+  console.log(`   • Linhas puladas (já tinham classificação): ${result.linhasPuladas || 0}`);
+  console.log(`   • Linhas processadas: ${result.total}`);
+  console.log(`   • Classificações por regra: ${result.classificadosRegra}`);
+  console.log(`   • Classificações por IA: ${result.classificadosIA}`);
+  console.log(`   • Tentativas de IA: ${result.tentativasIA}`);
+  console.log(`   • Falhas de IA: ${result.falhasIA}`);
+  console.log(`   • Pendentes: ${result.pendentes}`);
+  console.log(`   • Erros: ${result.erros}`);
+  console.log('🧪 ═══════════════════════════════════════════════════');
+
+  return result;
+}
+
+function enriquecerPerdidas_TESTE_5_LINHAS() {
+  console.log('🧪 ═══════════════════════════════════════════════════');
+  console.log('🧪 TESTE PERDIDAS: Processando apenas as 5 primeiras linhas');
+  console.log('🧪 ═══════════════════════════════════════════════════\n');
+
+  const result = enriquecerAnaliseComSegmentacaoIA_('📉 Análise Perdidas', (typeof SHEETS !== 'undefined' && SHEETS.PERDIDAS) ? SHEETS.PERDIDAS : 'Historico_Perdidas', 5);
+
+  console.log('\n🧪 ═══════════════════════════════════════════════════');
+  console.log('🧪 TESTE PERDIDAS CONCLUÍDO - Resultados:');
+  console.log(`   • Linhas avaliadas: ${result.totalAvaliadas || result.total}`);
+  console.log(`   • Linhas puladas (já tinham classificação): ${result.linhasPuladas || 0}`);
+  console.log(`   • Linhas processadas: ${result.total}`);
+  console.log(`   • Classificações por regra: ${result.classificadosRegra}`);
+  console.log(`   • Classificações por IA: ${result.classificadosIA}`);
+  console.log(`   • Tentativas de IA: ${result.tentativasIA}`);
+  console.log(`   • Falhas de IA: ${result.falhasIA}`);
+  console.log(`   • Pendentes: ${result.pendentes}`);
+  console.log(`   • Erros: ${result.erros}`);
+  console.log('🧪 ═══════════════════════════════════════════════════');
+
+  return result;
 }
 
 function enriquecerAnaliseGanhasComSegmentacaoIA() {
@@ -2073,19 +1607,29 @@ function enriquecerAnaliseGanhasComSegmentacaoIA() {
   }
 
   const result = enriquecerAnaliseComSegmentacaoIA_('📈 Análise Ganhas', (typeof SHEETS !== 'undefined' && SHEETS.GANHAS) ? SHEETS.GANHAS : 'Historico_Ganhos');
-  const msg =
-    `✅ Enriquecimento Ganhas concluído\n\n` +
-    `• Linhas avaliadas: ${result.total}\n` +
-    `• Colunas inseridas: ${result.colunasInseridas}\n` +
-    `• Campos base atualizados: ${result.baseAtualizados}\n` +
-    `• Classificações por regra: ${result.classificadosRegra}\n` +
-    `• Classificações por IA: ${result.classificadosIA}\n` +
-    `• Classificações por busca: ${result.classificadosBusca}\n` +
-    `• Pendentes revisão: ${result.pendentes}\n` +
-    `• Erros: ${result.erros}`;
+
+  let msg;
+  if (result.skipped) {
+    msg = `⏭️ Enriquecimento Ganhas pulado\n\n${result.skipReason}`;
+  } else {
+    const taxaSucessoIA = result.tentativasIA > 0 ? Math.round((result.tentativasIA - result.falhasIA) / result.tentativasIA * 100) : 0;
+    msg =
+      `✅ Enriquecimento Ganhas concluído\n\n` +
+      `• Linhas avaliadas: ${result.totalAvaliadas || result.total}\n` +
+      `• Linhas já classificadas (puladas): ${result.linhasPuladas || 0}\n` +
+      `• Linhas processadas agora: ${result.total}\n` +
+      `• Colunas inseridas: ${result.colunasInseridas}\n` +
+      `• Campos base atualizados: ${result.baseAtualizados}\n` +
+      `• Classificações por regra: ${result.classificadosRegra}\n` +
+      `• Classificações por IA: ${result.classificadosIA}\n` +
+      `• Tentativas de IA: ${result.tentativasIA} (${taxaSucessoIA}% sucesso)\n` +
+      `• Classificações por busca: ${result.classificadosBusca}\n` +
+      `• Pendentes revisão: ${result.pendentes}\n` +
+      `• Erros: ${result.erros}`;
+  }
 
   console.log(msg);
-  if (ui) ui.alert('✅ Concluído', msg, ui.ButtonSet.OK);
+  if (ui) ui.alert(result.skipped ? '⏭️ Pulado' : '✅ Concluído', msg, ui.ButtonSet.OK);
 }
 
 function enriquecerAnalisePerdidasComSegmentacaoIA() {
@@ -2103,19 +1647,118 @@ function enriquecerAnalisePerdidasComSegmentacaoIA() {
   }
 
   const result = enriquecerAnaliseComSegmentacaoIA_('📉 Análise Perdidas', (typeof SHEETS !== 'undefined' && SHEETS.PERDIDAS) ? SHEETS.PERDIDAS : 'Historico_Perdidas');
-  const msg =
-    `✅ Enriquecimento Perdidas concluído\n\n` +
-    `• Linhas avaliadas: ${result.total}\n` +
-    `• Colunas inseridas: ${result.colunasInseridas}\n` +
-    `• Campos base atualizados: ${result.baseAtualizados}\n` +
-    `• Classificações por regra: ${result.classificadosRegra}\n` +
-    `• Classificações por IA: ${result.classificadosIA}\n` +
-    `• Classificações por busca: ${result.classificadosBusca}\n` +
-    `• Pendentes revisão: ${result.pendentes}\n` +
-    `• Erros: ${result.erros}`;
+
+  let msg;
+  if (result.skipped) {
+    msg = `⏭️ Enriquecimento Perdidas pulado\n\n${result.skipReason}`;
+  } else {
+    const taxaSucessoIA = result.tentativasIA > 0 ? Math.round((result.tentativasIA - result.falhasIA) / result.tentativasIA * 100) : 0;
+    msg =
+      `✅ Enriquecimento Perdidas concluído\n\n` +
+      `• Linhas avaliadas: ${result.totalAvaliadas || result.total}\n` +
+      `• Linhas já classificadas (puladas): ${result.linhasPuladas || 0}\n` +
+      `• Linhas processadas agora: ${result.total}\n` +
+      `• Colunas inseridas: ${result.colunasInseridas}\n` +
+      `• Campos base atualizados: ${result.baseAtualizados}\n` +
+      `• Classificações por regra: ${result.classificadosRegra}\n` +
+      `• Classificações por IA: ${result.classificadosIA}\n` +
+      `• Tentativas de IA: ${result.tentativasIA} (${taxaSucessoIA}% sucesso)\n` +
+      `• Classificações por busca: ${result.classificadosBusca}\n` +
+      `• Pendentes revisão: ${result.pendentes}\n` +
+      `• Erros: ${result.erros}`;
+  }
 
   console.log(msg);
-  if (ui) ui.alert('✅ Concluído', msg, ui.ButtonSet.OK);
+  if (ui) ui.alert(result.skipped ? '⏭️ Pulado' : '✅ Concluído', msg, ui.ButtonSet.OK);
+}
+
+function enriquecerAnalisePerdidasComSegmentacaoIA_SEM_UI_() {
+  return enriquecerAnaliseComSegmentacaoIA_(
+    '📉 Análise Perdidas',
+    (typeof SHEETS !== 'undefined' && SHEETS.PERDIDAS) ? SHEETS.PERDIDAS : 'Historico_Perdidas'
+  );
+}
+
+function executarEnriquecimentoPerdidasIASemPopup() {
+  const result = enriquecerAnalisePerdidasComSegmentacaoIA_SEM_UI_();
+  console.log(
+    `🤖 Execução manual sem popup (Perdidas IA) | avaliadas: ${result.totalAvaliadas || result.total || 0} | ` +
+    `processadas: ${result.total || 0} | puladas: ${result.linhasPuladas || 0} | erros: ${result.erros || 0}`
+  );
+  return result;
+}
+
+function executarTriggerEnriquecimentoPerdidasIA_() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) {
+    console.warn('⏳ Trigger Perdidas IA já em execução. Pulando ciclo.');
+    return;
+  }
+
+  try {
+    const result = enriquecerAnalisePerdidasComSegmentacaoIA_SEM_UI_();
+    console.log(
+      `🤖 Trigger Perdidas IA executado | avaliadas: ${result.totalAvaliadas || result.total || 0} | ` +
+      `processadas: ${result.total || 0} | puladas: ${result.linhasPuladas || 0} | erros: ${result.erros || 0}`
+    );
+  } catch (e) {
+    console.error(`❌ Trigger Perdidas IA falhou: ${e.message}`);
+    if (typeof logToSheet === 'function') {
+      logToSheet('ERROR', 'EnriquecimentoPerdidasIA', `Falha no trigger: ${e.message}`);
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function ativarTriggerEnriquecimentoPerdidasIA() {
+  const ui = (() => {
+    try { return SpreadsheetApp.getUi(); } catch (e) { return null; }
+  })();
+
+  if (ui) {
+    const response = ui.alert(
+      '⚙️ Ativar Trigger: Enriquecimento Perdidas IA',
+      'Deseja ativar trigger automático para enriquecimento de Perdidas?\n\n' +
+      '• Frequência: a cada 15 minutos\n' +
+      '• Pula linhas já preenchidas automaticamente\n' +
+      '• Pode continuar processamento em lotes (evita timeout manual)\n\n' +
+      'Continuar?',
+      ui.ButtonSet.YES_NO
+    );
+    if (response !== ui.Button.YES) return;
+  }
+
+  clearTriggersByHandler_(ENRIQUECER_PERDIDAS_TRIGGER_HANDLER_);
+  ScriptApp.newTrigger(ENRIQUECER_PERDIDAS_TRIGGER_HANDLER_)
+    .timeBased()
+    .everyMinutes(15)
+    .create();
+
+  const msg = '✅ Trigger de Enriquecimento Perdidas IA ativado (15 min).';
+  if (ui) ui.alert('Ativado', msg, ui.ButtonSet.OK);
+  console.log(msg);
+}
+
+function desativarTriggerEnriquecimentoPerdidasIA() {
+  const ui = (() => {
+    try { return SpreadsheetApp.getUi(); } catch (e) { return null; }
+  })();
+
+  if (ui) {
+    const response = ui.alert(
+      '🛑 Desativar Trigger: Enriquecimento Perdidas IA',
+      'Remover trigger automático de enriquecimento de Perdidas?',
+      ui.ButtonSet.YES_NO
+    );
+    if (response !== ui.Button.YES) return;
+  }
+
+  clearTriggersByHandler_(ENRIQUECER_PERDIDAS_TRIGGER_HANDLER_);
+
+  const msg = '✅ Trigger de Enriquecimento Perdidas IA desativado.';
+  if (ui) ui.alert('Desativado', msg, ui.ButtonSet.OK);
+  console.log(msg);
 }
 
 function enriquecerTodasAnalisesComSegmentacaoIA() {
@@ -2132,15 +1775,55 @@ function enriquecerTodasAnalisesComSegmentacaoIA() {
     console.log('⚠️ UI não disponível, executando enriquecimento completo direto...');
   }
 
-  const forecast = enriquecerAnaliseComSegmentacaoIA_('🎯 Análise Forecast IA', (typeof SHEETS !== 'undefined' && SHEETS.ABERTO) ? SHEETS.ABERTO : 'Pipeline_Aberto');
-  const won = enriquecerAnaliseComSegmentacaoIA_('📈 Análise Ganhas', (typeof SHEETS !== 'undefined' && SHEETS.GANHAS) ? SHEETS.GANHAS : 'Historico_Ganhos');
-  const lost = enriquecerAnaliseComSegmentacaoIA_('📉 Análise Perdidas', (typeof SHEETS !== 'undefined' && SHEETS.PERDIDAS) ? SHEETS.PERDIDAS : 'Historico_Perdidas');
+  let forecast, won, lost;
+  const results = [];
 
-  const msg =
-    `✅ Enriquecimento completo concluído\n\n` +
-    `Forecast: ${forecast.total} linhas | Regra ${forecast.classificadosRegra} | IA ${forecast.classificadosIA} | Busca ${forecast.classificadosBusca} | Pendentes ${forecast.pendentes}\n` +
-    `Ganhas: ${won.total} linhas | Regra ${won.classificadosRegra} | IA ${won.classificadosIA} | Busca ${won.classificadosBusca} | Pendentes ${won.pendentes}\n` +
-    `Perdidas: ${lost.total} linhas | Regra ${lost.classificadosRegra} | IA ${lost.classificadosIA} | Busca ${lost.classificadosBusca} | Pendentes ${lost.pendentes}`;
+  try {
+    console.log('\n🎯 Iniciando enriquecimento de Forecast...');
+    forecast = enriquecerAnaliseComSegmentacaoIA_('🎯 Análise Forecast IA', (typeof SHEETS !== 'undefined' && SHEETS.ABERTO) ? SHEETS.ABERTO : 'Pipeline_Aberto');
+    if (forecast.skipped) {
+      results.push(`Forecast: ⏭️ Pulado - ${forecast.skipReason}`);
+    } else {
+      const taxaIA = forecast.tentativasIA > 0 ? Math.round((forecast.tentativasIA - forecast.falhasIA) / forecast.tentativasIA * 100) : 0;
+      results.push(`Forecast: ${forecast.total} linhas | Regra ${forecast.classificadosRegra} | IA ${forecast.classificadosIA} (${forecast.tentativasIA} tentativas, ${taxaIA}% sucesso) | Pendentes ${forecast.pendentes}`);
+    }
+  } catch (e) {
+    console.error('❌ Erro ao enriquecer Forecast:', e.message);
+    forecast = { error: e.message, total: 0 };
+    results.push(`Forecast: ❌ ${e.message}`);
+  }
+
+  try {
+    console.log('\n📈 Iniciando enriquecimento de Ganhas...');
+    won = enriquecerAnaliseComSegmentacaoIA_('📈 Análise Ganhas', (typeof SHEETS !== 'undefined' && SHEETS.GANHAS) ? SHEETS.GANHAS : 'Historico_Ganhos');
+    if (won.skipped) {
+      results.push(`Ganhas: ⏭️ Pulado - ${won.skipReason}`);
+    } else {
+      const taxaIA = won.tentativasIA > 0 ? Math.round((won.tentativasIA - won.falhasIA) / won.tentativasIA * 100) : 0;
+      results.push(`Ganhas: ${won.total} linhas | Regra ${won.classificadosRegra} | IA ${won.classificadosIA} (${won.tentativasIA} tentativas, ${taxaIA}% sucesso) | Pendentes ${won.pendentes}`);
+    }
+  } catch (e) {
+    console.error('❌ Erro ao enriquecer Ganhas:', e.message);
+    won = { error: e.message, total: 0 };
+    results.push(`Ganhas: ❌ ${e.message}`);
+  }
+
+  try {
+    console.log('\n📉 Iniciando enriquecimento de Perdidas...');
+    lost = enriquecerAnaliseComSegmentacaoIA_('📉 Análise Perdidas', (typeof SHEETS !== 'undefined' && SHEETS.PERDIDAS) ? SHEETS.PERDIDAS : 'Historico_Perdidas');
+    if (lost.skipped) {
+      results.push(`Perdidas: ⏭️ Pulado - ${lost.skipReason}`);
+    } else {
+      const taxaIA = lost.tentativasIA > 0 ? Math.round((lost.tentativasIA - lost.falhasIA) / lost.tentativasIA * 100) : 0;
+      results.push(`Perdidas: ${lost.total} linhas | Regra ${lost.classificadosRegra} | IA ${lost.classificadosIA} (${lost.tentativasIA} tentativas, ${taxaIA}% sucesso) | Pendentes ${lost.pendentes}`);
+    }
+  } catch (e) {
+    console.error('❌ Erro ao enriquecer Perdidas:', e.message);
+    lost = { error: e.message, total: 0 };
+    results.push(`Perdidas: ❌ ${e.message}`);
+  }
+
+  const msg = `✅ Enriquecimento completo concluído\n\n` + results.join('\n');
 
   console.log(msg);
   if (ui) ui.alert('✅ Concluído', msg, ui.ButtonSet.OK);
@@ -2148,7 +1831,7 @@ function enriquecerTodasAnalisesComSegmentacaoIA() {
   return { forecast, won, lost };
 }
 
-function enriquecerAnaliseComSegmentacaoIA_(analysisSheetName, baseSheetName) {
+function enriquecerAnaliseComSegmentacaoIA_(analysisSheetName, baseSheetName, maxLinesToProcess) {
   const ANALYSIS_SHEET = '🎯 Análise Forecast IA';
   const LAST_UPDATE_HEADER = '🕐 Última Atualização';
   const REQUIRED_HEADERS = [
@@ -2158,8 +1841,7 @@ function enriquecerAnaliseComSegmentacaoIA_(analysisSheetName, baseSheetName) {
     'Estado/Província de cobrança',
     'Vertical IA',
     'Sub-vertical IA',
-    'Sub-sub-vertical IA',
-    'Justificativa IA'
+    'Sub-sub-vertical IA'
   ];
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -2169,8 +1851,8 @@ function enriquecerAnaliseComSegmentacaoIA_(analysisSheetName, baseSheetName) {
   const colunasInseridas = ensureColumnsBeforeLastUpdate_(analysisSheet, REQUIRED_HEADERS, LAST_UPDATE_HEADER);
 
   const analysisLastRow = analysisSheet.getLastRow();
-  const analysisLastCol = analysisSheet.getLastColumn();
-  if (analysisLastRow <= 1 || analysisLastCol <= 0) {
+  const analysisMaxCol = analysisSheet.getMaxColumns();
+  if (analysisLastRow <= 1 || analysisMaxCol <= 0) {
     return {
       total: 0,
       colunasInseridas,
@@ -2183,14 +1865,29 @@ function enriquecerAnaliseComSegmentacaoIA_(analysisSheetName, baseSheetName) {
     };
   }
 
-  const analysisRange = analysisSheet.getRange(1, 1, analysisLastRow, analysisLastCol);
+  const analysisRange = analysisSheet.getRange(1, 1, analysisLastRow, analysisMaxCol);
   const analysisData = analysisRange.getValues();
   const analysisHeaders = analysisData[0];
   const analysisRows = analysisData.slice(1);
 
   const baseSheet = ss.getSheetByName(baseSheetName);
-  if (!baseSheet || baseSheet.getLastRow() <= 1) {
-    throw new Error(`Aba base "${baseSheetName}" não encontrada ou vazia`);
+  if (!baseSheet) {
+    throw new Error(`Aba base "${baseSheetName}" não encontrada`);
+  }
+  if (baseSheet.getLastRow() <= 1) {
+    console.warn(`⚠️ Aba base "${baseSheetName}" está vazia (apenas header ou sem dados). Pulando enriquecimento.`);
+    return {
+      total: 0,
+      colunasInseridas,
+      baseAtualizados: 0,
+      classificadosRegra: 0,
+      classificadosIA: 0,
+      classificadosBusca: 0,
+      pendentes: 0,
+      erros: 0,
+      skipped: true,
+      skipReason: `Aba base "${baseSheetName}" vazia`
+    };
   }
 
   const baseData = baseSheet.getDataRange().getValues();
@@ -2232,7 +1929,16 @@ function enriquecerAnaliseComSegmentacaoIA_(analysisSheetName, baseSheetName) {
   const colVertical = findLastHeaderIndexExact_(analysisHeaders, 'Vertical IA');
   const colSubVertical = findLastHeaderIndexExact_(analysisHeaders, 'Sub-vertical IA');
   const colSubSubVertical = findLastHeaderIndexExact_(analysisHeaders, 'Sub-sub-vertical IA');
-  const colJustificativa = findLastHeaderIndexExact_(analysisHeaders, 'Justificativa IA');
+
+  console.log(`\n📋 Colunas de classificação encontradas:`);
+  console.log(`   Vertical IA: coluna ${colVertical} (${colVertical > -1 ? analysisHeaders[colVertical] : 'NÃO ENCONTRADA'})`);
+  console.log(`   Sub-vertical IA: coluna ${colSubVertical} (${colSubVertical > -1 ? analysisHeaders[colSubVertical] : 'NÃO ENCONTRADA'})`);
+  console.log(`   Sub-sub-vertical IA: coluna ${colSubSubVertical} (${colSubSubVertical > -1 ? analysisHeaders[colSubSubVertical] : 'NÃO ENCONTRADA'})`);
+  console.log(`   Owner Preventa: coluna ${colOwnerPreventa} (${colOwnerPreventa > -1 ? analysisHeaders[colOwnerPreventa] : 'NÃO ENCONTRADA'})`);
+  console.log(`   Cidade de cobrança: coluna ${colCidade} (${colCidade > -1 ? analysisHeaders[colCidade] : 'NÃO ENCONTRADA'})`);
+  console.log(`   Estado/Província: coluna ${colEstado} (${colEstado > -1 ? analysisHeaders[colEstado] : 'NÃO ENCONTRADA'})`);
+  const gravarContíguo = colOwnerPreventa > -1 && colSubSubVertical === colOwnerPreventa + 5;
+  console.log(`   💾 Escrita contígua (1 chamada/linha): ${gravarContíguo ? '✅ SIM (colunas ' + colOwnerPreventa + '-' + colSubSubVertical + ')' : '⚠️ NÃO (fallback individual)'}\n`);
 
   const outputRows = analysisRows.map(r => r.slice());
   let baseAtualizados = 0;
@@ -2241,12 +1947,64 @@ function enriquecerAnaliseComSegmentacaoIA_(analysisSheetName, baseSheetName) {
   let classificadosBusca = 0;
   let pendentes = 0;
   let erros = 0;
+  let tentativasIA = 0;
+  let falhasIA = 0;
 
   const classificationByAccount = new Map();
 
-  for (let i = 0; i < outputRows.length; i++) {
+  const iaDisponivel = typeof callGeminiAPI === 'function' && typeof cleanAndParseJSON === 'function';
+  if (!iaDisponivel) {
+    console.warn('⚠️ ATENÇÃO: Funções de IA não disponíveis. callGeminiAPI ou cleanAndParseJSON não encontradas.');
+    console.warn('⚠️ Todas as contas sem match de regra serão marcadas como PENDING.');
+  } else {
+    console.log('✅ Funções de IA disponíveis. Fallback IA ativo para contas sem match de regra.');
+  }
+
+  const linhasAProcessar = maxLinesToProcess && maxLinesToProcess > 0
+    ? Math.min(maxLinesToProcess, outputRows.length)
+    : outputRows.length;
+
+  const scriptStartTime = Date.now();
+  const MAX_EXECUTION_SECONDS = 300;
+
+  if (maxLinesToProcess && maxLinesToProcess > 0) {
+    console.log(`\n🧪 MODO TESTE: Processando apenas ${linhasAProcessar} de ${outputRows.length} linhas\n`);
+  } else {
+    console.log(`\n📊 Processando ${linhasAProcessar} linhas...\n`);
+  }
+
+  let linhasPuladas = 0;
+  let linhasProcessadas = 0;
+
+  for (let i = 0; i < linhasAProcessar; i++) {
+    if (i > 0 && i % 10 === 0) {
+      if (!maxLinesToProcess) {
+        console.log(`⏳ Progresso: ${i}/${linhasAProcessar} linhas (${Math.round(i / linhasAProcessar * 100)}%) | Processadas: ${linhasProcessadas} | Puladas: ${linhasPuladas}`);
+      }
+      SpreadsheetApp.flush();
+
+      const elapsedSec = (Date.now() - scriptStartTime) / 1000;
+      if (elapsedSec > MAX_EXECUTION_SECONDS) {
+        console.warn(`⏰ Limite de tempo atingido (${Math.round(elapsedSec)}s). Parando em linha ${i + 2} para salvar progresso.`);
+        console.warn('   Reinicie o script para continuar (linhas já classificadas serão puladas automaticamente).');
+        break;
+      }
+    }
+
     try {
       const row = outputRows[i];
+
+      const jaTemClassificacao = colVertical > -1 && row[colVertical] && String(row[colVertical]).trim() !== '';
+      if (jaTemClassificacao) {
+        linhasPuladas++;
+        if (linhasPuladas <= 5) {
+          console.log(`⏭️ Pulando linha ${i + 2}: já tem classificação "${row[colVertical]}"`);
+        }
+        continue;
+      }
+
+      linhasProcessadas++;
+
       const opp = colOpp > -1 ? String(row[colOpp] || '').trim() : '';
       const oppKey = (typeof normText_ === 'function') ? normText_(opp) : String(opp).toLowerCase().trim();
       const base = baseByOpp.get(oppKey);
@@ -2274,49 +2032,93 @@ function enriquecerAnaliseComSegmentacaoIA_(analysisSheetName, baseSheetName) {
         baseAtualizados++;
       }
 
-      const accountKey = (typeof normText_ === 'function')
-        ? normText_(`${conta}|${produtos}|${billingCity}|${billingState}`)
-        : `${conta}|${produtos}|${billingCity}|${billingState}`.toLowerCase();
+      const accountKey = (typeof normText_ === 'function') ? normText_(conta) : String(conta).toLowerCase().trim();
 
       if (!classificationByAccount.has(accountKey)) {
         const byRule = classificarContaPorRegrasGTM_(conta, produtos, billingCity, billingState);
         if (byRule) {
           classificationByAccount.set(accountKey, { ...byRule, source: 'RULE' });
         } else {
-          const byIA = classificarContaComIAFallback_(conta, produtos, billingCity, billingState);
-          if (byIA) {
-            classificationByAccount.set(accountKey, { ...byIA, source: 'IA' });
+          if (iaDisponivel) {
+            tentativasIA++;
+
+            if (tentativasIA === 1 || tentativasIA % 10 === 0) {
+              console.log(`🤖 Tentativa ${tentativasIA} de classificação por IA - Conta: "${conta}"`);
+            }
+
+            const byIA = classificarContaComIAFallback_(conta, produtos, billingCity, billingState);
+            if (byIA) {
+              classificationByAccount.set(accountKey, { ...byIA, source: 'IA' });
+              if (tentativasIA <= 3) {
+                console.log(`✅ IA classificou: "${conta}" → ${byIA.vertical}`);
+              }
+            } else {
+              falhasIA++;
+              if (falhasIA <= 3) {
+                console.warn(`⚠️ IA falhou para: "${conta}"`);
+              }
+              classificationByAccount.set(accountKey, {
+                vertical: 'Não identificado',
+                subVertical: 'Não identificado',
+                subSubVertical: 'Não identificado',
+                source: 'PENDING'
+              });
+            }
           } else {
-            // FALLBACK GOOGLE SEARCH (DESATIVADO TEMPORARIAMENTE)
-            // const bySearch = classificarContaComBuscaWebFallback_(conta, produtos, billingCity, billingState);
-            // if (bySearch) {
-            //   classificationByAccount.set(accountKey, { ...bySearch, source: 'SEARCH' });
-            // } else {
-            //   classificationByAccount.set(accountKey, {
-            //     vertical: 'Setor Privado: Corporativo',
-            //     subVertical: 'Serviços Profissionais e B2B',
-            //     subSubVertical: 'Consultoria',
-            //     justificativa: 'Classificação padrão por ausência de sinais suficientes. Revisar manualmente.',
-            //     source: 'PENDING'
-            //   });
-            // }
             classificationByAccount.set(accountKey, {
-              vertical: 'Setor Privado: Corporativo',
-              subVertical: 'Serviços Profissionais e B2B',
-              subSubVertical: 'Consultoria',
-              justificativa: 'Classificação padrão por ausência de sinais suficientes. Revisar manualmente.',
+              vertical: 'Não identificado',
+              subVertical: 'Não identificado',
+              subSubVertical: 'Não identificado',
               source: 'PENDING'
             });
           }
+        }
+      } else {
+        if (i < 5) {
+          console.log(`♻️ Reutilizando classificação de "${conta}" (cache)`);
         }
       }
 
       const classification = classificationByAccount.get(accountKey);
 
+      if (linhasProcessadas <= 3) {
+        console.log(`🔍 Linha ${i + 2} (proc ${linhasProcessadas}): Vertical:${colVertical} Owner:${colOwnerPreventa} Cidade:${colCidade} Estado:${colEstado}`);
+        console.log(`   Valores IA: ${classification.vertical} | ${classification.subVertical} | ${classification.subSubVertical}`);
+        console.log(`   Outros: owner="${ownerPreventa}" cidade="${billingCity}" estado="${billingState}"`);
+      }
+
       if (colVertical > -1) row[colVertical] = classification.vertical;
       if (colSubVertical > -1) row[colSubVertical] = classification.subVertical;
       if (colSubSubVertical > -1) row[colSubSubVertical] = classification.subSubVertical;
-      if (colJustificativa > -1) row[colJustificativa] = classification.justificativa;
+
+      try {
+        const saoContíguas = colOwnerPreventa > -1 && colSubSubVertical === colOwnerPreventa + 5;
+        if (saoContíguas) {
+          analysisSheet.getRange(i + 2, colOwnerPreventa + 1, 1, 6).setValues([[
+            ownerPreventa || '',
+            billingCity || '',
+            billingState || '',
+            classification.vertical || '',
+            classification.subVertical || '',
+            classification.subSubVertical || ''
+          ]]);
+        } else {
+          if (colVertical > -1) {
+            analysisSheet.getRange(i + 2, colVertical + 1, 1, 3).setValues([[
+              classification.vertical || '', classification.subVertical || '', classification.subSubVertical || ''
+            ]]);
+          }
+          if (colOwnerPreventa > -1) analysisSheet.getRange(i + 2, colOwnerPreventa + 1).setValue(ownerPreventa || '');
+          if (colCidade > -1) analysisSheet.getRange(i + 2, colCidade + 1).setValue(billingCity || '');
+          if (colEstado > -1) analysisSheet.getRange(i + 2, colEstado + 1).setValue(billingState || '');
+        }
+        if (linhasProcessadas <= 5) {
+          console.log(`✅ Linha ${i + 2} escrita na planilha (${saoContíguas ? 'contígua' : 'individual'})`);
+        }
+      } catch (writeImmErr) {
+        console.error(`❌ Falha ao escrever linha ${i + 2}: ${writeImmErr.message}`);
+        console.error(`   Stack: ${writeImmErr.stack}`);
+      }
 
       if (classification.source === 'RULE') classificadosRegra++;
       else if (classification.source === 'IA') classificadosIA++;
@@ -2325,23 +2127,96 @@ function enriquecerAnaliseComSegmentacaoIA_(analysisSheetName, baseSheetName) {
     } catch (err) {
       erros++;
       console.error(`⚠️ Erro ao enriquecer linha ${i + 2}: ${err.message}`);
+      console.error(`   Stack: ${err.stack}`);
     }
   }
 
-  analysisSheet.getRange(2, 1, outputRows.length, analysisHeaders.length).setValues(outputRows);
-  SpreadsheetApp.flush();
+  console.log(`\n✅ Loop de processamento concluído!`);
+  console.log(`   📊 Total avaliadas: ${linhasAProcessar}`);
+  console.log(`   ✨ Processadas: ${linhasProcessadas}`);
+  console.log(`   ⏭️ Puladas (já tinham classificação): ${linhasPuladas}`);
+
+  console.log(`\n🔍 Amostra de 3 primeiras linhas processadas (antes de escrever):`);
+  for (let i = 0; i < Math.min(3, outputRows.length); i++) {
+    const sampleRow = outputRows[i];
+    console.log(`   Linha ${i + 2}:`);
+    if (colVertical > -1) console.log(`      Vertical IA [${colVertical}]: "${sampleRow[colVertical]}"`);
+    if (colSubVertical > -1) console.log(`      Sub-vertical IA [${colSubVertical}]: "${sampleRow[colSubVertical]}"`);
+    if (colSubSubVertical > -1) console.log(`      Sub-sub-vertical IA [${colSubSubVertical}]: "${sampleRow[colSubSubVertical]}"`);
+  }
+
+  const expectedLength = analysisHeaders.length;
+  console.log(`\n📏 Validando tamanho das linhas:`);
+  console.log(`   Header tem ${expectedLength} colunas`);
+  console.log(`   OutputRows tem ${outputRows.length} linhas`);
+  console.log(`   Linhas a processar: ${linhasAProcessar || outputRows.length}`);
+
+  for (let i = 0; i < outputRows.length; i++) {
+    if (outputRows[i].length < expectedLength) {
+      while (outputRows[i].length < expectedLength) {
+        outputRows[i].push('');
+      }
+    }
+  }
+  console.log(`   ✅ Todas as linhas ajustadas para ${expectedLength} colunas\n`);
+
+  try {
+    console.log(`💾 Preparando escrita de ${outputRows.length} linhas na planilha...`);
+    console.log(`   Range: linha 2, coluna 1, ${outputRows.length} linhas, ${analysisHeaders.length} colunas`);
+
+    const writeRange = analysisSheet.getRange(2, 1, outputRows.length, analysisHeaders.length);
+    console.log(`   Range obtido: ${writeRange.getA1Notation()}`);
+
+    writeRange.setValues(outputRows);
+    console.log('   ✅ setValues executado!');
+
+    SpreadsheetApp.flush();
+    console.log('✅ Flush executado - Escrita concluída com sucesso!');
+  } catch (writeErr) {
+    console.error('❌ ERRO NA ESCRITA DA PLANILHA:');
+    console.error(`   Mensagem: ${writeErr.message}`);
+    console.error(`   Stack: ${writeErr.stack}`);
+    console.error(`   OutputRows.length: ${outputRows.length}`);
+    console.error(`   AnalysisHeaders.length: ${analysisHeaders.length}`);
+    console.error(`   Primera linha length: ${outputRows[0] ? outputRows[0].length : 'N/A'}`);
+    if (outputRows[0]) {
+      console.error('   Primera linha sample (primeiros 10):', outputRows[0].slice(0, 10));
+    }
+    throw writeErr;
+  }
+
+  console.log(`\n📊 Resumo de classificação (${analysisSheetName}):`);
+  console.log(`   • Total de linhas avaliadas: ${linhasAProcessar || outputRows.length}`);
+  console.log(`   • Linhas já classificadas (puladas): ${linhasPuladas}`);
+  console.log(`   • Linhas processadas agora: ${linhasProcessadas}`);
+  console.log(`   • Contas únicas classificadas: ${classificationByAccount.size}`);
+  console.log(`   • Economia de chamadas: ${Math.max(0, linhasProcessadas - classificationByAccount.size)} linhas reutilizaram cache`);
+  console.log(`   • Tentativas de IA: ${tentativasIA}`);
+  console.log(`   • Falhas de IA: ${falhasIA}`);
+  console.log(`   • Taxa de sucesso IA: ${tentativasIA > 0 ? Math.round((tentativasIA - falhasIA) / tentativasIA * 100) : 0}%`);
+  console.log(`   • Classificações por regra: ${classificadosRegra}`);
+  console.log(`   • Classificações por IA: ${classificadosIA}`);
+  console.log(`   • Pendentes revisão: ${pendentes}\n`);
 
   return {
-    total: outputRows.length,
+    total: linhasProcessadas,
+    totalAvaliadas: linhasAProcessar || outputRows.length,
+    linhasPuladas,
     colunasInseridas,
     baseAtualizados,
     classificadosRegra,
     classificadosIA,
     classificadosBusca,
     pendentes,
-    erros
+    erros,
+    tentativasIA,
+    falhasIA
   };
 }
+
+// [MOVIDO PARA BACKUP 2026-02-21]
+// Bloco de Dimensões de Negócio (wrappers, testes e core) removido do ativo.
+// Backup: appscript/backup/Backup_CorrigirFiscalQ_DimensoesNegocio_2026_02_21.gs
 
 function findLastHeaderIndexExact_(headers, exactName) {
   const target = String(exactName || '').trim().toLowerCase();
@@ -2357,12 +2232,12 @@ function findLastHeaderIndexExact_(headers, exactName) {
 function ensureColumnsBeforeLastUpdate_(sheet, requiredHeaders, lastUpdateHeader) {
   let inserted = 0;
   requiredHeaders.forEach((header) => {
-    const currentHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const currentHeaders = sheet.getRange(1, 1, 1, sheet.getMaxColumns()).getValues()[0];
     const alreadyExists = currentHeaders.some(h => String(h || '').trim().toLowerCase() === String(header).trim().toLowerCase());
     if (alreadyExists) return;
 
     const colLastUpdate = currentHeaders.findIndex(h => String(h || '').trim() === lastUpdateHeader);
-    const insertAt = colLastUpdate >= 0 ? colLastUpdate + 1 : sheet.getLastColumn() + 1;
+    const insertAt = colLastUpdate >= 0 ? colLastUpdate + 1 : sheet.getMaxColumns() + 1;
     sheet.insertColumnBefore(insertAt);
     sheet.getRange(1, insertAt).setValue(header);
     sheet.getRange(1, insertAt)
@@ -2375,6 +2250,146 @@ function ensureColumnsBeforeLastUpdate_(sheet, requiredHeaders, lastUpdateHeader
   return inserted;
 }
 
+function gerarTabelaIdentificacaoAliases() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetName = '🧭 Tabela Aliases';
+  const sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
+  sheet.clear();
+
+  const aliasCatalog = (typeof getColumnAliasCatalog_ === 'function')
+    ? getColumnAliasCatalog_()
+    : {};
+
+  const keys = Object.keys(aliasCatalog).sort();
+  const header = [['Chave Alias', 'Nome Canônico', 'Qtde Aliases', 'Aliases Aceitos', 'Aliases Normalizados']];
+  const rows = keys.map((key) => {
+    const aliases = Array.isArray(aliasCatalog[key]) ? aliasCatalog[key] : [];
+    const canonical = aliases.length ? aliases[0] : '';
+    const normalized = aliases
+      .map((name) => (typeof normalizeHeaderAliasForTable_ === 'function' ? normalizeHeaderAliasForTable_(name) : name))
+      .filter(Boolean);
+
+    return [
+      key,
+      canonical,
+      aliases.length,
+      aliases.join(' | '),
+      normalized.join(' | ')
+    ];
+  });
+
+  const output = header.concat(rows);
+  sheet.getRange(1, 1, output.length, output[0].length).setValues(output);
+  sheet.getRange(1, 1, 1, output[0].length)
+    .setBackground('#134f5c')
+    .setFontColor('white')
+    .setFontWeight('bold');
+  sheet.setFrozenRows(1);
+  sheet.autoResizeColumns(1, output[0].length);
+
+  const infoRow = output.length + 2;
+  sheet.getRange(infoRow, 1).setValue('Atualizado em');
+  sheet.getRange(infoRow, 2).setValue(formatDateRobust(new Date()));
+
+  console.log(`✅ Tabela de aliases gerada na aba "${sheetName}" com ${rows.length} chaves.`);
+  return { sheetName, totalAliases: rows.length };
+}
+
+/**
+ * Identifica se uma conta é Conta Foco 2026 (BASE INSTALADA ou EXPANSÃO).
+ * BASE INSTALADA tem prioridade sobre EXPANSÃO (ex: PROCERGS, MTI aparecem nas duas).
+ * @param {string} conta - Nome da conta (CRM)
+ * @returns {{tipo: string, sigla: string}|null}
+ */
+function classificarContaFoco2026_(conta) {
+  if (!conta) return null;
+  const n = (typeof normText_ === 'function') ? normText_(conta) : String(conta).toUpperCase().trim();
+
+  const has = (arr) => arr.some(k => n.includes(normText_(k)));
+  const hasWord = (arr) => arr.some(k => {
+    const kn = (typeof normText_ === 'function') ? normText_(k) : k.toUpperCase();
+    const re = new RegExp('(?:^|[\\s|\\-])' + kn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:[\\s|\\-]|$)');
+    return re.test(n);
+  });
+
+  // ══════════════════════════════════════════════════════
+  // BASE INSTALADA (checar primeiro — tem prioridade)
+  // ══════════════════════════════════════════════════════
+
+  // Sistema S
+  if (has(['SEBRAE'])) return { tipo: 'BASE INSTALADA', sigla: 'SEBRAE' };
+
+  // Governo & Estatais
+  if (has(['PRODERJ'])) return { tipo: 'BASE INSTALADA', sigla: 'PRODERJ' };
+  if (has(['SERPRO'])) return { tipo: 'BASE INSTALADA', sigla: 'SERPRO' };
+  if (has(['HEMOMINAS'])) return { tipo: 'BASE INSTALADA', sigla: 'HEMOMINAS' };
+  if (has(['PROCERGS'])) return { tipo: 'BASE INSTALADA', sigla: 'PROCERGS' };
+  if (has(['SMART-RJ', 'SMART RJ', 'SISTEMA MUNICIPAL DE ADMINISTRACAO'])) return { tipo: 'BASE INSTALADA', sigla: 'SMART-RJ' };
+  if (has(['CGE MT', 'CGE-MT', 'CGEMT', 'CONTROLADORIA GERAL DO ESTADO DE MATO GROSSO'])) return { tipo: 'BASE INSTALADA', sigla: 'CGE MT' };
+  if (hasWord(['PRF']) && !has(['SEGURADORA', 'BANCO', 'VAREJO'])) return { tipo: 'BASE INSTALADA', sigla: 'PRF' };
+  // MTI aparece em ambas as listas — BASE INSTALADA tem prioridade
+  if (has(['EMPRESA MATO-GROSSENSE DE TECNOLOGIA', 'EMPRESA MATOGROSSENSE', 'MATOGROSSENSE DE TECNOLOGIA']) || hasWord(['MTI'])) return { tipo: 'BASE INSTALADA', sigla: 'MTI' };
+
+  // Judiciário (base instalada)
+  if (has(['TRE-PR', 'TRE PR', 'TRIBUNAL REGIONAL ELEITORAL DO PARANA', 'TRIBUNAL REGIONAL ELEITORAL DO PARANÁ'])) return { tipo: 'BASE INSTALADA', sigla: 'TRE-PR' };
+  if (hasWord(['TST']) || has(['TRIBUNAL SUPERIOR DO TRABALHO'])) return { tipo: 'BASE INSTALADA', sigla: 'TST' };
+
+  // Educação (base instalada)
+  if (has(['PUC-RIO', 'PUC RIO', 'PONTIFICIA UNIVERSIDADE CATOLIC', 'PUC'])) return { tipo: 'BASE INSTALADA', sigla: 'PUC-Rio' };
+  if (hasWord(['USP']) || has(['UNIVERSIDADE DE SAO PAULO'])) return { tipo: 'BASE INSTALADA', sigla: 'USP' };
+  if (has(['UENP', 'UNIVERSIDADE ESTADUAL DO NORTE DO PARANA'])) return { tipo: 'BASE INSTALADA', sigla: 'UENP' };
+
+  // Privado & Saúde (base instalada)
+  if (has(['CI&T'])) return { tipo: 'BASE INSTALADA', sigla: 'CI&T' };
+  if (has(['CFM']) || has(['CONSELHO FEDERAL DE MEDICINA'])) return { tipo: 'BASE INSTALADA', sigla: 'CFM' };
+  if (has(['DASS NORDESTE', 'DASS CALCADOS', 'DASS CALÇADOS', 'DASS NORDESTE CALCADOS']) || hasWord(['DASS']) || n === 'DASS') return { tipo: 'BASE INSTALADA', sigla: 'Dass' };
+  if (has(['HFR']) || has(['FELICIO ROCHO', 'FELICIO ROCHU'])) return { tipo: 'BASE INSTALADA', sigla: 'HFR' };
+  if (has(['SAL DA TERRA', 'MISSAO SAL'])) return { tipo: 'BASE INSTALADA', sigla: 'MST' };
+  if (has(['OSKLEN'])) return { tipo: 'BASE INSTALADA', sigla: 'Osklen' };
+  if (has(['STONE INSTITUICAO', 'STONE PAGAMENTOS', 'STONE PAGAMENTO', 'STONE S.A', 'STONE SA', 'STONE INSTITUIÇÃO'])) return { tipo: 'BASE INSTALADA', sigla: 'Stone' };
+
+  // Municípios (base instalada)
+  if (has(['CIDADES INTELIGENTES', 'INSTITUTO DAS CIDADES']) || hasWord(['ICI'])) return { tipo: 'BASE INSTALADA', sigla: 'ICI' };
+  if (has(['GRAVATAI', 'GRAVATÁ'])) return { tipo: 'BASE INSTALADA', sigla: 'PM Gravataí' };
+  if (has(['GUARAPUAVA'])) return { tipo: 'BASE INSTALADA', sigla: 'PM Guarapuava' };
+  if (has(['NOVA LIMA'])) return { tipo: 'BASE INSTALADA', sigla: 'PM Nova Lima' };
+
+  // ══════════════════════════════════════════════════════
+  // EXPANSÃO (novos targets)
+  // ══════════════════════════════════════════════════════
+
+  // Ministérios Públicos (14 targets)
+  if (has(['MPDFT', 'MPGO', 'MPMA', 'MPMG', 'MPMS', 'MPMT', 'MPPA', 'MPRJ', 'MPRO', 'MPRS', 'MPSC', 'MPSP', 'MPTO']) ||
+      hasWord(['MPM']) ||
+      has(['MINISTERIO PUBLICO', 'MINISTÉRIO PÚBLICO'])) {
+    return { tipo: 'NOVO CLIENTE', sigla: 'MP' };
+  }
+
+  // Tribunais de Justiça (8 targets)
+  if (has(['TJDFT', 'TJGO', 'TJMG', 'TJMT', 'TJPR', 'TJRS', 'TJSP', 'TJTO']) ||
+      has(['TRIBUNAL DE JUSTICA', 'TRIBUNAL DE JUSTIÇA'])) {
+    return { tipo: 'NOVO CLIENTE', sigla: 'TJ' };
+  }
+
+  // Secretarias de Estado (11 targets)
+  if (has(['SEMAD GO', 'SEMAD MG', 'SEMAD-GO', 'SEMAD-MG']) ||
+      has(['SEMA MT', 'SEMA-MT', 'SECRETARIA DE ESTADO DE MEIO AMBIENTE']) ||
+      has(['SPGG RS', 'SPGG-RS', 'SECRETARIA DE PLANEJAMENTO, GOVERNANCA']) ||
+      has(['SEPLAG MG', 'SEPLAG MT', 'SEPLAG-MG', 'SEPLAG-MT']) ||
+      has(['SEFAZ MT', 'SEFAZ RS', 'SEFAZ TO', 'SEFAZ-MT', 'SEFAZ-RS', 'SEFAZ-TO', 'SEF SC', 'SEF-SC']) ||
+      has(['FEAM MG', 'FEAM-MG', 'FUNDACAO ESTADUAL DO MEIO AMBIENTE', 'FUNDAÇÃO ESTADUAL DO MEIO AMBIENTE'])) {
+    return { tipo: 'NOVO CLIENTE', sigla: 'Secretaria/SEFAZ' };
+  }
+
+  // Outros Órgãos (6 targets)
+  if (has(['BANCO DA AMAZONIA', 'BANCO DA AMAZÔNIA', 'BASA'])) return { tipo: 'NOVO CLIENTE', sigla: 'BASA' };
+  if (hasWord(['BNDES']) || has(['BANCO NACIONAL DE DESENVOLVIMENTO'])) return { tipo: 'NOVO CLIENTE', sigla: 'BNDES' };
+  if (has(['BADESUL'])) return { tipo: 'NOVO CLIENTE', sigla: 'BADESUL' };
+  if (has(['ATI TO', 'ATI-TO', 'AGENCIA DE TECNOLOGIA DA INFORMACAO DO TOCANTINS'])) return { tipo: 'NOVO CLIENTE', sigla: 'ATI TO' };
+
+  return null;
+}
+
 function classificarContaPorRegrasGTM_(conta, produtos, cidade, estado) {
   const text = [conta, produtos, cidade, estado]
     .map(v => String(v || '').trim())
@@ -2383,171 +2398,240 @@ function classificarContaPorRegrasGTM_(conta, produtos, cidade, estado) {
   const n = (typeof normText_ === 'function') ? normText_(text) : text.toUpperCase();
   if (!n) return null;
 
-  const has = (arr) => arr.some(k => n.indexOf((typeof normText_ === 'function') ? normText_(k) : String(k).toUpperCase()) > -1);
+  // has(): substring match — OK para termos longos
+  const has = (arr) => arr.some(k => {
+    const kn = (typeof normText_ === 'function') ? normText_(k) : String(k).toUpperCase();
+    return n.indexOf(kn) > -1;
+  });
 
-  if (has(['STF', 'STJ', 'TST', 'TSE', 'STM'])) {
-    return mkClass_('Governo', 'Justiça', 'Tribunais Superiores', 'Identificado por sigla de tribunal superior.');
-  }
-  if (has(['TRT', 'TRIBUNAL REGIONAL DO TRABALHO'])) {
-    return mkClass_('Governo', 'Justiça', 'Tribunal Regional do Trabalho', 'Identificado por sigla/descrição TRT.');
-  }
-  if (has(['TRE', 'TRIBUNAL REGIONAL ELEITORAL'])) {
-    return mkClass_('Governo', 'Justiça', 'Tribunal Regional Eleitoral', 'Identificado por sigla/descrição TRE.');
-  }
-  if (has(['TJ ', 'TRIBUNAL DE JUSTICA'])) {
-    return mkClass_('Governo', 'Justiça', 'Tribunal de Justiça Estadual', 'Identificado por TJ/Tribunal de Justiça.');
-  }
-  if (has(['TRF', 'JUSTICA FEDERAL', 'VARA FEDERAL'])) {
-    return mkClass_('Governo', 'Justiça', 'Justiça Federal', 'Identificado por TRF/Justiça Federal.');
-  }
+  // hasWord(): exige que a keyword seja palavra inteira (não substring de outra palavra)
+  // Usa espaço, hífen, pipe, início/fim da string como delimitadores
+  const hasWord = (arr) => arr.some(k => {
+    const kn = (typeof normText_ === 'function') ? normText_(k) : String(k).toUpperCase();
+    const re = new RegExp('(?:^|[\\s|\\-])' + kn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?:[\\s|\\-]|$)');
+    return re.test(n);
+  });
 
-  if (has(['MPF', 'MPE', 'MPT', 'MINISTERIO PUBLICO'])) {
-    return mkClass_('Governo', 'Controle, Fiscalização e Defesa', 'Ministério Público', 'Identificado por MP/Ministério Público.');
-  }
-  if (has(['TCU', 'TCE', 'TCM', 'TRIBUNAL DE CONTAS'])) {
-    return mkClass_('Governo', 'Controle, Fiscalização e Defesa', 'Tribunal de Contas', 'Identificado por Tribunal de Contas.');
-  }
-  if (has(['DPU', 'DPE', 'DEFENSORIA'])) {
-    return mkClass_('Governo', 'Controle, Fiscalização e Defesa', 'Defensoria Pública', 'Identificado por Defensoria.');
-  }
-  if (has(['AGU', 'PGE', 'PGM', 'PGFN', 'PROCURADORIA'])) {
-    return mkClass_('Governo', 'Controle, Fiscalização e Defesa', 'Procuradoria e Advocacia Pública', 'Identificado por Procuradoria/AGU/PGE/PGM.');
-  }
+  // Diagnóstico: log qual regra disparou (apenas inicias chamadas)
+  let _ruleMatch = null;
+  const matchRule = (label, testFn) => { if (!_ruleMatch && testFn()) { _ruleMatch = label; return true; } return false; };
 
-  if (has(['POLICIA FEDERAL', 'PF', 'PRF', 'POLICIA MILITAR', 'POLICIA CIVIL'])) {
-    return mkClass_('Governo', 'Segurança Pública e Trânsito', 'Forças Policiais', 'Identificado por forças policiais.');
+  if (matchRule('Tribunais Superiores', () => hasWord(['STF', 'STJ', 'TST', 'TSE', 'STM']))) {
+    return mkClass_('Governo', 'Justiça', 'Tribunais Superiores');
   }
-  if (has(['SSP', 'SESP', 'SECRETARIA DE SEGURANCA'])) {
-    return mkClass_('Governo', 'Segurança Pública e Trânsito', 'Secretaria de Segurança', 'Identificado por SSP/SESP.');
+  if (matchRule('TRT', () => hasWord(['TRT']) || has(['TRIBUNAL REGIONAL DO TRABALHO']))) {
+    return mkClass_('Governo', 'Justiça', 'Tribunal Regional do Trabalho');
   }
-  if (has(['DETRAN', 'CET'])) {
-    return mkClass_('Governo', 'Segurança Pública e Trânsito', 'Órgão de Trânsito', 'Identificado por DETRAN/CET.');
+  if (matchRule('TRE', () => hasWord(['TRE']) || has(['TRIBUNAL REGIONAL ELEITORAL']))) {
+    return mkClass_('Governo', 'Justiça', 'Tribunal Regional Eleitoral');
   }
-  if (has(['BOMBEIRO', 'CBM'])) {
-    return mkClass_('Governo', 'Segurança Pública e Trânsito', 'Corpo de Bombeiros', 'Identificado por Bombeiros/CBM.');
+  if (matchRule('TJ', () => hasWord(['TJ']) || has(['TRIBUNAL DE JUSTICA']))) {
+    return mkClass_('Governo', 'Justiça', 'Tribunal de Justiça Estadual');
+  }
+  if (matchRule('TRF', () => hasWord(['TRF']) || has(['JUSTICA FEDERAL', 'VARA FEDERAL']))) {
+    return mkClass_('Governo', 'Justiça', 'Justiça Federal');
   }
 
-  if (has(['SERPRO', 'DATAPREV', 'PRODESP', 'PRODAM', 'MTI', 'PROCERGS', 'CIASC', 'PRODERJ', 'PRODEMGE', 'PRODABEL'])) {
-    return mkClass_('Governo', 'Tecnologia e Processamento', 'Empresa Pública de TI', 'Identificado por empresa pública de TI.');
+  if (matchRule('Ministério Público', () => hasWord(['MPF', 'MPE', 'MPT']) || has(['MINISTERIO PUBLICO']))) {
+    return mkClass_('Governo', 'Controle, Fiscalização e Defesa', 'Ministério Público');
+  }
+  if (matchRule('AGU', () => hasWord(['AGU']) || has(['ADVOCACIA-GERAL DA UNIAO', 'ADVOCACIA GERAL DA UNIAO']))) {
+    return mkClass_('Governo', 'Controle, Fiscalização e Defesa', 'Advocacia-Geral da União');
+  }
+  if (matchRule('Tribunal de Contas', () => hasWord(['TCU', 'TCE', 'TCM']) || has(['TRIBUNAL DE CONTAS']))) {
+    return mkClass_('Governo', 'Controle, Fiscalização e Defesa', 'Tribunal de Contas');
+  }
+  if (matchRule('Defensoria', () => hasWord(['DPU', 'DPE']) || has(['DEFENSORIA']))) {
+    return mkClass_('Governo', 'Controle, Fiscalização e Defesa', 'Defensoria Pública');
+  }
+  if (matchRule('Procuradoria', () => hasWord(['PGE', 'PGM', 'PGFN']) || has(['PROCURADORIA']))) {
+    return mkClass_('Governo', 'Controle, Fiscalização e Defesa', 'Procuradoria e Advocacia Pública');
   }
 
-  if (has(['MINISTERIO', 'MEC', 'MGI'])) {
-    return mkClass_('Governo', 'Administração Direta e Ministérios', 'Ministério/Governo Federal', 'Identificado por ministério/órgão federal.');
+  if (matchRule('Polícia', () => has(['POLICIA FEDERAL', 'POLICIA MILITAR', 'POLICIA CIVIL']) || hasWord(['PRF']))) {
+    return mkClass_('Governo', 'Segurança Pública e Trânsito', 'Forças Policiais');
   }
-  if (has(['SEFAZ', 'SEPLAG', 'GOVERNO DO ESTADO', 'SECRETARIA DE'])) {
-    return mkClass_('Governo', 'Administração Direta e Ministérios', 'Governo Estadual e Secretarias', 'Identificado por secretaria/órgão estadual.');
+  if (matchRule('Sec. Segurança', () => hasWord(['SSP', 'SESP']) || has(['SECRETARIA DE SEGURANCA']))) {
+    return mkClass_('Governo', 'Segurança Pública e Trânsito', 'Secretaria de Segurança');
   }
-  if (has(['PREFEITURA', 'MUNICIPIO DE'])) {
-    return mkClass_('Governo', 'Administração Direta e Ministérios', 'Prefeitura Municipal', 'Identificado por prefeitura/município.');
+  if (matchRule('Trânsito', () => has(['DETRAN']) || hasWord(['CET']))) {
+    return mkClass_('Governo', 'Segurança Pública e Trânsito', 'Órgão de Trânsito');
   }
-
-  if (has(['SENADO', 'CAMARA DOS DEPUTADOS'])) {
-    return mkClass_('Governo', 'Legislativo', 'Legislativo Federal', 'Identificado por casa legislativa federal.');
-  }
-  if (has(['ASSEMBLEIA LEGISLATIVA', 'ALESP', 'ALERJ'])) {
-    return mkClass_('Governo', 'Legislativo', 'Legislativo Estadual', 'Identificado por assembleia legislativa.');
-  }
-  if (has(['CAMARA MUNICIPAL', 'CAMARA DE VEREADORES'])) {
-    return mkClass_('Governo', 'Legislativo', 'Legislativo Municipal', 'Identificado por câmara municipal.');
+  if (matchRule('Bombeiros', () => has(['BOMBEIRO']) || hasWord(['CBM']))) {
+    return mkClass_('Governo', 'Segurança Pública e Trânsito', 'Corpo de Bombeiros');
   }
 
-  if (has(['COPASA', 'SABESP', 'SANEPAR', 'CAESB'])) {
-    return mkClass_('Utilities e Infraestrutura Pública', 'Infraestrutura Essencial', 'Saneamento e Água', 'Identificado por empresa de saneamento/água.');
-  }
-  if (has(['ELETROBRAS', 'CEMIG', 'CEB', 'ENERGIA', 'GAS'])) {
-    return mkClass_('Utilities e Infraestrutura Pública', 'Infraestrutura Essencial', 'Energia e Gás', 'Identificado por empresa de energia/gás.');
-  }
-  if (has(['PORTO', 'DOCAS', 'ANTAQ', 'ANTT', 'ANEEL', 'ANP'])) {
-    return mkClass_('Utilities e Infraestrutura Pública', 'Infraestrutura Essencial', 'Logística e Portos', 'Identificado por logística/portos/regulação.');
+  if (matchRule('TI Pública', () => has(['SERPRO', 'DATAPREV', 'PRODESP', 'PRODAM', 'PROCERGS', 'CIASC', 'PRODERJ', 'PRODEMGE', 'PRODABEL']) || hasWord(['MTI']))) {
+    return mkClass_('Governo', 'Tecnologia e Processamento', 'Empresa Pública de TI');
   }
 
-  if (has(['SEBRAE', 'SENAI', 'SENAC', 'SESC', 'SESI'])) {
-    return mkClass_('Sistema S, Entidades de Classe e Fomento', 'Apoio Institucional e Desenvolvimento', 'Sistema S', 'Identificado por entidade do Sistema S.');
+  if (matchRule('Ministério Federal', () => has(['MINISTERIO']) || hasWord(['MEC', 'MGI']))) {
+    return mkClass_('Governo', 'Administração Direta e Ministérios', 'Ministério/Governo Federal');
   }
-  if (has(['OAB', 'CRM', 'CREA', 'CRO', 'CRP', 'CONSELHO'])) {
-    return mkClass_('Sistema S, Entidades de Classe e Fomento', 'Apoio Institucional e Desenvolvimento', 'Conselho Profissional', 'Identificado por conselho profissional.');
+  if (matchRule('Gov. Estadual', () => has(['SEFAZ', 'SEPLAG', 'GOVERNO DO ESTADO', 'SECRETARIA DE']))) {
+    return mkClass_('Governo', 'Administração Direta e Ministérios', 'Governo Estadual e Secretarias');
   }
-  if (has(['BNDES', 'BRDE', 'BANCO DE DESENVOLVIMENTO'])) {
-    return mkClass_('Sistema S, Entidades de Classe e Fomento', 'Apoio Institucional e Desenvolvimento', 'Banco de Desenvolvimento e Fomento', 'Identificado por instituição de fomento.');
-  }
-
-  if (has(['HOSPITAL', 'CLINICA', 'UNIMED', 'HAPVIDA', 'QUALICORP', 'FIOCRUZ', 'INCA', 'SECRETARIA DE SAUDE', 'SES', 'SMS'])) {
-    const isPublic = has(['SECRETARIA DE SAUDE', 'SES', 'SMS', 'FIOCRUZ', 'INCA']);
-    return mkClass_('Saúde', isPublic ? 'Saúde Pública' : 'Saúde Privada', isPublic ? 'Secretaria de Saúde' : 'Hospital e Clínica', 'Identificado por termos do setor de saúde.');
+  if (matchRule('Prefeitura', () => has(['PREFEITURA', 'MUNICIPIO DE']))) {
+    return mkClass_('Governo', 'Administração Direta e Ministérios', 'Prefeitura Municipal');
   }
 
-  if (has(['SEDUC', 'MEC', 'UNIVERSIDADE', 'USP', 'UFMG', 'IF', 'FACULDADE', 'COLEGIO', 'ESCOLA', 'MACKENZIE'])) {
-    const isPublic = has(['SEDUC', 'MEC', 'USP', 'UFMG', 'IF', 'SECRETARIA DE EDUCACAO']);
-    return mkClass_('Educação', isPublic ? 'Educação Pública' : 'Educação Privada', isPublic ? 'Ensino Básico e Secretarias' : 'Ensino Superior', 'Identificado por termos do setor de educação.');
+  if (matchRule('Legislativo Federal', () => has(['SENADO', 'CAMARA DOS DEPUTADOS']))) {
+    return mkClass_('Governo', 'Legislativo', 'Legislativo Federal');
+  }
+  if (matchRule('Legislativo Estadual', () => has(['ASSEMBLEIA LEGISLATIVA']) || hasWord(['ALESP', 'ALERJ']))) {
+    return mkClass_('Governo', 'Legislativo', 'Legislativo Estadual');
+  }
+  if (matchRule('Legislativo Municipal', () => has(['CAMARA MUNICIPAL', 'CAMARA DE VEREADORES']))) {
+    return mkClass_('Governo', 'Legislativo', 'Legislativo Municipal');
   }
 
-  if (has(['AMAGGI', 'BOM FUTURO', 'COOPERATIVA', 'AGRO', 'FAZENDA', 'FERTILIZANTE', 'INSUMO', 'COPASUL', 'LAR'])) {
-    if (has(['COOPERATIVA', 'COPASUL', 'LAR'])) {
-      return mkClass_('Agronegócio e Cooperativas', 'Cadeia Produtiva Agrícola', 'Cooperativa Agroindustrial', 'Identificado por cooperativa do agro.');
+  if (matchRule('Saneamento', () => has(['COPASA', 'SABESP', 'SANEPAR', 'CAESB']))) {
+    return mkClass_('Utilities e Infraestrutura Pública', 'Infraestrutura Essencial', 'Saneamento e Água');
+  }
+  if (matchRule('Energia', () => has(['ELETROBRAS', 'CEMIG', 'ENERGISA', 'EQUATORIAL', 'ENGIE', 'COPEL', 'CEMAR', 'COELBA', 'CELPE', 'COELCE', 'CELG', 'COSERN', 'CEAL', 'AMAZONAS ENERGIA', 'GASODUTO', 'DISTRIBUIDORA DE GAS', 'NATURGY', 'COMGAS']) || hasWord(['CEB', 'CEG']))) {
+    return mkClass_('Utilities e Infraestrutura Pública', 'Infraestrutura Essencial', 'Energia e Gás');
+  }
+  if (matchRule('Logística/Portos', () => has(['PORTO', 'DOCAS']) || hasWord(['ANTAQ', 'ANTT', 'ANEEL', 'ANP']))) {
+    return mkClass_('Utilities e Infraestrutura Pública', 'Infraestrutura Essencial', 'Logística e Portos');
+  }
+
+  if (matchRule('Sistema S', () => has(['SEBRAE', 'SENAI', 'SENAC', 'SESC', 'SESI']))) {
+    return mkClass_('Sistema S, Entidades de Classe e Fomento', 'Apoio Institucional e Desenvolvimento', 'Sistema S');
+  }
+  if (matchRule('Conselho Profissional', () => hasWord(['OAB', 'CRM', 'CREA', 'CRO', 'CRP']) || has(['CONSELHO']))) {
+    return mkClass_('Sistema S, Entidades de Classe e Fomento', 'Apoio Institucional e Desenvolvimento', 'Conselho Profissional');
+  }
+  if (matchRule('Banco Fomento', () => has(['BNDES', 'BRDE', 'BANCO DE DESENVOLVIMENTO']))) {
+    return mkClass_('Sistema S, Entidades de Classe e Fomento', 'Apoio Institucional e Desenvolvimento', 'Banco de Desenvolvimento e Fomento');
+  }
+
+  if (matchRule('Saúde', () => has(['HOSPITAL', 'CLINICA', 'UNIMED', 'HAPVIDA', 'QUALICORP', 'FIOCRUZ', 'INCA', 'SECRETARIA DE SAUDE', 'HEMOCENTRO', 'HEMOMINAS', 'SANGUE']) || hasWord(['SES', 'SMS']))) {
+    const isPublic = has(['SECRETARIA DE SAUDE', 'FIOCRUZ', 'INCA', 'HEMOCENTRO', 'HEMOMINAS']) || hasWord(['SES', 'SMS']);
+    return mkClass_('Saúde', isPublic ? 'Saúde Pública' : 'Saúde Privada', isPublic ? 'Secretaria de Saúde' : 'Hospital e Clínica');
+  }
+
+  if (matchRule('Educação', () => has(['UNIVERSIDADE', 'FACULDADE', 'COLEGIO', 'ESCOLA', 'MACKENZIE', 'UNINOVE', 'UNIP', 'ANHANGUERA', 'KROTON', 'YDUQS', 'COGNA', 'INSTITUTO FEDERAL', 'IFSP', 'IFRS', 'IFMG']) || hasWord(['SEDUC', 'MEC', 'USP', 'UFMG']))) {
+    const isPublic = has(['INSTITUTO FEDERAL', 'IFSP', 'IFRS', 'IFMG', 'SECRETARIA DE EDUCACAO']) || hasWord(['SEDUC', 'MEC', 'USP', 'UFMG']);
+    return mkClass_('Educação', isPublic ? 'Educação Pública' : 'Educação Privada', isPublic ? 'Ensino Básico e Secretarias' : 'Ensino Superior');
+  }
+
+  if (matchRule('Agronegócio', () => has(['AMAGGI', 'BOM FUTURO', 'COOPERATIVA', 'FAZENDA', 'FERTILIZANTE', 'INSUMO', 'COPASUL', 'AGROPECUARIA', 'AGROPECUÁRIA', 'GRANJA', 'SEMENTES', 'AGRONEGOCIO']))) {
+    if (has(['COOPERATIVA', 'COPASUL'])) {
+      return mkClass_('Agronegócio e Cooperativas', 'Cadeia Produtiva Agrícola', 'Cooperativa Agroindustrial');
     }
-    return mkClass_('Agronegócio e Cooperativas', 'Cadeia Produtiva Agrícola', 'Produtor e Fazenda', 'Identificado por termos do agronegócio.');
+    return mkClass_('Agronegócio e Cooperativas', 'Cadeia Produtiva Agrícola', 'Produtor e Fazenda');
   }
 
-  if (has(['MISSAO', 'MISSAO', 'ONG', 'ASSOCIACAO', 'ASSOCIAÇÃO', 'CSEM', 'FUNDO PATRIMONIAL', 'FILANTROP'])) {
-    if (has(['MISSAO', 'MISSAO', 'RELIGIOSA'])) {
-      return mkClass_('Terceiro Setor e ONGs', 'Organizações da Sociedade Civil', 'Entidade Religiosa e Missões', 'Identificado por organização religiosa/missão.');
+  // ══════════════════════════════════════════════════════════
+  // REGRAS GENÉRICAS (Última tentativa antes de fallback IA)
+  // ══════════════════════════════════════════════════════════
+  if (matchRule('Terceiro Setor: ONG', () => has(['MISSAO', 'MISSÃO', 'IGREJA', 'PAROQUIA', 'DIOCESE', 'PRESBITÉRIO', 'PRESBITERIO', 'EVANGEL', 'BATISTA', 'ADVENTISTA', 'LUTERAN', 'METODISTA', 'ASSEMB']))) {
+    return mkClass_('Terceiro Setor e ONGs', 'Organizações da Sociedade Civil', 'Entidade Religiosa e Missões');
+  }
+  if (matchRule('Terceiro Setor: Instituto', () => has(['ASSOCIACAO', 'ASSOCIAÇÃO', 'ONG ', ' ONG', 'CSEM', 'FUNDO PATRIMONIAL', 'FILANTROP', 'INSTITUTO', 'FUNDACAO', 'FUNDAÇÃO', 'PESQUISA', 'CENTRO DE ESTUDOS', 'LABORATORIO', 'LABORATÓRIO']))) {
+    if (has(['MISSAO', 'MISSÃO', 'IGREJA', 'RELIGIOSA'])) {
+      return mkClass_('Terceiro Setor e ONGs', 'Organizações da Sociedade Civil', 'Entidade Religiosa e Missões');
     }
-    return mkClass_('Terceiro Setor e ONGs', 'Organizações da Sociedade Civil', 'ONG e Associação Civil', 'Identificado por ONG/associação civil.');
+    if (has(['ASSOCIACAO', 'ASSOCIAÇÃO', 'ONG ', ' ONG', 'CSEM', 'FUNDO PATRIMONIAL', 'FILANTROP'])) {
+      return mkClass_('Terceiro Setor e ONGs', 'Organizações da Sociedade Civil', 'ONG e Associação Civil');
+    }
+    return mkClass_('Terceiro Setor e ONGs', 'Organizações da Sociedade Civil', 'Instituto de Pesquisa e Fundação');
   }
 
-  if (has(['TV ', 'TELEVISAO', 'RBS', 'CANCAO NOVA', 'CANÇÃO NOVA', 'CORREIO BRAZILIENSE', 'TELEBRAS', 'TELECOM'])) {
-    return mkClass_('Setor Privado: Corporativo', 'Mídia, Comunicação e Telecom', 'Emissora de TV/Rádio', 'Identificado por mídia/telecom.');
+  if (matchRule('Finanças', () => has(['BANCO', 'SEGURADORA', 'PAGAMENTO', 'FINANCEIRA']))) {
+    return mkClass_('Setor Privado: Corporativo', 'Finanças', 'Banco Comercial');
+  }
+  if (matchRule('Varejo', () => has(['CARREFOUR', 'MAGAZINE LUIZA', 'ATACADAO', 'ATACADO', 'SUPERMERCADO', 'VAREJO', 'E-COMMERCE']))) {
+    return mkClass_('Setor Privado: Corporativo', 'Varejo e E-commerce', 'Supermercado e Atacado');
+  }
+  if (matchRule('Logística', () => has(['LOGISTICA', 'TRANSPORTE', 'MOBILIDADE']))) {
+    return mkClass_('Setor Privado: Corporativo', 'Logística', 'Transporte e Mobilidade');
+  }
+  if (matchRule('Tecnologia', () => has(['CI&T', 'TECNOLOGIA', 'SOFTWARE', 'SAAS', 'DIGITAL']))) {
+    return mkClass_('Setor Privado: Corporativo', 'Tecnologia e Telecomunicações', 'Software e Serviços de TI');
+  }
+  if (matchRule('Consultoria', () => has(['ADVOGADOS', 'ADVOCACIA', 'CONSULTORIA', 'FANTASY SPORTS', 'SERVICOS']))){
+    return mkClass_('Setor Privado: Corporativo', 'Serviços Profissionais e B2B', 'Consultoria');
+  }
+  if (matchRule('Contabilidade', () => has(['CONTABIL', 'CONTÁBIL', 'CONTABILIDADE', 'ESCRITORIO', 'ESCRITÓRIO']))) {
+    return mkClass_('Setor Privado: Corporativo', 'Serviços Profissionais e B2B', 'Contabilidade');
+  }
+  if (matchRule('Indústria', () => has(['INDUSTRIA', 'INDÚSTRIA', 'ALIMENTOS', 'FABRICA', 'FÁBRICA', 'MANUFATURA', 'PRODUCAO', 'PRODUÇÃO']))) {
+    return mkClass_('Setor Privado: Corporativo', 'Indústria', 'Manufatura');
+  }
+  if (matchRule('Comércio', () => has(['COMERCIO', 'COMÉRCIO', 'LOJA', 'DISTRIBUIDORA', 'IMPORTADORA', 'EXPORTADORA']))) {
+    return mkClass_('Setor Privado: Corporativo', 'Varejo e E-commerce', 'Comércio');
+  }
+  if (matchRule('Construção', () => has(['ENGENHARIA', 'CONSTRUCAO', 'CONSTRUÇÃO', 'ARQUITETURA', 'OBRAS', 'CONSTRUTORA', 'INCORPORADORA']))) {
+    return mkClass_('Setor Privado: Corporativo', 'Engenharia e Construção', 'Construção Civil');
   }
 
-  if (has(['BANCO', 'SEGURADORA', 'PAGAMENTO', 'FINANCEIRA'])) {
-    return mkClass_('Setor Privado: Corporativo', 'Finanças', 'Banco Comercial', 'Identificado por termos do setor financeiro.');
-  }
-  if (has(['CARREFOUR', 'MAGAZINE LUIZA', 'ATACADO', 'SUPERMERCADO', 'VAREJO', 'E-COMMERCE'])) {
-    return mkClass_('Setor Privado: Corporativo', 'Varejo e E-commerce', 'Supermercado e Atacado', 'Identificado por termos de varejo/e-commerce.');
-  }
-  if (has(['LOGISTICA', 'TRANSPORTE', 'MOBILIDADE'])) {
-    return mkClass_('Setor Privado: Corporativo', 'Logística', 'Transporte e Mobilidade', 'Identificado por termos de logística/transporte.');
-  }
-  if (has(['CI&T', 'TECNOLOGIA', 'SOFTWARE', 'SAAS'])) {
-    return mkClass_('Setor Privado: Corporativo', 'Tecnologia Privada', 'Serviços Profissionais e B2B', 'Identificado por empresa de tecnologia privada.');
-  }
-  if (has(['ADVOGADOS', 'ADVOCACIA', 'CONSULTORIA', 'FANTASY SPORTS', 'SERVICOS'])) {
-    return mkClass_('Setor Privado: Corporativo', 'Serviços Profissionais e B2B', 'Consultoria', 'Identificado por serviços profissionais/consultoria.');
-  }
-
+  // Nenhuma regra disparou → fallback IA
   return null;
 }
 
-function mkClass_(vertical, subVertical, subSubVertical, justificativa) {
+
+function mkClass_(vertical, subVertical, subSubVertical) {
   return {
     vertical,
     subVertical,
-    subSubVertical,
-    justificativa
+    subSubVertical
   };
 }
 
 function classificarContaComIAFallback_(conta, produtos, cidade, estado) {
-  if (typeof callGeminiAPI !== 'function' || typeof cleanAndParseJSON !== 'function') {
+  // Verificar disponibilidade de funções do ShareCode.gs
+  if (typeof callGeminiAPI !== 'function') {
+    console.warn('⚠️ callGeminiAPI não disponível - verifique se ShareCode.gs está carregado');
+    return null;
+  }
+  if (typeof cleanAndParseJSON !== 'function') {
+    console.warn('⚠️ cleanAndParseJSON não disponível - verifique se ShareCode.gs está carregado');
     return null;
   }
 
   try {
-    const prompt =
-      'Classifique a conta abaixo em JSON ESTRITO com chaves: Vertical_IA, Sub_vertical_IA, Sub_sub_vertical_IA, Justificativa. ' +
-      'Use somente taxonomia B2B Brasil (Governo, Utilities e Infraestrutura Pública, Sistema S, Saúde, Educação, Agronegócio e Cooperativas, Setor Privado: Corporativo, Terceiro Setor e ONGs). ' +
-      'Conta: ' + JSON.stringify(conta || '') + '; ' +
-      'Produtos: ' + JSON.stringify(produtos || '') + '; ' +
-      'Cidade de cobrança: ' + JSON.stringify(cidade || '') + '; ' +
-      'Estado/Província de cobrança: ' + JSON.stringify(estado || '') + '. ' +
-      'Responda apenas objeto JSON válido.';
+    const prompt = `Classifique a empresa brasileira abaixo usando a taxonomia B2B Brasil.
 
-    const raw = callGeminiAPI(prompt, { temperature: 0.0, maxOutputTokens: 512, responseMimeType: 'application/json' });
+DADOS DA EMPRESA:
+- Nome da Conta: ${conta || 'N/A'}
+- Produtos/Serviços: ${produtos || 'N/A'}
+- Cidade: ${cidade || 'N/A'}
+- Estado: ${estado || 'N/A'}
+
+TAXONOMIA OBRIGATÓRIA:
+- Vertical primária: Governo | Utilities e Infraestrutura Pública | Sistema S | Saúde | Educação | Agronegócio e Cooperativas | Setor Privado: Corporativo | Terceiro Setor e ONGs
+
+RESPONDA APENAS COM JSON NESTE FORMATO EXATO:
+{
+  "Vertical_IA": "categoria principal",
+  "Sub_vertical_IA": "subcategoria",
+  "Sub_sub_vertical_IA": "categoria específica"
+}`;
+
+    console.log(`\n📤 PROMPT ENVIADO (${prompt.length} chars):\n${prompt.substring(0, 400)}...\n`);
+    
+    // Aumentado para 2048 para dar espaço ao raciocínio do gemini-2.5-pro (usa ~500 tokens de thinking)
+    const raw = callGeminiAPI(prompt, { temperature: 0.0, maxOutputTokens: 2048 });
+    console.log(`📥 Raw response da IA (primeiros 300 chars): ${raw.substring(0, 300)}`);
+    
     const parsed = cleanAndParseJSON(raw);
-    if (!parsed || typeof parsed !== 'object' || parsed.error) return null;
+    console.log(`🔍 Parsed JSON (primeiros 200 chars):`, JSON.stringify(parsed).substring(0, 200));
+    
+    if (!parsed || typeof parsed !== 'object' || parsed.error) {
+      console.warn(`⚠️ IA retornou resposta inválida para conta "${conta}"`);
+      console.warn(`   Raw (primeiros 150 chars): ${raw.substring(0, 150)}`);
+      console.warn(`   Parsed:`, parsed);
+      return null;
+    }
 
     const normalized = normalizeClassificationOutput_(parsed);
-    if (!normalized) return null;
+    if (!normalized) {
+      console.warn(`⚠️ Não foi possível normalizar resposta da IA para conta "${conta}"`);
+      console.warn(`   Parsed object keys:`, Object.keys(parsed).join(', '));
+      console.warn(`   Parsed object (primeiro 300 chars):`, JSON.stringify(parsed).substring(0, 300));
+      return null;
+    }
 
     return normalized;
   } catch (e) {
@@ -2563,17 +2647,36 @@ function classificarContaComBuscaWebFallback_(conta, produtos, cidade, estado) {
 }
 
 function normalizeClassificationOutput_(obj) {
-  const vertical = String(obj.Vertical_IA || obj.vertical_ia || obj.VerticalIA || '').trim();
-  const subVertical = String(obj.Sub_vertical_IA || obj.sub_vertical_ia || obj.SubVerticalIA || '').trim();
-  const subSubVertical = String(obj.Sub_sub_vertical_IA || obj.sub_sub_vertical_ia || obj.SubSubVerticalIA || '').trim();
-  const justificativa = String(obj.Justificativa || obj.Justificativa_IA || obj.justificativa || '').trim();
+  // Tentar múltiplas variações de chaves (case insensitive)
+  const vertical = String(
+    obj.Vertical_IA || obj.vertical_ia || obj.VerticalIA || obj.verticalIA ||
+    obj.Vertical || obj.vertical || obj.VERTICAL_IA || 
+    obj['Vertical IA'] || obj['vertical ia'] || ''
+  ).trim();
+  
+  const subVertical = String(
+    obj.Sub_vertical_IA || obj.sub_vertical_IA || obj.SubVerticalIA || obj.subVerticalIA ||
+    obj['Sub-vertical_IA'] || obj['sub-vertical_IA'] || obj['Sub-vertical IA'] ||
+    obj.SubVertical || obj.subVertical || obj.sub_vertical || 
+    obj['Sub Vertical'] || obj['sub vertical'] || ''
+  ).trim();
+  
+  const subSubVertical = String(
+    obj.Sub_sub_vertical_IA || obj.sub_sub_vertical_IA || obj.SubSubVerticalIA || obj.subSubVerticalIA ||
+    obj['Sub-sub-vertical_IA'] || obj['sub-sub-vertical_IA'] || obj['Sub-sub-vertical IA'] ||
+    obj.SubSubVertical || obj.subSubVertical || obj.sub_sub_vertical ||
+    obj['Sub Sub Vertical'] || obj['sub sub vertical'] || ''
+  ).trim();
 
-  if (!vertical || !subVertical || !subSubVertical) return null;
+  if (!vertical || !subVertical || !subSubVertical) {
+    console.warn('⚠️ Normalização falhou - campos vazios:', { vertical, subVertical, subSubVertical });
+    console.warn('   Chaves disponíveis no objeto:', Object.keys(obj).join(', '));
+    return null;
+  }
 
   return {
     vertical,
     subVertical,
-    subSubVertical,
-    justificativa: justificativa || 'Classificação inferida por IA.'
+    subSubVertical
   };
 }

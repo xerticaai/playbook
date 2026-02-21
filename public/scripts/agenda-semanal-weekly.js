@@ -242,7 +242,7 @@ function renderDrillDownDeals(deals, type = 'closed') {
     <div style="margin-top: 12px; padding: 12px; background: ${bgColor}; border-radius: 8px; border: 1px solid ${borderColor};">
       <div style="font-size: 11px; color: ${titleColor}; font-weight: 800; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
         <span style="text-transform: uppercase;">Detalhes (${deals.length} deals)</span>
-        <span>Gross: R$ ${(totalGross/1000).toFixed(0)}K | Net: R$ ${(totalNet/1000).toFixed(0)}K</span>
+        <span>Gross: $${(totalGross/1000).toFixed(0)}K | Net: $${(totalNet/1000).toFixed(0)}K</span>
       </div>
       <div style="display: grid; gap: 8px; max-height: 300px; overflow-y: auto;">
         ${deals.map(d => `
@@ -250,8 +250,8 @@ function renderDrillDownDeals(deals, type = 'closed') {
             <div style="font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.95); margin-bottom: 4px;">${escapeHtml(d.oportunidade || 'N/A')}</div>
             <div style="font-size: 12px; color: rgba(255,255,255,0.75); margin-bottom: 6px;">${escapeHtml(d.conta || 'N/A')}</div>
             <div style="display: flex; gap: 12px; font-size: 11px; color: rgba(255,255,255,0.6); flex-wrap: wrap;">
-              <span>Gross: <strong style="color: ${titleColor};">R$ ${(d.gross/1000 || 0).toFixed(1)}K</strong></span>
-              <span>Net: <strong>R$ ${(d.net/1000 || 0).toFixed(1)}K</strong></span>
+              <span>Gross: <strong style="color: ${titleColor};">$${(d.gross/1000 || 0).toFixed(1)}K</strong></span>
+              <span>Net: <strong>$${(d.net/1000 || 0).toFixed(1)}K</strong></span>
               ${d.forecast ? `<span>Forecast: <strong>${escapeHtml(d.forecast)}</strong></span>` : ''}
               ${d.data_fechamento ? `<span>Data: <strong>${formatDateDMY(d.data_fechamento)}</strong></span>` : ''}
               ${d.motivo_perda ? `<span style="color: var(--danger);">Motivo: <strong>${escapeHtml(d.motivo_perda)}</strong></span>` : ''}
@@ -296,7 +296,7 @@ function renderWeeklyAgendaSellerCard(seller, idx) {
           </h4>
           <div style="display: flex; gap: 12px; font-size: 13px; color: var(--text-gray);">
             <span><strong>${sellerSummary.total_deals || 0}</strong> deals</span>
-            <span class="val-cyan" style="font-weight: 700;">R$ ${Math.round(sellerSummary.total_gross_k || 0)}K</span>
+            <span class="val-cyan" style="font-weight: 700;">$${Math.round(sellerSummary.total_gross_k || 0)}K</span>
             <span><strong>${sellerSummary.avg_confianca || 0}%</strong> conf. média</span>
             <span><strong>${reunioesCount}</strong> reuniões</span>
             <span><strong>${novasCount}</strong> novas</span>
@@ -317,8 +317,8 @@ function renderWeeklyAgendaSellerCard(seller, idx) {
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin-bottom: 20px;">
         <div style="padding: 12px; background: rgba(0,190,255,0.08); border-radius: 8px; border: 1px solid rgba(0,190,255,0.2);">
           <div style="font-size: 11px; color: var(--text-gray); margin-bottom: 4px;">Pipeline</div>
-          <div style="font-size: 14px; font-weight: 700; color: var(--primary-cyan);">R$ ${perf.pipeline_gross_k || 0}K</div>
-          <div style="font-size: 10px; color: var(--text-gray); opacity: 0.7; margin-bottom: 2px;">Net: R$ ${perf.pipeline_net_k || 0}K</div>
+          <div style="font-size: 14px; font-weight: 700; color: var(--primary-cyan);">$${perf.pipeline_gross_k || 0}K</div>
+          <div style="font-size: 10px; color: var(--text-gray); opacity: 0.7; margin-bottom: 2px;">Net: $${perf.pipeline_net_k || 0}K</div>
           <div style="font-size: 10px; color: var(--text-gray);">${perf.pipeline_deals || 0} deals</div>
         </div>
 
@@ -327,8 +327,8 @@ function renderWeeklyAgendaSellerCard(seller, idx) {
             <div style="font-size: 11px; color: var(--text-gray);">Fechado (Q)</div>
             <span id="closed-deals-${idx}-btn" style="font-size: 10px; color: var(--text-gray);">▼</span>
           </div>
-          <div style="font-size: 14px; font-weight: 700; color: var(--accent-green);">R$ ${perf.closed_gross_k || 0}K</div>
-          <div style="font-size: 10px; color: ${(perf.closed_net_k || 0) < 0 ? 'var(--danger)' : 'var(--text-gray)'}; font-weight: ${(perf.closed_net_k || 0) < 0 ? '700' : '400'}; margin-bottom: 2px;">Net: R$ ${perf.closed_net_k || 0}K</div>
+          <div style="font-size: 14px; font-weight: 700; color: var(--accent-green);">$${perf.closed_gross_k || 0}K</div>
+          <div style="font-size: 10px; color: ${(perf.closed_net_k || 0) < 0 ? 'var(--danger)' : 'var(--text-gray)'}; font-weight: ${(perf.closed_net_k || 0) < 0 ? '700' : '400'}; margin-bottom: 2px;">Net: $${perf.closed_net_k || 0}K</div>
           <div style="font-size: 10px; color: var(--text-gray);">${perf.closed_deals || 0} deals | ${perf.win_rate ? perf.win_rate.toFixed(0) + '% win' : 'N/A'}</div>
         </div>
 
@@ -606,7 +606,7 @@ async function loadWeeklyAgenda() {
     if (totalDealsEl) totalDealsEl.textContent = summary.total_deals;
     
     const totalValueEl = document.getElementById('agenda-total-value');
-    if (totalValueEl) totalValueEl.textContent = 'R$ ' + summary.total_gross_k + 'K';
+    if (totalValueEl) totalValueEl.textContent = '$' + summary.total_gross_k + 'K';
     
     const criticosEl = document.getElementById('agenda-criticos-count');
     if (criticosEl) criticosEl.textContent = summary.total_criticos;
@@ -1181,9 +1181,9 @@ function renderSellerNewDeals(newDeals) {
 
   const formatMoney = (val) => {
     const num = Number(val || 0);
-    if (!num) return 'R$ 0';
+    if (!num) return '$0';
     const k = Math.round(num / 1000);
-    return k >= 1000 ? `R$ ${(k / 1000).toFixed(1)}M` : `R$ ${k}K`;
+    return k >= 1000 ? `$${(k / 1000).toFixed(1)}M` : `$${k}K`;
   };
 
   return newDeals.map(d => {
@@ -1262,9 +1262,9 @@ function renderSeller1on1Deals(deals) {
     const borderColor = borderColors[categoria];
     
     const formatMoney = (val) => {
-      if (!val) return 'R$ 0';
+      if (!val) return '$0';
       const k = Math.round(val / 1000);
-      return k >= 1000 ? `R$ ${(k/1000).toFixed(1)}M` : `R$ ${k}K`;
+      return k >= 1000 ? `$${(k/1000).toFixed(1)}M` : `$${k}K`;
     };
     
     // Calculate margin percentage

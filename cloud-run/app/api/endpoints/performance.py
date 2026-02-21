@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 router = APIRouter()
 
 PROJECT_ID = os.getenv("GCP_PROJECT", "operaciones-br")
-DATASET_ID = "sales_intelligence"
+DATASET_ID = os.getenv("BQ_DATASET", "sales_intelligence")
 ADMIN_ALLOWED_EMAIL = "amalia.silva@xertica.com"
 VACATIONS_TABLE = f"`{PROJECT_ID}.{DATASET_ID}.admin_vacations`"
 
@@ -338,6 +338,8 @@ def compute_capacity_and_consistency(
         total_activities = 0
         total_meetings = 0
         total_new_opps = 0
+        meta_atividades_total = 0
+        meta_novas_opps_total = 0
 
         for week_start, week_end in weeks:
             period_overlap = overlap_period(week_start, week_end, start_date, end_date)
@@ -387,6 +389,9 @@ def compute_capacity_and_consistency(
             goal_meet = round(1.6 * ebd)
             goal_opp = round(0.8 * ebd)
 
+            meta_atividades_total += goal_meet
+            meta_novas_opps_total += goal_opp
+
             meet_hit = 1 if meetings >= goal_meet else 0
             opp_hit = 1 if new_opps >= goal_opp else 0
             both_hit = 1 if (meet_hit and opp_hit) else 0
@@ -425,6 +430,8 @@ def compute_capacity_and_consistency(
             "total_activities": total_activities,
             "total_meetings": total_meetings,
             "total_new_opps": total_new_opps,
+            "meta_atividades_total": meta_atividades_total,
+            "meta_novas_opps_total": meta_novas_opps_total,
             "exec_consistency": exec_consistency,
             "ativ_score_capacity": ativ_score,
         }
@@ -592,7 +599,18 @@ async def get_performance(
         lost_data = {row["Vendedor"]: dict(row) for row in client.query(lost_query).result()}
         pipeline_data = {row["Vendedor"]: dict(row) for row in client.query(pipeline_query).result()}
 
-        all_sellers = sorted(set(list(won_data.keys()) + list(lost_data.keys())))
+        all_sellers_set = set(list(won_data.keys()) + list(lost_data.keys()))
+
+        # Garante que vendedores explicitamente solicitados apareçam mesmo sem deals fechados
+        if seller:
+            for s in [s.strip() for s in seller.split(",") if s.strip()]:
+                s_key = normalize_seller_key(s)
+                # Procura o nome exato como está nos dados (insensível a case)
+                match = next((k for k in all_sellers_set if normalize_seller_key(k) == s_key), None)
+                if not match:
+                    all_sellers_set.add(s)  # adiciona com nome original
+
+        all_sellers = sorted(all_sellers_set)
         if not all_sellers:
             return {
                 "success": True,
@@ -661,10 +679,19 @@ async def get_performance(
             ativ_score_capacity = capacity.get("ativ_score_capacity", 0)
             exec_consistency = capacity.get("exec_consistency", 0)
 
+            meta_ativ = capacity.get("meta_atividades_total", 0)
+            meta_opps = capacity.get("meta_novas_opps_total", 0)
+            total_ativ = capacity.get("total_activities", 0)
+            total_opps = capacity.get("total_new_opps", 0)
+
+            atingimento_atividades = min(100, (total_ativ / meta_ativ) * 100) if meta_ativ > 0 else 0
+            atingimento_novas_opps = min(100, (total_opps / meta_opps) * 100) if meta_opps > 0 else 0
+
             comportamento_score = (
-                (ativ_score_capacity * 0.40)
-                + (qualidade_processo * 0.30)
-                + (exec_consistency * 0.30)
+                (atingimento_atividades * 0.35)
+                + (atingimento_novas_opps * 0.20)
+                + (qualidade_processo * 0.25)
+                + (exec_consistency * 0.20)
             )
 
             seller_performance.append(
@@ -692,6 +719,10 @@ async def get_performance(
                     "qualidade_processo": round(qualidade_processo, 1),
                     "ativ_score_capacity": round(ativ_score_capacity, 1),
                     "exec_consistency": round(exec_consistency, 1),
+                    "atingimento_atividades": round(atingimento_atividades, 1),
+                    "atingimento_novas_opps": round(atingimento_novas_opps, 1),
+                    "meta_atividades": meta_ativ,
+                    "meta_novas_opps": meta_opps,
                     "capacity": capacity,
                     "eligible_for_ranking": (capacity.get("eligible_weeks", 0) > 0),
                 }
@@ -763,6 +794,7 @@ async def get_performance(
                     "ticketMedio": seller_item["ticket_medio"],
                     "grossGerado": seller_item["gross_ganho"],
                     "netGerado": seller_item["net_ganho"],
+                    "totalAtividades": cap.get("total_activities", 0),
                     "businessDaysTotal": cap.get("business_days_total", 0),
                     "businessDaysEffective": cap.get("business_days_effective", 0),
                     "holidayDays": cap.get("holiday_days", 0),
@@ -790,6 +822,12 @@ async def get_performance(
                     "bestStreakBoth": cap.get("best_streak_both", 0),
                     "execConsistency": round(seller_item.get("exec_consistency", 0), 1),
                     "ativScoreCapacity": round(seller_item.get("ativ_score_capacity", 0), 1),
+                    "atingimentoAtividades": round(seller_item.get("atingimento_atividades", 0), 1),
+                    "atingimentoNovasOpps": round(seller_item.get("atingimento_novas_opps", 0), 1),
+                    "metaAtividades": seller_item.get("meta_atividades", 0),
+                    "metaNovasOpps": seller_item.get("meta_novas_opps", 0),
+                    "totalAtividades": cap.get("total_activities", 0),
+                    "totalNovasOpps": cap.get("total_new_opps", 0),
                 }
             )
 
@@ -806,7 +844,7 @@ async def get_performance(
                 "ipv_formula": "IPV = Resultado (40%) + Eficiencia (35%) + Comportamento (25%)",
                 "resultado": "0.25*deals_norm + 0.75*net_norm (universo elegivel)",
                 "eficiencia": "0.6*win_rate + 0.4*eficiencia_ciclo",
-                "comportamento": "0.40*ativ_score_capacity + 0.30*qualidade_processo + 0.30*exec_consistency",
+                "comportamento": "0.35*ating_atividades + 0.20*ating_novas_opps + 0.25*qualidade_processo + 0.20*exec_consistency",
                 "capacity": "BD (dias uteis sem feriado), VAC (ferias em BD), EBD = BD - VAC",
                 "goals": "meet=round(1.6*EBD), opp=round(0.8*EBD)",
                 "sources": {

@@ -11,7 +11,7 @@ router = APIRouter()
 
 # Configuration
 PROJECT_ID = os.getenv("GCP_PROJECT", "operaciones-br")
-DATASET_ID = os.getenv("BQ_DATASET_ID", "sales_intelligence")
+DATASET_ID = os.getenv("BQ_DATASET", "sales_intelligence")
 
 
 def get_bq_client() -> bigquery.Client:

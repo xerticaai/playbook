@@ -39,13 +39,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files (CSS, JS, images) - MUST be before route definitions
+# Frontend é servido pelo Firebase Hosting — Cloud Run só expõe a API (/api/**).
+# O mount de /static abaixo só é ativo em dev local (quando public_path existir).
 public_path = Path(__file__).parent / "public"
 if public_path.exists():
     app.mount("/static", StaticFiles(directory=str(public_path)), name="static")
     print(f"✅ Static files mounted from: {public_path}")
-else:
-    print(f"⚠️ Warning: public directory not found at {public_path}")
 
 # Include modular routers
 app.include_router(ai_router, prefix="/api", tags=["AI Analysis"])
@@ -59,7 +58,7 @@ app.include_router(ml_predictions_router, prefix="/api", tags=["ML Predictions"]
 
 # BigQuery
 PROJECT_ID = os.getenv("GCP_PROJECT", "operaciones-br")
-DATASET_ID = "sales_intelligence"
+DATASET_ID = os.getenv("BQ_DATASET", "sales_intelligence")
 
 # Gemini Configuration (optional)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -145,6 +144,157 @@ def query_to_dict(query: str) -> List[Dict[str, Any]]:
     results = query_job.result()
     return [dict(row) for row in results]
 
+
+def sql_literal(value: str) -> str:
+    return str(value).replace("'", "''")
+
+
+def parse_csv_values(value: Optional[str]) -> List[str]:
+    if not value:
+        return []
+    return [item.strip() for item in str(value).split(',') if item and item.strip()]
+
+
+def build_in_filter(column_name: str, raw_value: Optional[str]) -> Optional[str]:
+    values = parse_csv_values(raw_value)
+    if not values:
+        return None
+    if len(values) == 1:
+        return f"{column_name} = '{sql_literal(values[0])}'"
+    values_quoted = "', '".join(sql_literal(v) for v in values)
+    return f"{column_name} IN ('{values_quoted}')"
+
+
+def get_table_columns(table_name: str) -> set[str]:
+    cache_key = f"_table_columns_{table_name}"
+    cached = get_cached_response(cache_key)
+    if cached is not None:
+        return cached
+
+    query = f"""
+    SELECT column_name
+    FROM `{PROJECT_ID}.{DATASET_ID}.INFORMATION_SCHEMA.COLUMNS`
+    WHERE table_name = '{sql_literal(table_name)}'
+    """
+    columns = {str(row.get("column_name") or "") for row in query_to_dict(query)}
+    set_cached_response(cache_key, columns, ttl_seconds=300)
+    return columns
+
+
+def append_pipeline_dimension_filters(
+    filters: List[str],
+    phase: Optional[str] = None,
+    owner_preventa: Optional[str] = None,
+    billing_city: Optional[str] = None,
+    billing_state: Optional[str] = None,
+    vertical_ia: Optional[str] = None,
+    sub_vertical_ia: Optional[str] = None,
+    sub_sub_vertical_ia: Optional[str] = None,
+    subsegmento_mercado: Optional[str] = None,
+    segmento_consolidado: Optional[str] = None,
+    portfolio_fdm: Optional[str] = None,
+) -> None:
+    columns = get_table_columns("pipeline")
+
+    if phase and "Fase_Atual" in columns:
+        phase_filter = build_in_filter("Fase_Atual", phase)
+        if phase_filter:
+            filters.append(phase_filter)
+
+    filter_map = [
+        ("Owner_Preventa", owner_preventa),
+        ("Vertical_IA", vertical_ia),
+        ("Sub_vertical_IA", sub_vertical_ia),
+        ("Sub_sub_vertical_IA", sub_sub_vertical_ia),
+        ("Subsegmento_de_mercado", subsegmento_mercado),
+        ("Segmento_consolidado", segmento_consolidado),
+        ("Portfolio_FDM", portfolio_fdm),
+    ]
+
+    for column_name, filter_value in filter_map:
+        if filter_value and column_name in columns:
+            in_filter = build_in_filter(column_name, filter_value)
+            if in_filter:
+                filters.append(in_filter)
+
+    billing_cities = parse_csv_values(billing_city)
+    if billing_cities and "Cidade_de_cobranca" in columns:
+        billing_city_filter = build_in_filter("Cidade_de_cobranca", billing_city)
+        if billing_city_filter:
+            filters.append(billing_city_filter)
+    elif billing_cities and "Estado_Cidade_Detectado" in columns:
+        city_terms = " OR ".join(
+            f"LOWER(Estado_Cidade_Detectado) LIKE LOWER('%{sql_literal(city)}%')" for city in billing_cities
+        )
+        filters.append(f"({city_terms})")
+
+    billing_states = parse_csv_values(billing_state)
+    if billing_states and "Estado_Provincia_de_cobranca" in columns:
+        billing_state_filter = build_in_filter("Estado_Provincia_de_cobranca", billing_state)
+        if billing_state_filter:
+            filters.append(billing_state_filter)
+    elif billing_states and "Estado_Cidade_Detectado" in columns:
+        state_terms = " OR ".join(
+            f"LOWER(Estado_Cidade_Detectado) LIKE LOWER('%{sql_literal(state)}%')" for state in billing_states
+        )
+        filters.append(f"({state_terms})")
+
+
+def build_pipeline_filters_for_facets(
+    year: Optional[int] = None,
+    quarter: Optional[int] = None,
+    month: Optional[int] = None,
+    seller: Optional[str] = None,
+    phase: Optional[str] = None,
+    owner_preventa: Optional[str] = None,
+    billing_city: Optional[str] = None,
+    billing_state: Optional[str] = None,
+    vertical_ia: Optional[str] = None,
+    sub_vertical_ia: Optional[str] = None,
+    sub_sub_vertical_ia: Optional[str] = None,
+    subsegmento_mercado: Optional[str] = None,
+    segmento_consolidado: Optional[str] = None,
+    portfolio_fdm: Optional[str] = None,
+    exclude_param: Optional[str] = None,
+) -> List[str]:
+    filters: List[str] = []
+
+    if year:
+        filters.append(f"EXTRACT(YEAR FROM PARSE_DATE('%Y-%m-%d', Data_Prevista)) = {year}")
+
+    if quarter:
+        quarter_months = {
+            1: (1, 3),
+            2: (4, 6),
+            3: (7, 9),
+            4: (10, 12)
+        }
+        if quarter in quarter_months:
+            start_month, end_month = quarter_months[quarter]
+            filters.append(f"EXTRACT(MONTH FROM PARSE_DATE('%Y-%m-%d', Data_Prevista)) BETWEEN {start_month} AND {end_month}")
+    elif month:
+        filters.append(f"EXTRACT(MONTH FROM PARSE_DATE('%Y-%m-%d', Data_Prevista)) = {month}")
+
+    if seller and exclude_param != "seller":
+        seller_filter = build_seller_filter(seller)
+        if seller_filter:
+            filters.append(seller_filter)
+
+    append_pipeline_dimension_filters(
+        filters,
+        phase=None if exclude_param == "phase" else phase,
+        owner_preventa=None if exclude_param == "owner_preventa" else owner_preventa,
+        billing_city=None if exclude_param == "billing_city" else billing_city,
+        billing_state=None if exclude_param == "billing_state" else billing_state,
+        vertical_ia=None if exclude_param == "vertical_ia" else vertical_ia,
+        sub_vertical_ia=None if exclude_param == "sub_vertical_ia" else sub_vertical_ia,
+        sub_sub_vertical_ia=None if exclude_param == "sub_sub_vertical_ia" else sub_sub_vertical_ia,
+        subsegmento_mercado=None if exclude_param == "subsegmento_mercado" else subsegmento_mercado,
+        segmento_consolidado=None if exclude_param == "segmento_consolidado" else segmento_consolidado,
+        portfolio_fdm=None if exclude_param == "portfolio_fdm" else portfolio_fdm,
+    )
+    return filters
+
 def build_seller_filter(seller: Optional[str], column_name: str = "Vendedor") -> Optional[str]:
     """
     Helper function to build seller filter supporting multiple sellers.
@@ -156,9 +306,9 @@ def build_seller_filter(seller: Optional[str], column_name: str = "Vendedor") ->
     
     sellers = [s.strip() for s in seller.split(',')]
     if len(sellers) == 1:
-        return f"{column_name} = '{sellers[0]}'"
+        return f"{column_name} = '{sql_literal(sellers[0])}'"
     else:
-        sellers_quoted = "', '".join(sellers)
+        sellers_quoted = "', '".join(sql_literal(s) for s in sellers)
         return f"{column_name} IN ('{sellers_quoted}')"
 
 # =============================================
@@ -228,16 +378,6 @@ async def get_user_context(request: Request):
         "email": email,
         "can_access_salesforce_indicators": email == "amalia.silva@xertica.com"
     }
-
-# Serve CSS files from public directory
-@app.get("/loader.css")
-async def serve_loader_css():
-    """Serve loader.css from public directory"""
-    css_path = Path(__file__).parent / "public" / "loader.css"
-    if css_path.exists():
-        return FileResponse(css_path, media_type="text/css")
-    else:
-        raise HTTPException(status_code=404, detail="CSS file not found")
 
 # =============================================
 # SELLERS ENDPOINT
@@ -352,6 +492,16 @@ def get_metrics(
     quarter: Optional[int] = None,
     month: Optional[int] = None, 
     seller: Optional[str] = None,
+    phase: Optional[str] = None,
+    owner_preventa: Optional[str] = None,
+    billing_city: Optional[str] = None,
+    billing_state: Optional[str] = None,
+    vertical_ia: Optional[str] = None,
+    sub_vertical_ia: Optional[str] = None,
+    sub_sub_vertical_ia: Optional[str] = None,
+    subsegmento_mercado: Optional[str] = None,
+    segmento_consolidado: Optional[str] = None,
+    portfolio_fdm: Optional[str] = None,
     nocache: bool = False
 ):
     """Endpoint de métricas consolidadas com dados corretos do BigQuery
@@ -364,7 +514,22 @@ def get_metrics(
     """
     cache_key = build_cache_key(
         "/api/metrics",
-        {"year": year, "quarter": quarter, "month": month, "seller": seller}
+        {
+            "year": year,
+            "quarter": quarter,
+            "month": month,
+            "seller": seller,
+            "phase": phase,
+            "owner_preventa": owner_preventa,
+            "billing_city": billing_city,
+            "billing_state": billing_state,
+            "vertical_ia": vertical_ia,
+            "sub_vertical_ia": sub_vertical_ia,
+            "sub_sub_vertical_ia": sub_sub_vertical_ia,
+            "subsegmento_mercado": subsegmento_mercado,
+            "segmento_consolidado": segmento_consolidado,
+            "portfolio_fdm": portfolio_fdm,
+        }
     )
     if not nocache:
         cached = get_cached_response(cache_key)
@@ -419,14 +584,29 @@ def get_metrics(
             # Support multiple sellers: "Alex Araujo,Carlos Moll" -> IN ('Alex Araujo', 'Carlos Moll')
             sellers = [s.strip() for s in seller.split(',')]
             if len(sellers) == 1:
-                pipeline_filters.append(f"Vendedor = '{sellers[0]}'")
-                closed_won_filters.append(f"Vendedor = '{sellers[0]}'")
-                closed_lost_filters.append(f"Vendedor = '{sellers[0]}'")
+                seller_escaped = sql_literal(sellers[0])
+                pipeline_filters.append(f"Vendedor = '{seller_escaped}'")
+                closed_won_filters.append(f"Vendedor = '{seller_escaped}'")
+                closed_lost_filters.append(f"Vendedor = '{seller_escaped}'")
             else:
-                sellers_quoted = "', '".join(sellers)
+                sellers_quoted = "', '".join(sql_literal(s) for s in sellers)
                 pipeline_filters.append(f"Vendedor IN ('{sellers_quoted}')")
                 closed_won_filters.append(f"Vendedor IN ('{sellers_quoted}')")
                 closed_lost_filters.append(f"Vendedor IN ('{sellers_quoted}')")
+
+        append_pipeline_dimension_filters(
+            pipeline_filters,
+            phase=phase,
+            owner_preventa=owner_preventa,
+            billing_city=billing_city,
+            billing_state=billing_state,
+            vertical_ia=vertical_ia,
+            sub_vertical_ia=sub_vertical_ia,
+            sub_sub_vertical_ia=sub_sub_vertical_ia,
+            subsegmento_mercado=subsegmento_mercado,
+            segmento_consolidado=segmento_consolidado,
+            portfolio_fdm=portfolio_fdm,
+        )
 
         pipeline_where = "WHERE " + " AND ".join(pipeline_filters)
         won_where = "WHERE " + " AND ".join(closed_won_filters) if closed_won_filters else ""
@@ -563,6 +743,16 @@ def get_pipeline(
     quarter: Optional[int] = None,
     month: Optional[int] = None,
     seller: Optional[str] = None,
+    phase: Optional[str] = None,
+    owner_preventa: Optional[str] = None,
+    billing_city: Optional[str] = None,
+    billing_state: Optional[str] = None,
+    vertical_ia: Optional[str] = None,
+    sub_vertical_ia: Optional[str] = None,
+    sub_sub_vertical_ia: Optional[str] = None,
+    subsegmento_mercado: Optional[str] = None,
+    segmento_consolidado: Optional[str] = None,
+    portfolio_fdm: Optional[str] = None,
     limit: int = 2000,
     nocache: bool = False
 ):
@@ -576,7 +766,23 @@ def get_pipeline(
     """
     cache_key = build_cache_key(
         "/api/pipeline",
-        {"year": year, "quarter": quarter, "month": month, "seller": seller, "limit": limit}
+        {
+            "year": year,
+            "quarter": quarter,
+            "month": month,
+            "seller": seller,
+            "phase": phase,
+            "owner_preventa": owner_preventa,
+            "billing_city": billing_city,
+            "billing_state": billing_state,
+            "vertical_ia": vertical_ia,
+            "sub_vertical_ia": sub_vertical_ia,
+            "sub_sub_vertical_ia": sub_sub_vertical_ia,
+            "subsegmento_mercado": subsegmento_mercado,
+            "segmento_consolidado": segmento_consolidado,
+            "portfolio_fdm": portfolio_fdm,
+            "limit": limit,
+        }
     )
     if not nocache:
         cached = get_cached_response(cache_key)
@@ -603,6 +809,20 @@ def get_pipeline(
             seller_filter = build_seller_filter(seller)
             if seller_filter:
                 pipeline_filters.append(seller_filter)
+
+        append_pipeline_dimension_filters(
+            pipeline_filters,
+            phase=phase,
+            owner_preventa=owner_preventa,
+            billing_city=billing_city,
+            billing_state=billing_state,
+            vertical_ia=vertical_ia,
+            sub_vertical_ia=sub_vertical_ia,
+            sub_sub_vertical_ia=sub_sub_vertical_ia,
+            subsegmento_mercado=subsegmento_mercado,
+            segmento_consolidado=segmento_consolidado,
+            portfolio_fdm=portfolio_fdm,
+        )
         
         where_clause = f"WHERE {' AND '.join(pipeline_filters)}" if pipeline_filters else ""
         
@@ -612,7 +832,9 @@ def get_pipeline(
             Conta, Idle_Dias, Atividades,
             Data_Prevista, SAFE_CAST(Confianca AS FLOAT64) as Confianca,
             Gross, Net, Forecast_SF, Forecast_IA,
-            Perfil, Produtos
+            Perfil, Produtos,
+            Owner_Preventa, Vertical_IA, Sub_vertical_IA, Sub_sub_vertical_IA,
+            Estado_Cidade_Detectado
         FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
         {where_clause}
         ORDER BY Gross DESC
@@ -623,6 +845,128 @@ def get_pipeline(
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Pipeline error: {str(e)}")
+
+
+@app.get("/api/filter-options")
+def get_filter_options(
+    year: Optional[int] = None,
+    quarter: Optional[int] = None,
+    month: Optional[int] = None,
+    seller: Optional[str] = None,
+    phase: Optional[str] = None,
+    owner_preventa: Optional[str] = None,
+    billing_city: Optional[str] = None,
+    billing_state: Optional[str] = None,
+    vertical_ia: Optional[str] = None,
+    sub_vertical_ia: Optional[str] = None,
+    sub_sub_vertical_ia: Optional[str] = None,
+    subsegmento_mercado: Optional[str] = None,
+    segmento_consolidado: Optional[str] = None,
+    portfolio_fdm: Optional[str] = None,
+    nocache: bool = False
+):
+    cache_key = build_cache_key(
+        "/api/filter-options",
+        {
+            "year": year,
+            "quarter": quarter,
+            "month": month,
+            "seller": seller,
+            "phase": phase,
+            "owner_preventa": owner_preventa,
+            "billing_city": billing_city,
+            "billing_state": billing_state,
+            "vertical_ia": vertical_ia,
+            "sub_vertical_ia": sub_vertical_ia,
+            "sub_sub_vertical_ia": sub_sub_vertical_ia,
+            "subsegmento_mercado": subsegmento_mercado,
+            "segmento_consolidado": segmento_consolidado,
+            "portfolio_fdm": portfolio_fdm,
+        }
+    )
+    if not nocache:
+        cached = get_cached_response(cache_key)
+        if cached is not None:
+            return cached
+
+    try:
+        columns = get_table_columns("pipeline")
+
+        facet_column_map = {
+            "phase": "Fase_Atual",
+            "owner_preventa": "Owner_Preventa",
+            "billing_city": "Cidade_de_cobranca",
+            "billing_state": "Estado_Provincia_de_cobranca",
+            "vertical_ia": "Vertical_IA",
+            "sub_vertical_ia": "Sub_vertical_IA",
+            "sub_sub_vertical_ia": "Sub_sub_vertical_IA",
+            "subsegmento_mercado": "Subsegmento_de_mercado",
+            "segmento_consolidado": "Segmento_consolidado",
+            "portfolio_fdm": "Portfolio_FDM",
+        }
+
+        def distinct_values_with_counts(param_name: str, column_name: str) -> List[Dict[str, Any]]:
+            if column_name not in columns:
+                return []
+
+            facet_filters = build_pipeline_filters_for_facets(
+                year=year,
+                quarter=quarter,
+                month=month,
+                seller=seller,
+                phase=phase,
+                owner_preventa=owner_preventa,
+                billing_city=billing_city,
+                billing_state=billing_state,
+                vertical_ia=vertical_ia,
+                sub_vertical_ia=sub_vertical_ia,
+                sub_sub_vertical_ia=sub_sub_vertical_ia,
+                subsegmento_mercado=subsegmento_mercado,
+                segmento_consolidado=segmento_consolidado,
+                portfolio_fdm=portfolio_fdm,
+                exclude_param=param_name,
+            )
+
+            where_clause = "WHERE " + " AND ".join(facet_filters) if facet_filters else ""
+            query = f"""
+            SELECT TRIM(CAST({column_name} AS STRING)) as value,
+                   COUNT(DISTINCT Oportunidade) as count
+            FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
+            {where_clause}
+              {"AND" if where_clause else "WHERE"} {column_name} IS NOT NULL
+              AND TRIM(CAST({column_name} AS STRING)) != ''
+            GROUP BY value
+            ORDER BY count DESC, value
+            LIMIT 500
+            """
+            return [
+                {"value": str(row.get("value") or ""), "count": int(row.get("count") or 0)}
+                for row in query_to_dict(query)
+                if row.get("value")
+            ]
+
+        result = {
+            "phase": distinct_values_with_counts("phase", facet_column_map["phase"]),
+            "owner_preventa": distinct_values_with_counts("owner_preventa", facet_column_map["owner_preventa"]),
+            "billing_city": distinct_values_with_counts("billing_city", facet_column_map["billing_city"]),
+            "billing_state": distinct_values_with_counts("billing_state", facet_column_map["billing_state"]),
+            "vertical_ia": distinct_values_with_counts("vertical_ia", facet_column_map["vertical_ia"]),
+            "sub_vertical_ia": distinct_values_with_counts("sub_vertical_ia", facet_column_map["sub_vertical_ia"]),
+            "sub_sub_vertical_ia": distinct_values_with_counts("sub_sub_vertical_ia", facet_column_map["sub_sub_vertical_ia"]),
+            "subsegmento_mercado": distinct_values_with_counts("subsegmento_mercado", facet_column_map["subsegmento_mercado"]),
+            "segmento_consolidado": distinct_values_with_counts("segmento_consolidado", facet_column_map["segmento_consolidado"]),
+            "portfolio_fdm": distinct_values_with_counts("portfolio_fdm", facet_column_map["portfolio_fdm"]),
+        }
+
+        if not result["billing_city"] and "Estado_Cidade_Detectado" in columns:
+            result["billing_city"] = distinct_values_with_counts("billing_city", "Estado_Cidade_Detectado")
+        if not result["billing_state"] and "Estado_Cidade_Detectado" in columns:
+            result["billing_state"] = distinct_values_with_counts("billing_state", "Estado_Cidade_Detectado")
+
+        set_cached_response(cache_key, result, ttl_seconds=300)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Filter options error: {str(e)}")
 
 @app.get("/api/closed/won")
 def get_closed_won(

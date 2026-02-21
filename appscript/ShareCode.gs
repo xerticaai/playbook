@@ -63,8 +63,18 @@
 
 const API_KEY = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY") || "";
 
-/** @constant {string} Identificador do modelo generativo (v2.5 Flash Preview) */
-const MODEL_ID = "gemini-2.5-flash-preview-09-2025"; 
+/** @constant {string} Identificador do modelo generativo (Gemini 2.5 Pro - GA, estável até junho 2026) */
+const MODEL_ID = "gemini-2.5-pro"; 
+
+/** @constant {array} Modelos de fallback caso o principal falhe (em ordem de prioridade) */
+const FALLBACK_MODELS = [
+  "gemini-1.5-pro-002",
+  "gemini-1.5-flash-002", 
+  "gemini-1.5-flash",
+  "gemini-2.5-flash",
+  "gemini-3.1-pro-preview",
+  "gemini-2.5-flash-lite"
+];
 
 /** @constant {string} Nome do projeto GCP */
 const PROJECT_NAME = "br-ventasbrasil-cld-01";
@@ -489,12 +499,17 @@ FASE CRM: ${item.stage} (${item.probabilidad}%) | FORECAST SF: ${item.forecast_s
 CRIADO: ${formatDateRobust(item.created)} | FECHAMENTO: ${formatDateRobust(item.closed)}
 ATIVIDADE: ${activity.count} ações | INATIVO: ${idleDays} dias
 ATIVIDADE PONDERADA: ${activity.weightedCount} | MIX: ${activity.channelSummary}
-TEXTO ATIVIDADES (últimas 15): "${(activity.fullText || "").substring(0, 1200)}"
+TEXTO ATIVIDADES (últimas 15): "${(activity.fullText || "").substring(0, 2000)}"
 DESCRIÇÃO CRM: "${(item.desc || "").substring(0, 900)}"
 HISTÓRICO (top5): ${audit}
 FLAGS SISTEMA: ${joinedFlags}
 ALERTA INCOERÊNCIA: ${inconsistency}
 GOVERNO: ${govInfo.isGov ? 'SIM' : 'NAO'} | MARCOS: ${govInfo.stages.join(' > ') || 'N/A'}
+
+DEAL VELOCITY (momentum do negócio):
+Predição: ${item._velocityMetrics ? item._velocityMetrics.prediction : 'N/D'} | Risk Score: ${item._velocityMetrics ? item._velocityMetrics.riskScore + '%' : 'N/D'}
+Stage Velocity: ${item._velocityMetrics ? item._velocityMetrics.stageVelocity + 'd/fase' : '-'} | Value Velocity: ${item._velocityMetrics ? item._velocityMetrics.valueVelocity + '% /d' : '-'} | Activity Momentum: ${item._velocityMetrics ? item._velocityMetrics.activityMomentum + '%' : '-'}
+Instrução: Se predição for DESACELERANDO ou ESTAGNADO, refletir no risco_principal e penalizar confiança.
 
 EVIDÊNCIAS DE QUALIFICAÇÃO:
 MEDDIC - Critérios Encontrados: ${meddicEvidence}
@@ -567,7 +582,7 @@ RETORNE APENAS JSON (sem markdown):
 }`;
 }
 
-function getClosedPrompt(mode, item, profile, fiscal, activity, meddic, audit, idleDays, lossReasonNormalized) {
+function getClosedPrompt(mode, item, profile, fiscal, activity, meddic, audit, idleDays, lossReasonNormalized, detailedChanges, activityBreakdown) {
   const today = getTodayContext_();
   const baseData = `
 DATA_ATUAL: ${today.br} (timezone: ${today.tz})
@@ -577,6 +592,9 @@ FASE CRM: ${item.stage} (${item.probabilidad}%) | FECHAMENTO: ${formatDateRobust
 MOTIVO (SE HOUVER): ${item.reason || "N/A"}
 MOTIVO NORMALIZADO: ${lossReasonNormalized || "OUTRO"}
 ATIVIDADE: ${activity.count} ações | INATIVO: ${idleDays} dias
+TEXTO ATIVIDADES: "${(activity.fullText || "").substring(0, 1500)}"
+DISTRIBUIÇÃO ATIVIDADES: ${activityBreakdown ? activityBreakdown.typeDistribution : 'N/D'} | PICO: ${activityBreakdown ? activityBreakdown.peakPeriod : 'N/D'} | CADÊNCIA: ${activityBreakdown ? activityBreakdown.avgCadence + 'd' : 'N/D'}
+MUDANÇAS CRM: ${detailedChanges ? detailedChanges.totalChanges + ' total' : '0'} | Críticas: ${detailedChanges ? detailedChanges.criticalChanges : 0} | Close Date: ${detailedChanges ? detailedChanges.closeDateChanges : 0} | Padrão: ${detailedChanges ? detailedChanges.changePattern : 'N/D'}
 DESCRIÇÃO CRM: "${(item.desc || "").substring(0, 900)}"
 HISTÓRICO (top5): ${audit}
 `;
@@ -889,10 +907,9 @@ function callGeminiAPI(prompt, optionalConfig) {
     Utilities.sleep(MIN_INTERVAL - (now - lastCall));
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_ID}:generateContent?key=${API_KEY}`;
-  
   // MELHORIA: Permite override de configuração para retry com parâmetros ajustados
-  const defaultConfig = { temperature: 0.1, maxOutputTokens: 4096, responseMimeType: "application/json" };
+  // NOTA: Removido responseMimeType pois Gemini 2.5 Pro retorna {} vazio com esse parâmetro
+  const defaultConfig = { temperature: 0.1, maxOutputTokens: 4096 };
   const generationConfig = optionalConfig ? { ...defaultConfig, ...optionalConfig } : defaultConfig;
   
   const payload = {
@@ -901,30 +918,80 @@ function callGeminiAPI(prompt, optionalConfig) {
   };
   const options = { method: "post", contentType: "application/json", payload: JSON.stringify(payload), muteHttpExceptions: true };
 
+  // Lista de modelos para tentar (principal + fallbacks)
+  const modelsToTry = [MODEL_ID, ...(typeof FALLBACK_MODELS !== 'undefined' ? FALLBACK_MODELS : ["gemini-1.5-flash"])];
+  
   let lastErr = "";
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const res = UrlFetchApp.fetch(url, options);
-    const code = res.getResponseCode();
-    const body = res.getContentText() || "";
+  
+  // Tentar cada modelo
+  for (const modelId of modelsToTry) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${API_KEY}`;
+    
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = UrlFetchApp.fetch(url, options);
+      const code = res.getResponseCode();
+      const body = res.getContentText() || "";
 
-    if (code === 200) {
-      const content = JSON.parse(body);
-      props.setProperty(throttleKey, Date.now().toString());
-      return content?.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+      if (code === 200) {
+        const content = JSON.parse(body);
+        props.setProperty(throttleKey, Date.now().toString());
+        
+        // DEBUG: Logar estrutura completa da resposta
+        console.log(`🔍 DEBUG API Response from ${modelId}:`);
+        console.log(`   Full body length: ${body.length} chars`);
+        console.log(`   Content structure: ${JSON.stringify(content).substring(0, 500)}`);
+        console.log(`   Candidates count: ${content?.candidates?.length || 0}`);
+        
+        const finishReason = content?.candidates?.[0]?.finishReason;
+        console.log(`   Finish reason: ${finishReason}`);
+        
+        // Se atingiu MAX_TOKENS no modelo com thinking, tentar próximo modelo
+        if (finishReason === 'MAX_TOKENS' && modelId === MODEL_ID) {
+          console.warn(`⚠️ ${modelId} atingiu MAX_TOKENS (thinking overhead). Tentando modelo mais leve...`);
+          logToSheet("WARN", "AI", `${modelId} MAX_TOKENS - tentando fallback`);
+          break; // Vai para próximo modelo
+        }
+        
+        if (content?.candidates?.[0]?.content?.parts?.[0]?.text) {
+          const extractedText = content.candidates[0].content.parts[0].text;
+          console.log(`   ✅ Extracted text (${extractedText.length} chars): ${extractedText.substring(0, 200)}`);
+          
+          // Se não é o modelo principal, logar que estamos usando fallback
+          if (modelId !== MODEL_ID) {
+            logToSheet("INFO", "AI", `Usando modelo fallback: ${modelId}`);
+          }
+          
+          return extractedText;
+        } else {
+          console.warn(`⚠️ Resposta 200 mas sem texto extraível. Full response: ${JSON.stringify(content)}`);
+          
+          // Se não tem texto, tentar próximo modelo
+          if (attempt === 2) break; // Última tentativa, próximo modelo
+          return "{}";
+        }
+      }
+
+      lastErr = `Gemini HTTP ${code} (${modelId}): ${body.substring(0, 300)}`;
+
+      // Se for 404 (modelo não encontrado), tentar próximo modelo
+      if (code === 404) {
+        logToSheet("WARN", "AI", `Modelo ${modelId} não encontrado, tentando próximo...`);
+        break; // Sai do loop de retry e tenta próximo modelo
+      }
+
+      // Se for 429 ou 503, fazer retry
+      if (code === 429 || code === 503) {
+        Utilities.sleep(800 * Math.pow(2, attempt));
+        continue;
+      }
+
+      // Outros erros, logar e tentar próximo modelo
+      logToSheet("WARN", "AI", lastErr);
+      break;
     }
-
-    lastErr = `Gemini HTTP ${code}: ${body.substring(0, 300)}`;
-    logToSheet("WARN", "AI", lastErr);
-
-    if (code === 429 || code === 503) {
-      Utilities.sleep(800 * Math.pow(2, attempt));
-      continue;
-    }
-
-    throw new Error(lastErr);
   }
 
-  throw new Error(lastErr || "Falha Gemini: erro desconhecido.");
+  throw new Error(lastErr || "Falha Gemini: nenhum modelo disponível funcionou.");
 }
 
 function cleanAndParseJSON(s) {
@@ -1113,6 +1180,8 @@ function buildOpenOutputRow(runId, item, profile, fiscal, activity, meddic, ia, 
     subVerticalIA,
     subSubVerticalIA,
     justificativaSegmentacaoIA,
+    ia.evidencia_citada || "-",
+    ia.personas_assessment || "-",
     lastUpdateFormatted
   ];
 }
@@ -1255,7 +1324,6 @@ function buildClosedOutputRow(runId, mode, item, profile, fiscal, ia, labels, ac
     verticalIA,
     subVerticalIA,
     subSubVerticalIA,
-    justificativaSegmentacaoIA,
     lastUpdateFormatted  // Col 40: Timestamp da última análise
   ];
 }
@@ -1971,6 +2039,87 @@ function clearHeaderCache_() {
   logToSheet("INFO", "Cache", "Cache de headers limpo");
 }
 
+function normalizeHeaderAliasForTable_(value) {
+  return String(value || '')
+    .trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9\s_-]/g, '')
+    .replace(/-+/g, '_')
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function getColumnAliasCatalog_() {
+  return {
+    opp: ["Opportunity Name", "Nome da oportunidade", "Nome da Oportunidade", "Oportunidade", "Opportunity", "Oportunidad"],
+    acc: ["Account Name", "Nome da conta", "Nome da Conta", "Company / Account", "Empresa/Conta", "Account", "Conta", "Cliente", "Empresa"],
+    prod: ["Product Name", "Nome do produto", "Produtos", "Products", "Produto", "Producto"],
+    prod_family: ["Product Family", "Família de produtos", "Familia de Producto", "Família de Produto"],
+    owner_preventa: ["Owner Preventa", "Preventa", "Preventa principal", "Owner Pre Sales", "Pre Sales Owner"],
+    billing_city: ["Cidade de cobrança", "Billing City", "Cidade de cobranca", "Cidade de Faturamento", "Cidade Cobrança"],
+    billing_state: ["Estado/Província de cobrança", "Billing State/Province", "Estado de cobrança", "Estado/Provincia de cobranca", "Estado de cobranca", "Billing State", "Estado de Faturamento", "Estado Cobrança"],
+    portfolio: ["Portafolio", "Portfólio", "Portfolio", "Portafolio Xertica.Ai", "Portafolio Xertica Ai", "Portfólio Xertica.Ai", "Portfolio Xertica.Ai", "Portafolio_XerticaAi"],
+    categoria_sdr: ["Categoria SDR", "Categoria_SDR", "Categoria Sdr", "CategoriaSDR"],
+    subsegmento_mercado: ["Subsegmento de mercado", "Subsegmento", "Subsegmento Mercado", "Subsegmento_de_mercado", "Subsegmento_mercado"],
+    segmento_consolidado: ["Segmento Consolidado", "Segmento_Consolidado", "Segmento_consolidado"],
+    portfolio_fdm: ["Portfolio FDM", "Portfolio_FDM", "Portfolio_Fdm", "Categoria_FDM", "CategoriaFDM"],
+    vertical_ia: ["Vertical IA", "Vertical_IA"],
+    sub_vertical_ia: ["Sub-vertical IA", "Sub_vertical_IA"],
+    sub_sub_vertical_ia: ["Sub-sub-vertical IA", "Sub_sub_vertical_IA"],
+    justificativa_ia: ["Justificativa IA", "Justificativa_IA"],
+    data_criacao: ["Data de criação", "Data de criacao", "Created Date", "Date Created", "Data_de_criacao", "Data_de_criacao_DE_ONDE_PEGAR", "Created_Date"]
+  };
+}
+
+function getAliasCandidates_(aliasKey, extraAliases) {
+  const catalog = getColumnAliasCatalog_();
+  const base = catalog[aliasKey] || [];
+  const list = [...base, ...(Array.isArray(extraAliases) ? extraAliases : [])]
+    .map(v => String(v || '').trim())
+    .filter(Boolean);
+
+  const withNormalized = [];
+  list.forEach((item) => {
+    withNormalized.push(item);
+    withNormalized.push(normalizeHeaderAliasForTable_(item));
+  });
+
+  const unique = [];
+  const seen = {};
+  withNormalized.forEach((item) => {
+    const k = normText_(item);
+    if (!seen[k]) {
+      seen[k] = true;
+      unique.push(item);
+    }
+  });
+  return unique;
+}
+
+function findColumnByAlias_(headers, aliasKey, extraAliases) {
+  const h = getNormalizedHeaders_(headers || []);
+  const candidates = getAliasCandidates_(aliasKey, extraAliases);
+  for (let i = 0; i < candidates.length; i++) {
+    const idx = h.indexOf(normText_(candidates[i]));
+    if (idx > -1) return idx;
+  }
+  return -1;
+}
+
+function getFieldByAlias_(row, aliasKey, extraAliases) {
+  if (!row || typeof row !== 'object') return null;
+  const candidates = getAliasCandidates_(aliasKey, extraAliases);
+  for (let i = 0; i < candidates.length; i++) {
+    const key = candidates[i];
+    if (Object.prototype.hasOwnProperty.call(row, key)) {
+      const val = row[key];
+      if (val !== null && val !== undefined && String(val) !== '') return val;
+    }
+  }
+  return null;
+}
+
 function getColumnMapping(headers) {
   const h = getNormalizedHeaders_(headers);
   
@@ -2024,13 +2173,14 @@ function getColumnMapping(headers) {
     p_inactive: find(["Inactive Days", "Dias inativos"]),
     p_next_activity: find(["Next Activity Date", "Data da próxima atividade", "Data da proxima atividade", "Próxima Atividade", "Proxima Atividade"]),
     p_forecast: find(["Forecast", "Forecast SF", "Forecast IA"]),
-    p_portfolio: find(["Portafolio", "Portfólio", "Portfolio"]),
-    p_owner_preventa: find(["Owner Preventa", "Preventa", "Preventa principal", "Owner Pre Sales", "Pre Sales Owner"]),
+    p_portfolio: findColumnByAlias_(headers, "portfolio"),
+    p_categoria_sdr: findColumnByAlias_(headers, "categoria_sdr"),
+    p_owner_preventa: findColumnByAlias_(headers, "owner_preventa"),
     p_segment: find(["Segmento", "Segment", "Segmento Consolidado", "Subsegmento de mercado"]),
-    p_subsegmento_mercado: find(["Subsegmento de mercado", "Subsegmento", "Subsegmento Mercado"]),
-    p_segmento_consolidado: find(["Segmento Consolidado", "Segmento_Consolidado"]),
+    p_subsegmento_mercado: findColumnByAlias_(headers, "subsegmento_mercado"),
+    p_segmento_consolidado: findColumnByAlias_(headers, "segmento_consolidado"),
     p_id: find(["Opportunity ID", "Opportunity: ID", "Record ID", "Id"]),
-    p_prod_family: find(["Product Family", "Família de produtos", "Familia de Producto", "Família de Produto"]),
+    p_prod_family: findColumnByAlias_(headers, "prod_family"),
     p_ciclo: find([
       "Ciclo (dias)", "Ciclo", "Cycle (days)", "Cycle", 
       "Ciclo dias", "ciclo (dias)", "CICLO (DIAS)",
@@ -2057,8 +2207,8 @@ function getColumnMapping(headers) {
     p_cod_acao: find(["Cód Ação", "Cod Acao", "Action Code", "Código Ação", "Codigo Acao"]),
     p_tipo_resultado: find(["Tipo Resultado", "Tipo de Resultado", "Result Type", "Tipo"]),
     p_labels: find(["🏷️ Labels", "Labels", "Tags", "Etiquetas"]),
-    p_billing_state: find(["Estado/Província de cobrança", "Billing State/Province", "Estado de cobrança", "Estado/Provincia de cobranca", "Estado de cobranca", "Billing State", "Estado de Faturamento", "Estado Cobrança"]),
-    p_billing_city: find(["Cidade de cobrança", "Billing City", "Cidade de cobranca", "Cidade de Faturamento", "Cidade Cobrança"]),
+    p_billing_state: findColumnByAlias_(headers, "billing_state"),
+    p_billing_city: findColumnByAlias_(headers, "billing_city"),
     p_billing_calendar: find([
       // Espanhol
       "Calendario facturación", "Calendario facturacion", "Calendario de facturación", "Calendario de facturacion",

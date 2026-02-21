@@ -4,3 +4,8 @@ google-cloud-cli-*.tar.gz
 __pycache__/
 *.pyc
 
+# Variáveis de ambiente (nunca commitar – use .env.example como referência)
+.env
+*.env
+!.env.example
+

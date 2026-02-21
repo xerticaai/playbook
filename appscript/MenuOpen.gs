@@ -4,6 +4,38 @@
  * Centralizado para melhor organização e manutenção
  */
 
+/**
+ * Instalação automática: cria todos os triggers ao instalar o script
+ */
+function onInstall() {
+  onOpen();
+  instalarTodosTriggers();
+}
+
+/**
+ * Instala todos os triggers do sistema silenciosamente (sem UI).
+ * Garante: normalização de datas (30min) + sync BigQuery (1h)
+ */
+function instalarTodosTriggers() {
+  // ── Normalização de Datas (30 min) ───────────────────────────────
+  clearTriggersByHandler_('normalizarDatasTodasAbas');
+  ScriptApp.newTrigger('normalizarDatasTodasAbas')
+    .timeBased()
+    .everyMinutes(30)
+    .create();
+
+  // ── BigQuery Sync (1 hora) ────────────────────────────────────────
+  clearTriggersByHandler_('syncToBigQueryScheduled');
+  if (BQ_ENABLED) {
+    ScriptApp.newTrigger('syncToBigQueryScheduled')
+      .timeBased()
+      .everyHours(1)
+      .create();
+  }
+
+  console.log('✅ Triggers instalados: normalizarDatasTodasAbas (30min)' + (BQ_ENABLED ? ' | syncToBigQueryScheduled (1h)' : ''));
+}
+
 function onOpen() {
   try {
     const ui = SpreadsheetApp.getUi();
@@ -16,48 +48,35 @@ function onOpen() {
         .addItem('🛑 Desativar Sistema', 'desativarAutoSync')
         .addItem('📊 Verificar Status Completo', 'verificarStatusAutoSync')
         .addSeparator()
-        .addItem('🔄 Processar Mudanças Manualmente', 'processarMudancasManual')
-        .addSeparator()
         .addItem('🔓 Limpar Lock (Manutenção)', 'limparLockAutoSync'))
-      
+
       // ══════════════════════════════════════════════════════════════
-      // SEÇÃO 2: ANÁLISES MANUAIS (Para processamento sob demanda)
+      // SEÇÃO 2: CORRIGIR FISCAL Q (somente normalização de datas)
       // ══════════════════════════════════════════════════════════════
       .addSeparator()
-      .addSubMenu(ui.createMenu('🎯 Análises Manuais')
-        .addItem('📊 Analisar Pipeline (Open)', 'startPipeline')
-        .addItem('✅ Analisar Ganhas (Won)', 'startWon')
-        .addItem('❌ Analisar Perdidas (Lost)', 'startLost')
+      .addSubMenu(ui.createMenu('📅 Corrigir Fiscal Q')
+        .addItem('🧹 Normalizar Datas (todas as abas)', 'normalizarDatasTodasAbas')
         .addSeparator()
-        .addItem('🔧 Corrigir Change Tracking (Ganhas/Perdidas)', 'corrigirChangeTrackingClosedDeals')
-        .addItem('📊 Normalizar Datas + Recalcular Fiscal Q/Ciclo', 'recalcularFiscalQTodasAnalises')
-        .addItem('🛠️ Atualizar Data Prevista + Fiscal Q (Pipeline)', 'atualizarDataPrevistaEFiscalQPipeline')
-        .addItem('🧩 Preencher Data de criação (Pipeline → Análise)', 'preencherDataCriacaoPipelineAnaliseUnico')
-        .addItem('🏷️ Enriquecer Forecast (Preventa + Segmentação IA)', 'enriquecerForecastComSegmentacaoIA')
-        .addItem('🏷️ Enriquecer Ganhas (Segmentação IA)', 'enriquecerAnaliseGanhasComSegmentacaoIA')
         .addItem('🏷️ Enriquecer Perdidas (Segmentação IA)', 'enriquecerAnalisePerdidasComSegmentacaoIA')
-        .addItem('🏷️ Enriquecer Todas Análises (IA)', 'enriquecerTodasAnalisesComSegmentacaoIA')
-        .addItem('⏰ Atualizar Timestamps', 'atualizarTimestampsManual')
-        .addItem('📋 Relatório de Qualidade de Dados', 'gerarRelatorioQualidadeDados'))
+        .addItem('▶️ Rodar Perdidas IA agora (sem popup)', 'executarEnriquecimentoPerdidasIASemPopup')
+        .addItem('🧪 TESTE Perdidas IA (5 linhas)', 'enriquecerPerdidas_TESTE_5_LINHAS')
+        .addSeparator()
+        .addItem('⚙️ Ativar Trigger Perdidas IA (15min)', 'ativarTriggerEnriquecimentoPerdidasIA')
+        .addItem('🛑 Desativar Trigger Perdidas IA', 'desativarTriggerEnriquecimentoPerdidasIA'))
+
+      // ══════════════════════════════════════════════════════════════
+      // SEÇÃO 3: ALIASES
+      // ══════════════════════════════════════════════════════════════
+      .addSeparator()
+      .addSubMenu(ui.createMenu('🧭 Aliases')
+        .addItem('📋 Gerar Tabela de Identificação', 'gerarTabelaIdentificacaoAliases'))
       
       // ══════════════════════════════════════════════════════════════
       // SEÇÃO 4: FERRAMENTAS & DIAGNÓSTICO
       // ══════════════════════════════════════════════════════════════
       .addSeparator()
       .addSubMenu(ui.createMenu('🔧 Ferramentas & Diagnóstico')
-        .addItem('💊 Health Check Completo', 'runHealthCheck')
-        .addItem('⚡ Teste Rápido de API', 'runQuickTest')
-        .addSeparator()
-        .addItem('🧹 Ativar Normalização Automática (30 min)', 'configurarNormalizacaoDatasAutomatica')
-        .addItem('🛑 Desativar Normalização Automática', 'desativarNormalizacaoDatasAutomatica')
-        .addSeparator()
-        .addItem('🩺 Diagnosticar Flags do Sistema', 'diagnosticarFlags')
-        .addItem('🧹 Limpar Flags Residuais', 'limparFlagsResiduais')
-        .addSeparator()
-        .addItem('📋 Auditoria: Base vs Análise', 'auditarBaseVsAnalise')
-        .addItem('🔄 Ativar Auditoria Automática (15 min)', 'configurarAuditoriaAutomatica')
-        .addItem('⏸️ Desativar Auditoria Automática', 'desativarAuditoriaAutomatica')
-        .addItem('🗑️ Limpar Logs Antigos', 'limparLogsManualmente'))
+        .addItem('📋 Auditoria: Base vs Análise', 'auditarBaseVsAnalise'))
       
       // ══════════════════════════════════════════════════════════════
       // SEÇÃO 5: BIGQUERY (Nova integração)
@@ -72,7 +91,18 @@ function onOpen() {
         .addItem('🧪 Testar Conexão', 'testarConexaoBigQuery'))
       
       // ══════════════════════════════════════════════════════════════
-      // SEÇÃO 6: RESET COMPLETO (Isolado para segurança)
+      // SEÇÃO 6: FATURAMENTO 2026 (Migração da planilha origem)
+      // ══════════════════════════════════════════════════════════════
+      .addSeparator()
+      .addSubMenu(ui.createMenu('💰 Faturamento 2026')
+        .addItem('🔄 Migrar Faturamento Agora', 'migrarFaturamento')
+        .addSeparator()
+        .addItem('⏰ Ativar Sync Automático (12h)', 'instalarTriggerFaturamento12h')
+        .addItem('🛑 Desativar Sync Automático', 'removerTriggerFaturamento')
+        .addItem('📊 Ver Status do Trigger', 'statusTriggerFaturamento'))
+
+      // ══════════════════════════════════════════════════════════════
+      // SEÇÃO 7: RESET COMPLETO (Isolado para segurança)
       // ══════════════════════════════════════════════════════════════
       .addSeparator()
       .addItem('🔄 ⚠️ REINICIALIZAÇÃO TOTAL', 'resetPanel')

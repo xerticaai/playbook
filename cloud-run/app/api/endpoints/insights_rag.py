@@ -12,9 +12,9 @@ from datetime import datetime
 router = APIRouter()
 
 PROJECT_ID = os.getenv("GCP_PROJECT", "operaciones-br")
-DATASET_ID = "sales_intelligence"
+DATASET_ID = os.getenv("BQ_DATASET", "sales_intelligence")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "models/gemini-pro-latest")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-preview-09-2025")
 
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)

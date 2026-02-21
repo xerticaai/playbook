@@ -214,11 +214,22 @@ See [/bigquery/ML_MODELS_README.md](../bigquery/ML_MODELS_README.md) for trainin
 
 ## ⚙️ Configuration
 
-Main settings live in [app/simple_api.py](app/simple_api.py):
+Todas as variáveis de ambiente estão documentadas em [../.env.example](../.env.example).
+Copie para `.env` na raiz e preencha os valores antes de rodar localmente:
 
-- **Project/Dataset**: `GCP_PROJECT`, `DATASET_ID`
-- **CORS**: allowed origins list
-- **Gemini**: `GEMINI_API_KEY`
+```bash
+cp ../.env.example ../.env
+# edite .env com os valores reais
+```
+
+Variáveis principais lidas pela API:
+
+| Variável | Padrão | Descrição |
+|---|---|---|
+| `GCP_PROJECT` | `operaciones-br` | ID do projeto GCP |
+| `BQ_DATASET` | `sales_intelligence` | Dataset do BigQuery |
+| `GEMINI_API_KEY` | — | Chave da API Gemini (obrigatória para IA) |
+| `CACHE_TTL_SECONDS` | `120` | TTL do cache interno da API |
 
 ---
 
