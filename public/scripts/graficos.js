@@ -333,14 +333,118 @@
     });
   }
 
-  // ── 6. Estado ────────────────────────────────────────────────────────
+  // ── 6. Estado — Brazil Choropleth Map ───────────────────────────────
   function buildEstado() {
+    var canvas = document.getElementById('chart-estado'); if (!canvas) return;
+    kill('estado');
+    var pipe = window.pipelineDataRaw || [];
+    var won  = window.wonAgg  || [];
+    var lost = window.lostAgg || [];
     var getE = function(d) {
       var v = d.Estado_Provincia_de_cobranca||d.estado||d.Estado_Cidade_Detectado||'';
       var mx = v.match(/[/\-\s]+([A-Z]{2})(\s*[-/].*)?$/);
       return mx ? mx[1] : (/^[A-Z]{2}$/.test(v.trim()) ? v.trim() : v.trim());
     };
-    tripleBar('chart-estado','estado', getE, 14, [C.indigo, C.green, C.red]);
+
+    // Fallback: use bar chart if geo plugin not loaded
+    if (!window.topojson || !window.ChartGeo) {
+      tripleBar('chart-estado','estado', getE, 14, [C.indigo, C.green, C.red]);
+      return;
+    }
+
+    var BR = {
+      AC:'Acre', AL:'Alagoas', AP:'Amap\u00e1', AM:'Amazonas', BA:'Bahia',
+      CE:'Cear\u00e1', DF:'Distrito Federal', ES:'Esp\u00edrito Santo', GO:'Goi\u00e1s',
+      MA:'Maranh\u00e3o', MT:'Mato Grosso', MS:'Mato Grosso do Sul', MG:'Minas Gerais',
+      PA:'Par\u00e1', PB:'Para\u00edba', PR:'Paran\u00e1', PE:'Pernambuco', PI:'Piau\u00ed',
+      RJ:'Rio de Janeiro', RN:'Rio Grande do Norte', RS:'Rio Grande do Sul',
+      RO:'Rond\u00f4nia', RR:'Roraima', SC:'Santa Catarina', SP:'S\u00e3o Paulo',
+      SE:'Sergipe', TO:'Tocantins'
+    };
+
+    function norm(s) {
+      return (s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+    }
+    var nameToAbbrev = {};
+    Object.keys(BR).forEach(function(a) { nameToAbbrev[norm(BR[a])] = a; });
+
+    var mP = groupBy(pipe, getE);
+    var mW = groupBy(won,  getE);
+    var mL = groupBy(lost, getE);
+
+    fetch('https://cdn.jsdelivr.net/npm/vega-datasets@2/data/brazil-states.topojson')
+      .then(function(r) { return r.json(); })
+      .then(function(topology) {
+        var objKey = Object.keys(topology.objects)[0];
+        var features = topojson.feature(topology, topology.objects[objKey]).features;
+
+        var vals = features.map(function(f) {
+          var abbrev = nameToAbbrev[norm(f.properties.name||'')] || '';
+          return (mP[abbrev]||{gross:0}).gross;
+        });
+        var maxVal = Math.max.apply(null, vals) || 1;
+        var t = th();
+
+        instances['estado'] = new Chart(canvas, {
+          type: 'choropleth',
+          data: {
+            labels: features.map(function(f) {
+              var n = f.properties.name || '';
+              var a = nameToAbbrev[norm(n)] || '?';
+              return n + ' (' + a + ')';
+            }),
+            datasets: [{
+              label: 'Pipeline por Estado',
+              data: features.map(function(f) {
+                var abbrev = nameToAbbrev[norm(f.properties.name||'')] || '';
+                return {
+                  feature: f,
+                  value:   (mP[abbrev]||{gross:0}).gross,
+                  won:     (mW[abbrev]||{gross:0}).gross,
+                  lost:    (mL[abbrev]||{gross:0}).gross
+                };
+              }),
+              backgroundColor: function(ctx) {
+                if (!ctx.raw) return 'rgba(0,190,255,0.05)';
+                var ratio = (ctx.raw.value || 0) / maxVal;
+                var alpha = ratio < 0.01 ? 0.06 : (0.15 + ratio * 0.75);
+                return 'rgba(0,190,255,' + alpha.toFixed(2) + ')';
+              },
+              borderColor:          'rgba(0,190,255,0.30)',
+              borderWidth:          0.8,
+              hoverBackgroundColor: 'rgba(0,190,255,0.90)',
+              hoverBorderColor:     '#00BEFF',
+              hoverBorderWidth:     1.5
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  title: function(items) { return items[0] ? items[0].label : ''; },
+                  label: function(ctx) {
+                    var d = ctx.raw || {};
+                    return [
+                      'Pipeline: ' + fmt(d.value||0),
+                      'Ganhos:   ' + fmt(d.won  ||0),
+                      'Perdidos: ' + fmt(d.lost ||0)
+                    ];
+                  }
+                }
+              }
+            },
+            scales: {
+              projection: { axis: 'x', projection: 'mercator' }
+            }
+          }
+        });
+      })
+      .catch(function() {
+        tripleBar('chart-estado','estado', getE, 14, [C.indigo, C.green, C.red]);
+      });
   }
 
   // ── 7. Segmento de Mercado ───────────────────────────────────────────

@@ -16,6 +16,9 @@
 
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <!-- Geo map (choropleth) -->
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-geo@4.3.3/build/index.umd.min.js"></script>
 
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
@@ -1135,8 +1138,8 @@
             </div>
             <!-- Row 3: Estado + Segmento -->
             <div class="card col-6">
-              <div class="card-label">Por Estado</div>
-              <div class="chart-wrapper" style="height:280px;"><canvas id="chart-estado"></canvas></div>
+              <div class="card-label">Distribuição por Estado</div>
+              <div class="chart-wrapper" style="height:400px;"><canvas id="chart-estado"></canvas></div>
             </div>
             <div class="card col-6">
               <div class="card-label">Por Segmento</div>
