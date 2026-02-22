@@ -205,6 +205,17 @@ function toggleAdminPreview() {
   }
 }
 
+async function checkAdminPermissionByApi_() {
+  try {
+    const year = new Date().getFullYear();
+    const response = await fetch(`${API_BASE_URL}/api/admin/vacations?year=${year}`, { cache: 'no-store' });
+    if (response.status === 403) return false;
+    return response.ok;
+  } catch (_) {
+    return false;
+  }
+}
+
 async function resolveAdminAccess() {
   isAdminUser = false;
   adminPreviewEnabled = false;
@@ -217,7 +228,13 @@ async function resolveAdminAccess() {
   const forceAdminPreview = qs.get('admin_preview') === '1' || localStorage.getItem('x_admin_preview_force') === '1';
   if (firebaseEmail) {
     currentUserEmail = firebaseEmail;
-    isAdminUser = forceAdminPreview || currentUserEmail === ADMIN_ALLOWED_EMAIL;
+    isAdminUser = forceAdminPreview || ADMIN_ALLOWED_EMAILS.includes(currentUserEmail);
+    if (!isAdminUser) {
+      const hasApiAdminAccess = await checkAdminPermissionByApi_();
+      if (hasApiAdminAccess) {
+        isAdminUser = true;
+      }
+    }
     adminPreviewEnabled = isAdminUser && (localStorage.getItem('x_admin_preview') !== '0');
     log('[AUTH] Email resolvido via Firebase Auth:', currentUserEmail, '| admin:', isAdminUser);
     updateAdminValidateButton();
@@ -233,7 +250,13 @@ async function resolveAdminAccess() {
         if (!response.ok) continue;
         const data = await response.json();
         currentUserEmail = normalizeUserEmail(data.email);
-        isAdminUser = forceAdminPreview || currentUserEmail === ADMIN_ALLOWED_EMAIL;
+        isAdminUser = forceAdminPreview || ADMIN_ALLOWED_EMAILS.includes(currentUserEmail);
+        if (!isAdminUser) {
+          const hasApiAdminAccess = await checkAdminPermissionByApi_();
+          if (hasApiAdminAccess) {
+            isAdminUser = true;
+          }
+        }
         adminPreviewEnabled = isAdminUser && (localStorage.getItem('x_admin_preview') !== '0');
         log('[AUTH] Email resolvido via user-context:', currentUserEmail, '| admin:', isAdminUser);
         break;

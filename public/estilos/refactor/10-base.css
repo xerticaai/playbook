@@ -1,0 +1,54 @@
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body {
+  font-family: var(--ui-font-body);
+}
+
+body {
+  background: var(--ui-bg-app) !important;
+  color: var(--ui-text-1) !important;
+  background-image: radial-gradient(circle at 12% 10%, var(--ui-cyan-soft), transparent 30%),
+    radial-gradient(circle at 84% 92%, rgba(255, 137, 255, 0.05), transparent 30%) !important;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.logo,
+.kpi-value,
+.card-value,
+.exec-tab,
+.metric-section-header,
+.exec-drilldown-title,
+.exec-dd-detail-title,
+.dd-stat-v {
+  font-family: var(--ui-font-heading);
+}
+
+button,
+input,
+select,
+textarea,
+th,
+td,
+.kpi-subtitle,
+.card-subtext,
+.deal-meta,
+.exec-dd-item-meta,
+.exec-dd-detail-grid,
+.filters-field-label {
+  font-family: var(--ui-font-body);
+}
+
+::selection {
+  background: var(--ui-cyan-soft);
+  color: var(--ui-text-1);
+}

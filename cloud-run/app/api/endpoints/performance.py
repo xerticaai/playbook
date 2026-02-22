@@ -19,7 +19,14 @@ router = APIRouter()
 
 PROJECT_ID = os.getenv("GCP_PROJECT", "operaciones-br")
 DATASET_ID = os.getenv("BQ_DATASET", "sales_intelligence")
-ADMIN_ALLOWED_EMAIL = "amalia.silva@xertica.com"
+ADMIN_ALLOWED_EMAILS = {
+    email.strip().lower()
+    for email in os.getenv(
+        "ADMIN_ALLOWED_EMAILS",
+        "amalia.silva@xertica.com,barbara.pessoa@xertica.com,gustavo.paula@xertica.com",
+    ).split(",")
+    if email.strip()
+}
 VACATIONS_TABLE = f"`{PROJECT_ID}.{DATASET_ID}.admin_vacations`"
 
 
@@ -66,7 +73,7 @@ def extract_request_email(request: Request) -> Optional[str]:
 
 def ensure_admin_access(request: Request) -> str:
     email = extract_request_email(request)
-    if email != ADMIN_ALLOWED_EMAIL:
+    if email not in ADMIN_ALLOWED_EMAILS:
         raise HTTPException(status_code=403, detail="Acesso restrito ao admin")
     return email
 

@@ -103,6 +103,67 @@
     ctx.fillText(msg || 'Sem dados para o período', canvas.width / 2, (canvas.height || 200) / 2);
   }
 
+  function allDealsWithSrc() {
+    return (window.pipelineDataRaw||[]).map(function(d){return Object.assign({_src:'pipe'},d);})
+      .concat((window.wonAgg||[]).map(function(d){return Object.assign({_src:'won'},d);} ))
+      .concat((window.lostAgg||[]).map(function(d){return Object.assign({_src:'lost'},d);}));
+  }
+
+  function toggleChartFullscreen(canvasId) {
+    var canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    var card = canvas.closest('.card');
+    if (!card || !card.requestFullscreen) return;
+
+    if (document.fullscreenElement === card) {
+      document.exitFullscreen && document.exitFullscreen();
+      return;
+    }
+    card.requestFullscreen();
+  }
+
+  function installChartExpandButtons() {
+    document.querySelectorAll('#view-graficos .chart-wrapper canvas').forEach(function(canvas) {
+      var card = canvas.closest('.card');
+      if (!card || card.dataset.expandBtnReady === '1') return;
+      card.dataset.expandBtnReady = '1';
+
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chart-expand-btn';
+      btn.textContent = 'Expandir';
+      btn.addEventListener('click', function(evt) {
+        evt.preventDefault();
+        evt.stopPropagation();
+        toggleChartFullscreen(canvas.id);
+      });
+      card.appendChild(btn);
+    });
+  }
+
+  window.chartCategoryState = window.chartCategoryState || { fase: true, seg: true, geo: true };
+
+  function applyCategoryState(cat) {
+    var expanded = window.chartCategoryState[cat] !== false;
+    document.querySelectorAll('.chart-group-' + cat).forEach(function(el) {
+      el.style.display = expanded ? '' : 'none';
+    });
+    var btn = document.getElementById('toggle-cat-' + cat);
+    if (btn) btn.textContent = expanded ? 'Suspender' : 'Expandir';
+  }
+
+  window.toggleChartCategory = function(cat) {
+    if (!cat) return;
+    var state = window.chartCategoryState || {};
+    state[cat] = !(state[cat] !== false);
+    window.chartCategoryState = state;
+    applyCategoryState(cat);
+  };
+
+  function initChartCategoryToggles() {
+    ['fase', 'seg', 'geo'].forEach(applyCategoryState);
+  }
+
   // ── Active filter label ────────────────────────────────────────────────
   function filterLabel() {
     var f = window.currentFilters || {};
@@ -310,9 +371,7 @@
   function buildPortfolioFDM() {
     var canvas = document.getElementById('chart-portfolio-fdm'); if (!canvas) return;
     kill('portfolio-fdm');
-    var all = (window.pipelineDataRaw||[]).map(function(d){return Object.assign({_src:'pipe'},d);})
-      .concat((window.wonAgg||[]).map(function(d){return Object.assign({_src:'won'},d);}))
-      .concat((window.lostAgg||[]).map(function(d){return Object.assign({_src:'lost'},d);}));
+    var all = allDealsWithSrc();
     var getP = function(d){return d.Portfolio_FDM||d.portfolio||'';};
     var m = groupBy(all, getP);
     var labels = topKeys(m, 10); if (!labels.length) { showEmpty(canvas, 'Portfolio FDM não disponível'); return; }
@@ -336,6 +395,57 @@
           var items = all.filter(function(d){ return (d.Portfolio_FDM||d.portfolio||'').trim()===norm; });
           openDrilldown('Portfolio FDM: ' + norm, items);
         }
+      }
+    });
+  }
+
+  // ── 5b. Portfolio Versão (1.0/2.0/3.0) ─────────────────────────────
+  function buildPortfolioVersao() {
+    var canvas = document.getElementById('chart-portfolio-versao'); if (!canvas) return;
+    kill('portfolio-versao');
+    var pipe = window.pipelineDataRaw || [];
+    var won  = window.wonAgg  || [];
+    var lost = window.lostAgg || [];
+
+    function versionLabel(d) {
+      var raw = d.Portfolio_FDM || d.portfolio || d.Portfolio || '';
+      var txt = String(raw || '').trim();
+      if (!txt) return 'Outros';
+      if (/(^|[^0-9])1(?:\.0)?([^0-9]|$)/.test(txt)) return '1.0';
+      if (/(^|[^0-9])2(?:\.0)?([^0-9]|$)/.test(txt)) return '2.0';
+      if (/(^|[^0-9])3(?:\.0)?([^0-9]|$)/.test(txt)) return '3.0';
+      return 'Outros';
+    }
+
+    var mP = groupBy(pipe, versionLabel);
+    var mW = groupBy(won,  versionLabel);
+    var mL = groupBy(lost, versionLabel);
+    var labels = ['1.0', '2.0', '3.0', 'Outros'].filter(function(k){
+      var g = (mP[k] ? mP[k].gross : 0) + (mW[k] ? mW[k].gross : 0) + (mL[k] ? mL[k].gross : 0);
+      return g > 0;
+    });
+
+    if (!labels.length) {
+      showEmpty(canvas, 'Versão de portfólio não disponível');
+      return;
+    }
+
+    var totP = labels.reduce(function(s,l){return s + (mP[l] ? mP[l].gross : 0);},0);
+    var totW = labels.reduce(function(s,l){return s + (mW[l] ? mW[l].gross : 0);},0);
+    var totL = labels.reduce(function(s,l){return s + (mL[l] ? mL[l].gross : 0);},0);
+
+    instances['portfolio-versao'] = new Chart(canvas, {
+      type: 'bar',
+      data: { labels: labels, datasets: [
+        { label:'Pipeline', data:labels.map(function(l){return (mP[l]||{gross:0}).gross;}), backgroundColor:C.warning.bg, borderColor:C.warning.b, borderWidth:2, borderRadius:6 },
+        { label:'Won',      data:labels.map(function(l){return (mW[l]||{gross:0}).gross;}), backgroundColor:C.green.bg,   borderColor:C.green.b,   borderWidth:2, borderRadius:6 },
+        { label:'Lost',     data:labels.map(function(l){return (mL[l]||{gross:0}).gross;}), backgroundColor:C.red.bg,     borderColor:C.red.b,     borderWidth:2, borderRadius:6 }
+      ]},
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        plugins: { legend: leg(), tooltip: richTip([mP,mW,mL],[totP,totW,totL]) },
+        scales: scalesV(),
+        onClick: makeDimClick(pipe, won, lost, versionLabel)
       }
     });
   }
@@ -460,10 +570,43 @@
       function(d){return d.Segmento_consolidado||d.segmento||'';}, 12, [C.purple, C.green, C.red]);
   }
 
+  // ── 7b. Cidade ───────────────────────────────────────────────────────
+  function buildCidade() {
+    tripleBar('chart-cidade','cidade',
+      function(d) {
+        var raw = d.Cidade_de_cobranca || d.billing_city || d.cidade || '';
+        var txt = String(raw || '').trim();
+        if (!txt) return '';
+
+        // Ex.: "São Paulo - SP" -> "São Paulo"
+        txt = txt.replace(/\s*[-\/]\s*[A-Z]{2}\s*$/i, '').trim();
+
+        // Ex.: "SP / São Paulo" -> "São Paulo"
+        var parts = txt.split('/').map(function(p) { return p.trim(); }).filter(Boolean);
+        if (parts.length === 2 && /^[A-Z]{2}$/i.test(parts[0])) {
+          txt = parts[1];
+        }
+
+        return txt;
+      },
+      15,
+      [C.teal, C.green, C.red]
+    );
+  }
+
   // ── 8. Receita Mensal + trend line ───────────────────────────────────
   function buildMonthly() {
     var canvas = document.getElementById('chart-receita-mensal'); if (!canvas) return;
     kill('monthly');
+    var titleEl = document.getElementById('chart-booking-mensal-label');
+    if (titleEl) {
+      var yearLabel = (window.currentFilters && window.currentFilters.year) ? String(window.currentFilters.year) : '';
+      if (!yearLabel && window.currentFY) {
+        yearLabel = /^FY\d{2}$/.test(window.currentFY) ? ('20' + String(window.currentFY).slice(2)) : String(window.currentFY);
+      }
+      if (!yearLabel) yearLabel = 'Todos os Anos';
+      titleEl.textContent = 'Booking Mensal (' + yearLabel + ') — Ganhos & Perdidos';
+    }
     var won  = window.wonAgg  || [];
     var lost = window.lostAgg || [];
     var ML = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -545,32 +688,6 @@
     });
   }
 
-  // ── Summary stats ────────────────────────────────────────────────────
-  function buildSummary() {
-    var pipe = window.allDealsWithConfidence||window.pipelineDataRaw||[];
-    var won  = window.wonAgg  ||[];
-    var lost = window.lostAgg ||[];
-    var total = won.length+lost.length;
-    var winRate = total>0 ? Math.round((won.length/total)*100) : 0;
-    var avgConf = 0;
-    if (pipe.length) {
-      var s=pipe.reduce(function(s,d){var c=(d.confidence||0)>1?d.confidence/100:(d.confidence||0);return s+c;},0);
-      avgConf=Math.round((s/pipe.length)*100);
-    }
-    var pipeGross=pipe.reduce(function(s,d){return s+(+(d.gross||d.val||0));},0);
-    var wonGross =won.reduce(function(s,d){ return s+(+(d.Gross||d.gross||0));},0);
-    var lostGross=lost.reduce(function(s,d){return s+(+(d.Gross||d.gross||0));},0);
-    function set(id,v){var el=document.getElementById(id);if(el)el.textContent=v;}
-    set('cs-pipeline',       pipe.length+' deals');
-    set('cs-won',            won.length +' deals');
-    set('cs-lost',           lost.length+' deals');
-    set('cs-winrate',        winRate+'%');
-    set('cs-confidence',     avgConf+'%');
-    set('cs-pipeline-gross', fmt(pipeGross));
-    set('cs-won-gross',      fmt(wonGross));
-    set('cs-lost-gross',     fmt(lostGross));
-  }
-
   // ── Public API ───────────────────────────────────────────────────────
   window.initDashboardCharts = function () {
     if (window.Chart && window.Chart.defaults) {
@@ -582,10 +699,13 @@
     buildVertical();
     buildSubVertical();
     buildPortfolioFDM();
-    buildEstado();
+    buildPortfolioVersao();
     buildSegmento();
+    buildEstado();
+    buildCidade();
     buildMonthly();
-    buildSummary();
+    installChartExpandButtons();
+    initChartCategoryToggles();
   };
   window.refreshDashboardCharts = window.initDashboardCharts;
 

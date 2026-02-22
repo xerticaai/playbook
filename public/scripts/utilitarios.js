@@ -163,6 +163,26 @@ const escapeHtml = (value) => {
 // ── Gross / Net display mode toggle ──────────────────────────────────────────
 window.execDisplayMode = 'gross'; // default
 
+// KPI card pairs: [mainValueId, subtitleId]
+// Render functions always write Gross as main, "Net: $X" as subtitle.
+// applyExecDisplayMode swaps the DOM values without triggering a re-render.
+var EXEC_KPI_PAIRS = [
+  ['exec-pipeline-year-total', 'exec-pipeline-year-net'],
+  ['exec-pipeline-total',      'exec-pipeline-net'],
+  ['exec-forecast-total',      'exec-forecast-net'],
+  ['exec-forecast-weighted',   'exec-forecast-net'],
+  ['exec-above50-total',       'exec-above50-net'],
+  ['exec-above50-value',       'exec-above50-net'],
+  ['exec-closed-total',        'exec-closed-net'],
+  ['exec-lost-total',          'exec-lost-net'],
+  ['exec-ticket-won',          'exec-ticket-won-net'],
+  ['exec-ticket-lost',         'exec-ticket-lost-net'],
+  ['exec-ss-total',            'exec-ss-net'],
+  ['exec-ss-ticket',           'exec-ss-ticket-net'],
+  ['forecast-ss-commit-value', 'forecast-ss-commit-net'],
+  ['forecast-ss-upside-value', 'forecast-ss-upside-net'],
+];
+
 function updateExecutiveHighlightToggleUI(mode) {
   var btnGross = document.getElementById('btn-highlight-gross');
   var btnNet   = document.getElementById('btn-highlight-net');
@@ -174,19 +194,46 @@ function updateExecutiveHighlightToggleUI(mode) {
     btnGross.classList.add('highlight-active');
     btnNet.classList.remove('highlight-active');
   }
-  // Remove any leftover inline styles that may fight the class
   btnGross.style.removeProperty('background');
   btnGross.style.removeProperty('color');
   btnNet.style.removeProperty('background');
   btnNet.style.removeProperty('color');
 }
 
+function applyExecDisplayMode(mode) {
+  EXEC_KPI_PAIRS.forEach(function(pair) {
+    var mainEl = document.getElementById(pair[0]);
+    var subEl  = document.getElementById(pair[1]);
+    if (!mainEl || !subEl) return;
+    var mainText = mainEl.textContent.trim();
+    var subText  = subEl.textContent.trim();
+    var isGrossMode = subText.indexOf('Net:') === 0;
+    var isNetMode   = subText.indexOf('Gross:') === 0;
+    if (mode === 'net' && isGrossMode) {
+      // Subtitle: "Net: $567" → extract "$567"
+      var netVal = subText.replace(/^Net:\s*/, '');
+      subEl.textContent  = 'Gross: ' + mainText;
+      mainEl.textContent = netVal;
+    } else if (mode === 'gross' && isNetMode) {
+      // Subtitle: "Gross: $1,234" → extract "$1,234"
+      var grossVal = subText.replace(/^Gross:\s*/, '');
+      subEl.textContent  = 'Net: ' + mainText;
+      mainEl.textContent = grossVal;
+    }
+    // If mode already matches, no-op
+  });
+}
+
 function setExecDisplayMode(mode) {
   window.execDisplayMode = mode;
   updateExecutiveHighlightToggleUI(mode);
-  // Re-render so metrics functions can use the updated mode
-  if (typeof renderDashboard === 'function') {
-    renderDashboard();
+  applyExecDisplayMode(mode);
+  if (typeof window.switchTopOppsTab === 'function') {
+    const activeTab = (window.topOppsState && window.topOppsState.tab) ? window.topOppsState.tab : 'open';
+    window.switchTopOppsTab(activeTab);
+  }
+  if (typeof updateGlobalFiltersPanelUI === 'function') {
+    updateGlobalFiltersPanelUI();
   }
 }
 

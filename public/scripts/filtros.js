@@ -250,6 +250,65 @@ function countActiveGlobalFilters() {
   return total;
 }
 
+function getPeriodSummaryLabel() {
+  const year = document.getElementById('year-filter')?.value || '';
+  const quarter = document.getElementById('quarter-filter')?.value || '';
+  const month = document.getElementById('month-filter')?.value || '';
+  const dateStart = document.getElementById('date-start-filter')?.value || '';
+  const dateEnd = document.getElementById('date-end-filter')?.value || '';
+
+  if (dateStart || dateEnd) {
+    return `${dateStart || 'Início'} → ${dateEnd || 'Fim'}`;
+  }
+
+  if (quarter && year) {
+    return `${quarter} ${year}`;
+  }
+
+  if (month && year) {
+    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const monthIndex = Number(month) - 1;
+    const monthLabel = monthNames[monthIndex] || `M${month}`;
+    return `${monthLabel} ${year}`;
+  }
+
+  if (year) {
+    return `FY ${year}`;
+  }
+
+  return 'Todos';
+}
+
+function syncQuickFilterPillState() {
+  const year = document.getElementById('year-filter')?.value || '';
+  const quarter = document.getElementById('quarter-filter')?.value || '';
+  const pills = document.querySelectorAll('.filter-quick-bar .filter-pill');
+
+  pills.forEach((pill) => pill.classList.remove('active'));
+
+  if (year === '2026' && quarter) {
+    const activeQuarterPill = Array.from(pills).find((pill) => (pill.textContent || '').trim().toUpperCase() === `${quarter} 2026`);
+    if (activeQuarterPill) activeQuarterPill.classList.add('active');
+  } else if (year === '2026' && !quarter) {
+    const fullYearPill = Array.from(pills).find((pill) => (pill.textContent || '').trim().toUpperCase() === 'FULL YEAR');
+    if (fullYearPill) fullYearPill.classList.add('active');
+  }
+}
+
+function updateFiltersSummaryChip() {
+  const summaryChip = document.getElementById('filters-active-summary');
+  if (!summaryChip) return;
+
+  const periodLabel = getPeriodSummaryLabel();
+  const mode = (window.execDisplayMode || 'gross') === 'net' ? 'Net Revenue' : 'Gross Revenue';
+  const activeCount = countActiveGlobalFilters();
+  const sellersCount = Array.isArray(window.selectedSellers) ? window.selectedSellers.length : 0;
+  const sellersLabel = sellersCount > 0 ? ` · ${sellersCount} vendedores` : '';
+
+  summaryChip.textContent = `Período: ${periodLabel} · Visão ${mode} · ${activeCount} filtros ativos${sellersLabel}`;
+  summaryChip.setAttribute('title', summaryChip.textContent);
+}
+
 function setGlobalFiltersPanelCollapsed(collapsed) {
   const panel = document.getElementById('global-filters-panel');
   if (!panel) return;
@@ -281,11 +340,14 @@ function updateGlobalFiltersPanelUI() {
 
   const collapsed = window.globalFiltersCollapsed !== false;
   const activeCount = countActiveGlobalFilters();
-  const countLabel = activeCount > 0 ? ` (${activeCount} ativos)` : '';
 
-  btn.textContent = collapsed
-    ? `▾ Mostrar filtros${countLabel}`
-    : `▴ Ocultar filtros${countLabel}`;
+  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg><span>Filtros</span>';
+  btn.setAttribute('aria-label', collapsed ? `Mostrar filtros avançados (${activeCount} ativos)` : `Ocultar filtros avançados (${activeCount} ativos)`);
+  btn.setAttribute('title', collapsed ? `Mostrar filtros avançados (${activeCount} ativos)` : `Ocultar filtros avançados (${activeCount} ativos)`);
+  btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+
+  syncQuickFilterPillState();
+  updateFiltersSummaryChip();
 }
 
 function toggleGlobalFiltersPanel() {
@@ -314,6 +376,24 @@ function initGlobalFiltersPanel() {
       panel.style.maxHeight = panel.scrollHeight + 'px';
     }
   });
+
+  const summaryWatchedFilters = [
+    'year-filter',
+    'quarter-filter',
+    'month-filter',
+    'date-start-filter',
+    'date-end-filter'
+  ];
+
+  summaryWatchedFilters.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', updateGlobalFiltersPanelUI);
+      el.addEventListener('input', updateGlobalFiltersPanelUI);
+    }
+  });
+
+  updateFiltersSummaryChip();
 }
 
 // Toggle Sidebar
@@ -345,6 +425,8 @@ function applyQuickFilter(year, quarter) {
   if (yearFilter) yearFilter.value = year;
   if (quarterFilter) quarterFilter.value = quarter;
   if (monthFilter) monthFilter.value = '';
+
+  syncQuickFilterPillState();
   
   log(`[QUICK FILTER] Aplicando: Year=${year}, Quarter=${quarter}`);
   reloadDashboard();
@@ -390,6 +472,8 @@ function clearAllFilters() {
     window.advancedFilterSelections[id] = [];
     updateGenericFilterTriggerText(id);
   });
+
+  syncQuickFilterPillState();
   
   log('[CLEAR] Todos os filtros limpos');
   updateGlobalFiltersPanelUI();

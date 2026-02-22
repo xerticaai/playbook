@@ -99,6 +99,28 @@ function showPerformanceView(sectionId) {
   showSection(performanceNav, sectionId);
 }
 
+function toggleIpvGuide(triggerEl) {
+  const content = document.getElementById('ipv-guide-content');
+  if (!content || !triggerEl) return;
+
+  const isCollapsed = content.classList.contains('collapsed');
+
+  if (isCollapsed) {
+    content.classList.remove('collapsed');
+    content.style.maxHeight = content.scrollHeight + 'px';
+    triggerEl.setAttribute('aria-expanded', 'true');
+    const chev = triggerEl.querySelector('.chevron-icon');
+    if (chev) chev.classList.add('rotated');
+    return;
+  }
+
+  content.classList.add('collapsed');
+  content.style.maxHeight = '0px';
+  triggerEl.setAttribute('aria-expanded', 'false');
+  const chev = triggerEl.querySelector('.chevron-icon');
+  if (chev) chev.classList.remove('rotated');
+}
+
 // ==========================================================================
 // Navegação corrigida com argumentos explícitos
 function showSection(element, sectionId) {

@@ -1264,6 +1264,58 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
         // Será usado no override após a chamada de IA
       }
     }
+
+    // ── CAMADA DETERMINÍSTICA: OCULTAÇÃO DE MATURIDADE + FALSO ENGAJAMENTO + ESTAGNAÇÃO ─────────
+    // Detecta sinais antes da IA e injeta labels garantidas em governanceIssues.
+    if (mode === 'OPEN') {
+      // Ocultação de Maturidade: fase precoce + MEDDIC alto + atividade alta + fechamento iminente
+      const _sbDaysClose  = (item.closed instanceof Date) ? Math.ceil((item.closed - hoje) / MS_PER_DAY) : 999;
+      const _sbEarlyStage = /qualific|prospec|descobert|discover|lead/i.test(item.stage || '');
+      const _sbMeddic     = (meddic && typeof meddic.score === 'number') ? meddic.score : 0;
+      const _sbWeighted   = (activityData && typeof activityData.weightedCount === 'number') ? activityData.weightedCount : 0;
+      if (_sbEarlyStage && _sbMeddic >= 55 && _sbWeighted >= 4 && _sbDaysClose >= 0 && _sbDaysClose <= 30) {
+        governanceIssues.push(ENUMS.LABELS.OCULTACAO_MATURIDADE);
+        rulesApplied.push(`OCULTACAO-MATURIDADE: fase "${item.stage}" (${item.probabilidad}%) com MEDDIC ${_sbMeddic}, ${_sbWeighted} ativ. ponderadas, fechamento em ${_sbDaysClose}d.`);
+      }
+      // Falso Engajamento: decisor(es) ausentes nas atividades recentes com alto engajamento
+      if (personas && activityData.count > 3) {
+        const _ghText   = (activityData.fullText || '').substring(0, 700).toLowerCase();
+        const _ghFn     = (s) => s && !/n.o identificado|not identified|n\/a/i.test(s) ? s.trim().split(/\s+/)[0].toLowerCase() : '';
+        const _ghChamp  = _ghFn(personas.champion || '');
+        const _ghBuyer  = _ghFn(personas.economicBuyer || '');
+        const _ghMissed = [
+          (_ghChamp  && !_ghText.includes(_ghChamp))  ? `Champion "${personas.champion}"` : '',
+          (_ghBuyer  && !_ghText.includes(_ghBuyer))  ? `Economic Buyer "${personas.economicBuyer}"` : ''
+        ].filter(Boolean);
+        if (_ghMissed.length > 0) {
+          governanceIssues.push(ENUMS.LABELS.FALSO_ENGAJAMENTO);
+          rulesApplied.push(`FALSO-ENGAJAMENTO: ${_ghMissed.join(' e ')} ausente(s) nas atividades recentes.`);
+        }
+      }
+      // Fallback: se a coluna CRM não exportou lastStageChangeDate, deriva do histórico de mudanças
+      if (!item.lastStageChangeDate && relatedChanges && relatedChanges.length) {
+        item.lastStageChangeDate = getLastStageChangeDate(relatedChanges, changesHeaders);
+      }
+      // Estagnação de Funil: alto engajamento mas presa na mesma fase >45d
+      if (item.lastStageChangeDate) {
+        const _stageChangeMs  = item.lastStageChangeDate instanceof Date ? item.lastStageChangeDate.getTime() : new Date(item.lastStageChangeDate).getTime();
+        const _stuckDays      = isNaN(_stageChangeMs) ? 0 : Math.ceil((hoje - _stageChangeMs) / MS_PER_DAY);
+        if (_stuckDays > 45 && activityData.count >= 5) {
+          governanceIssues.push(ENUMS.LABELS.ESTAGNACAO_FUNIL);
+          rulesApplied.push(`ESTAGNACAO-FUNIL: ${activityData.count} atividades mas presa em "${item.stage}" há ${_stuckDays}d sem avançar de fase.`);
+        }
+      }
+      // Efeito Halo: opp inativa mas conta recentemente ativa — idle não representa abandono real
+      if (typeof idleDays === 'number' && idleDays > 30 && item.accountLastActivity) {
+        const _acctMs   = item.accountLastActivity instanceof Date ? item.accountLastActivity.getTime() : new Date(item.accountLastActivity).getTime();
+        const _acctDays = isNaN(_acctMs) ? 999 : Math.ceil((hoje - _acctMs) / MS_PER_DAY);
+        if (_acctDays < 15) {
+          governanceIssues.push(ENUMS.LABELS.EFEITO_HALO);
+          rulesApplied.push(`EFEITO-HALO: opp inativa há ${idleDays}d mas conta teve atividade há ${_acctDays}d — idle não representa abandono.`);
+        }
+      }
+    }
+    // ──────────────────────────────────────────────────────────────────────────────────────────
     
     const prompt = (mode === 'OPEN')
       ? getOpenPrompt(item, clientProfile, fiscal, activityData, meddic, bant, personas, nextStepCheck, inactivityGate, auditSummary, idleDays, governanceIssues, inconsistencyCheck, govInfo)
@@ -1337,6 +1389,30 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
     } else if (mode === 'OPEN') {
       const currentYear = new Date().getFullYear();
       if (fiscal.year >= currentYear) finalLabels.push(ENUMS.LABELS.GTM_VIP);
+    }
+
+    // ========================================================================
+    // CONFIDENCE NUDGE: Tier matrix pós-IA (tipo de deal × inatividade)
+    // Garante que a IA não viole pisos/tetos calculados deterministicamente.
+    // Easy deals (Renovação/Upsell): piso garantido, teto atenuado por inatividade.
+    // Nova aquisição: teto progressivamente mais baixo conforme idle sobe.
+    // ========================================================================
+    if (mode === 'OPEN' && typeof computeDealAdjustments_ === 'function') {
+      const _adj = computeDealAdjustments_(item, idleDays);
+      const _raw = typeof jsonResp.confianca === 'number' ? jsonResp.confianca : 50;
+      if (_adj.isEasyDeal) {
+        // Cliente existente: garante piso mínimo + tecto atenuado por nível de idle
+        const _caps = { VERDE: 100, AMARELO: 95, LARANJA: 88, VERMELHO: 78, CRITICO: 68 };
+        jsonResp.confianca = Math.min(Math.max(_raw, _adj.floorConf), _caps[_adj.idleTier] || 100);
+      } else {
+        // Nova venda: aplica tecto decrescente (IA otimista não ignora deals mortos)
+        const _caps = { VERDE: 100, AMARELO: 88, LARANJA: 72, VERMELHO: 55, CRITICO: 38 };
+        jsonResp.confianca = Math.min(_raw, _caps[_adj.idleTier] || 100);
+      }
+      if (_adj.penalty !== 0) {
+        jsonResp.motivo_confianca = (jsonResp.motivo_confianca || '') +
+          ' [Motor: ' + _adj.penalty + 'pts ' + _adj.idleEmoji + ' ' + _adj.idleLabel + ', piso=' + _adj.floorConf + '%]';
+      }
     }
 
     // ========================================================================
@@ -1457,7 +1533,7 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
   let snapshotData = snapshotName ? getSheetData(snapshotName) : null;
   
   // Validar se snapshot tem o formato correto (deve ter 24 colunas)
-  if (snapshotData && snapshotData.headers && snapshotData.headers.length < 24) {
+  if (snapshotData && snapshotData.headers && snapshotData.headers.length < 26) {
     logToSheet("WARN", "QueueEngine", `⚠️ Snapshot antigo detectado (${snapshotData.headers.length} colunas). Recriando agregação...`);
     snapshotData = null; // Força recriação
   }
@@ -1476,7 +1552,8 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
         nextActivityDate: row[14] instanceof Date ? row[14] : parseDate(row[14]),
         forecast_sf: row[15], fiscalQ: row[16], ciclo: row[17], reason: row[18],
         portfolio: row[19], segment: row[20], productFamily: row[21],
-        billingState: row[22] || "", billingCity: row[23] || "", billingCalendar: row[24] || ""
+        billingState: row[22] || "", billingCity: row[23] || "", billingCalendar: row[24] || "",
+        tipoOportunidade: row[25] || "", processoTipo: row[26] || ""
       };
       if (item.oppKey) aggMap.set(item.oppKey, item);
     });
@@ -2237,8 +2314,31 @@ function applyConditionalFormatting_(sheet, mode, startRow, numRows) {
       
       sourceRange.setBackgrounds(sourceBgs);
       sourceRange.setFontColors(sourceFonts);
-      
-      logToSheet("DEBUG", "Format", "Formatação de 11 colunas aplicada (incluindo território e fonte detecção)");
+
+      // Coluna 69: Tipo Oportunidade — 🟢 verde=retenção, 🔵 azul=upsell/adicional, 🟡 amarelo=nova
+      try {
+        const _tipoRange  = sheet.getRange(startRow, 69, numRows, 1);
+        const _tipoVals   = _tipoRange.getValues();
+        const _tipoBgs    = [];
+        const _tipoFonts  = [];
+        _tipoVals.forEach(function(r) {
+          const v = String(r[0]).toUpperCase();
+          if (/RENOV|RETEN|TRANSFER/.test(v)) {
+            _tipoBgs.push(['#d4edda']); _tipoFonts.push(['#155724']); // verde: retenção
+          } else if (/ADICIONAL|UPSELL|AUMENTO|EXPANS|ADD.?ON/.test(v)) {
+            _tipoBgs.push(['#dbeafe']); _tipoFonts.push(['#1e3a5f']); // azul: upsell/adicional
+          } else if (v && v !== '-') {
+            _tipoBgs.push(['#fff3cd']); _tipoFonts.push(['#856404']); // amarelo: nova aquisição
+          } else {
+            _tipoBgs.push(['#f8f9fa']); _tipoFonts.push(['#6c757d']);
+          }
+        });
+        _tipoRange.setBackgrounds(_tipoBgs);
+        _tipoRange.setFontColors(_tipoFonts);
+        _tipoRange.setFontWeight('bold');
+      } catch(_e) { /* coluna pode não existir em runs antigos */ }
+
+      logToSheet("DEBUG", "Format", "Formatação de 12 colunas aplicada (incluindo território, fonte detecção e Tipo Oportunidade)");
     }
   
     logToSheet("DEBUG", "Format", `Formatação aplicada com sucesso para ${mode}`);
@@ -2256,7 +2356,7 @@ function setupAnalysisSheet(mode, preserve) {
   if (!preserve) s.clear();
   
   const h = mode === 'OPEN' ? [
-    ["Run ID", "Oportunidade", "Conta", "Perfil", "Produtos", "Vendedor", "Gross", "Net", "Fase Atual", "Forecast SF", "Fiscal Q", "Data Prevista", "Ciclo (dias)", "Dias Funil", "Atividades", "Atividades (Peso)", "Mix Atividades", "Idle (Dias)", "Qualidade Engajamento", "Forecast IA", "Confiança (%)", "Motivo Confiança", "MEDDIC Score", "MEDDIC Gaps", "MEDDIC Evidências", "BANT Score", "BANT Gaps", "BANT Evidências", "Justificativa IA", "Regras Aplicadas", "Incoerência Detectada", "Perguntas de Auditoria IA", "Flags de Risco", "Gaps Identificados", "Cód Ação", "Ação Sugerida", "Risco Principal", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "🚨 Anomalias Detectadas", "Velocity Predição", "Velocity Detalhes", "Território Correto?", "Vendedor Designado", "Estado/Cidade Detectado", "Fonte Detecção", "Calendário Faturação", "Valor Reconhecido Q1", "Valor Reconhecido Q2", "Valor Reconhecido Q3", "Valor Reconhecido Q4", "Data de criação", "Subsegmento de mercado", "Segmento Consolidado", "Portfólio", "Portfolio FDM", "Owner Preventa", "Produtos (Base)", "Cidade de cobrança", "Estado/Província de cobrança", "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "Justificativa Segmentação", "Evidência Citada IA", "Avaliação Personas IA", "🕐 Última Atualização"]
+    ["Run ID", "Oportunidade", "Conta", "Perfil", "Produtos", "Vendedor", "Gross", "Net", "Fase Atual", "Forecast SF", "Fiscal Q", "Data Prevista", "Ciclo (dias)", "Dias Funil", "Atividades", "Atividades (Peso)", "Mix Atividades", "Idle (Dias)", "Qualidade Engajamento", "Forecast IA", "Confiança (%)", "Motivo Confiança", "MEDDIC Score", "MEDDIC Gaps", "MEDDIC Evidências", "BANT Score", "BANT Gaps", "BANT Evidências", "Justificativa IA", "Regras Aplicadas", "Incoerência Detectada", "Perguntas de Auditoria IA", "Flags de Risco", "Gaps Identificados", "Cód Ação", "Ação Sugerida", "Risco Principal", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "🚨 Anomalias Detectadas", "Velocity Predição", "Velocity Detalhes", "Território Correto?", "Vendedor Designado", "Estado/Cidade Detectado", "Fonte Detecção", "Calendário Faturação", "Valor Reconhecido Q1", "Valor Reconhecido Q2", "Valor Reconhecido Q3", "Valor Reconhecido Q4", "Data de criação", "Subsegmento de mercado", "Segmento Consolidado", "Portfólio", "Portfolio FDM", "Owner Preventa", "Produtos (Base)", "Cidade de cobrança", "Estado/Província de cobrança", "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "Evidência Citada IA", "Avaliação Personas IA", "Tipo Oportunidade", "Processo", "🕐 Última Atualização"]
   ] : mode === 'WON' ? [
     ["Run ID", "Oportunidade", "Conta", "Perfil Cliente", "Vendedor", "Gross", "Net", "Portfólio", "Segmento", "Família Produto", "Status", "Fiscal Q", "Data Fechamento", "Ciclo (dias)", "Produtos", "📝 Resumo Análise", "🎯 Causa Raiz", "✨ Fatores Sucesso", "Tipo Resultado", "Qualidade Engajamento", "Gestão Oportunidade", "-", "💡 Lições Aprendidas", "# Atividades", "Ativ. 7d", "Ativ. 30d", "Distribuição Tipos", "Período Pico", "Cadência Média (dias)", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "Campos + Alterados", "Padrão Mudanças", "Freq. Mudanças", "# Editores", "🏷️ Labels", "Owner Preventa", "Cidade de cobrança", "Estado/Província de cobrança", "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "🕐 Última Atualização"]
   ] : [
@@ -2774,7 +2874,8 @@ function buildAggregationSnapshot_(mode, runId) {
   const headers = ["oppKey", "oppId", "oppName", "accName", "owner", "gross", "net", 
                    "products", "stage", "probabilidad", "closed", "desc", "created", 
                    "inactiveDays", "nextActivityDate", "forecast_sf", "fiscalQ", "ciclo", "reason", 
-                   "portfolio", "segment", "productFamily", "billingState", "billingCity", "billingCalendar"];
+                   "portfolio", "segment", "productFamily", "billingState", "billingCity", "billingCalendar",
+                   "tipoOportunidade", "processoTipo"];
   snapshot.getRange(1, 1, 1, headers.length).setValues([headers]);
   
   if (aggregatedData.length > 0) {
@@ -2784,7 +2885,8 @@ function buildAggregationSnapshot_(mode, runId) {
       item.closed || "", item.desc || "", item.created || "", item.inactiveDays || 0,
       item.nextActivityDate || "", item.forecast_sf || "", item.fiscalQ || "", item.ciclo || 0, item.reason || "",
       item.portfolio || "", item.segment || "", item.productFamily || "",
-      item.billingState || "", item.billingCity || "", item.billingCalendar || ""
+      item.billingState || "", item.billingCity || "", item.billingCalendar || "",
+      item.tipoOportunidade || "", item.processoTipo || ""
     ]);
     snapshot.getRange(2, 1, rows.length, headers.length).setValues(rows);
   }

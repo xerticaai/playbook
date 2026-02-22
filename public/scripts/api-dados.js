@@ -362,6 +362,9 @@ function normalizeCloudResponse(raw) {
       daysIdle: parseInt(deal.Idle_Dias || deal.Dias_Idle) || 0,
       profile: deal.Perfil,
       products: deal.Produtos
+      ,
+      Acao_Sugerida: deal.Acao_Sugerida || deal.Acao_Recomendada || deal.acao_recomendada || deal.recomendacao_acao || deal.proxima_acao || '',
+      acao_recomendada: deal.acao_recomendada || deal.recomendacao_acao || deal.Acao_Recomendada || deal.Acao_Sugerida || deal.proxima_acao || ''
     };
     
     // Debug opcional: manter silencioso em producao
@@ -472,7 +475,9 @@ function normalizeCloudResponse(raw) {
       Forecast_IA: deal.Forecast_IA || '',
       Produtos: deal.Produtos || '',
       Perfil: deal.Perfil || '',
-      Oportunidade: deal.Oportunidade || deal.Opportunity_Name || ''
+      Oportunidade: deal.Oportunidade || deal.Opportunity_Name || '',
+      Acao_Sugerida: deal.Acao_Sugerida || deal.Acao_Recomendada || deal.acao_recomendada || deal.recomendacao_acao || deal.proxima_acao || '',
+      acao_recomendada: deal.acao_recomendada || deal.recomendacao_acao || deal.Acao_Recomendada || deal.Acao_Sugerida || deal.proxima_acao || ''
     });
   });
   
@@ -521,6 +526,8 @@ function normalizeCloudResponse(raw) {
       Produtos: deal.Produtos || '',
       Perfil: deal.Perfil || '',
       Oportunidade: deal.Oportunidade || deal.Opportunity_Name || '',
+      Acao_Sugerida: deal.Acao_Sugerida || deal.Acao_Recomendada || deal.acao_recomendada || deal.recomendacao_acao || deal.proxima_acao || '',
+      acao_recomendada: deal.acao_recomendada || deal.recomendacao_acao || deal.Acao_Recomendada || deal.Acao_Sugerida || deal.proxima_acao || '',
       Evitavel: deal.Evitavel || ''
     });
   });

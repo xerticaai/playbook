@@ -36,6 +36,17 @@ echo -e "${YELLOW}📤 Pushing image to Container Registry...${NC}"
 docker push ${IMAGE_NAME}:latest
 
 echo -e "${YELLOW}🌐 Deploying to Cloud Run...${NC}"
+ENV_VARS="GCP_PROJECT=${PROJECT_ID}"
+if [[ -n "${GEMINI_MODEL}" ]]; then
+    ENV_VARS+="\,GEMINI_MODEL=${GEMINI_MODEL}"
+fi
+
+if [[ -z "${GEMINI_API_KEY}" ]]; then
+    echo -e "${YELLOW}⚠️ GEMINI_API_KEY não definido no ambiente de deploy. Insights de IA ficarão em modo rule_based.${NC}"
+else
+    ENV_VARS+="\,GEMINI_API_KEY=${GEMINI_API_KEY}"
+fi
+
 gcloud run deploy ${SERVICE_NAME} \
     --image ${IMAGE_NAME}:latest \
     --project ${PROJECT_ID} \
@@ -49,7 +60,7 @@ gcloud run deploy ${SERVICE_NAME} \
     --min-instances 0 \
     --concurrency 80 \
     --port 8080 \
-    --set-env-vars "GCP_PROJECT=${PROJECT_ID}" \
+    --set-env-vars "${ENV_VARS}" \
     --service-account "operaciones-br@appspot.gserviceaccount.com"
 
 # Get service URL

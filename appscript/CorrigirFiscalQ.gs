@@ -101,7 +101,7 @@ function normalizarDatasAba_(sheet) {
   const headers = data[0];
   const rows = data.slice(1);
   const displayRows = displayData.slice(1);
-  const dateColumns = identificarColunasDatas_(headers);
+    const dateColumns = identificarColunasDatasFiscalQ_(headers);
 
   console.log(`\n📋 ==================== ${sheetName} ====================`);
   console.log(`   📊 Total de colunas: ${headers.length}`);
@@ -198,6 +198,62 @@ function normalizarDatasAba_(sheet) {
     datasPadronizadas: datasPadronizadas,
     colunasData: dateColumns.length
   };
+}
+
+/**
+ * Identifica colunas de data para normalização.
+ * Inclui padrões PT/EN/ES e campos de faturamento.
+ */
+function identificarColunasDatasFiscalQ_(headers) {
+  const dateColumns = [];
+
+  headers.forEach((header, idx) => {
+    const headerLower = String(header || '').toLowerCase().trim();
+
+    const isExcluded = (
+      headerLower.includes('mudanças') ||
+      headerLower.includes('mudancas') ||
+      headerLower.includes('total') ||
+      headerLower.includes('críticas') ||
+      headerLower.includes('criticas') ||
+      headerLower.includes('#') ||
+      headerLower.includes('freq') ||
+      headerLower.includes('padrão') ||
+      headerLower.includes('padrao') ||
+      headerLower.includes('duração') ||
+      headerLower.includes('duracao') ||
+      headerLower.includes('última atualização') ||
+      headerLower.includes('ultima atualizacao') ||
+      headerLower.includes('last updated') ||
+      headerLower.includes('🕐')
+    );
+
+    if (isExcluded) return;
+
+    const isDateColumn = (
+      headerLower.includes('data') ||
+      headerLower.includes('date') ||
+      headerLower.includes('fecha') ||
+      headerLower.includes('fecha de factura') ||
+      headerLower.includes('fecha doc. timbrado') ||
+      headerLower.includes('fecha doc timbrado') ||
+      headerLower.includes('📅') ||
+      headerLower.includes('⏰')
+    );
+
+    if (isDateColumn) {
+      dateColumns.push({ idx, name: header });
+    }
+  });
+
+  return dateColumns;
+}
+
+/**
+ * Compatibilidade retroativa: chamadas legadas para o helper antigo.
+ */
+function identificarColunasDatas_(headers) {
+  return identificarColunasDatasFiscalQ_(headers);
 }
 
 /**
@@ -396,7 +452,7 @@ function recalcularFiscalQAba_(sheetName, mode, manageLocale = true) {
   console.log(`\n   📅 FASE 1: Padronizando TODAS as datas para DD/MM/AAAA...`);
   
   // Identificar TODAS as colunas que contêm datas (usando helper que já tem exclusões corretas)
-  const dateColumns = identificarColunasDatas_(headers);
+  const dateColumns = identificarColunasDatasFiscalQ_(headers);
   
   console.log(`   📋 ${dateColumns.length} colunas de data identificadas (excluindo contadores e métricas):`);
   dateColumns.forEach(col => {
@@ -2212,6 +2268,357 @@ function enriquecerAnaliseComSegmentacaoIA_(analysisSheetName, baseSheetName, ma
     tentativasIA,
     falhasIA
   };
+}
+
+/**
+ * Preenche manualmente a coluna "Justificativa IA" da aba de Forecast (OPEN)
+ * apenas quando estiver vazia. Se já tiver valor, pula a linha.
+ *
+ * LÓGICA: a justificativa explica o PORQUÊ da confiança do forecast com fatos
+ * já existentes na própria linha (motivo, confiança, risco, fase, atividades, idle).
+ */
+function preencherJustificativaIAForecastVazia() {
+  let ui = null;
+  try {
+    ui = SpreadsheetApp.getUi();
+    const response = ui.alert(
+      '🧠 Preencher Justificativa IA (Forecast)',
+      'Esta função irá preencher "Justificativa IA" APENAS em linhas vazias da aba "🎯 Análise Forecast IA".\n\n' +
+      '• Não sobrescreve linhas já preenchidas\n' +
+      '• Tenta gerar com IA por oportunidade (mais lento)\n' +
+      '• Se a IA falhar, aplica fallback com fatos da própria linha\n\n' +
+      'Continuar?',
+      ui.ButtonSet.YES_NO
+    );
+    if (response !== ui.Button.YES) return;
+  } catch (e) {
+    console.log('⚠️ UI não disponível, executando preenchimento manual direto...');
+  }
+
+  const result = preencherJustificativaIAForecastVazia_SEM_UI_();
+  const msg =
+    `✅ Preenchimento de Justificativa IA concluído\n\n` +
+    `• Linhas avaliadas: ${result.totalLinhas}\n` +
+    `• Preenchidas agora: ${result.preenchidas}\n` +
+    `• Via IA: ${result.preenchidasIA}\n` +
+    `• Via fallback local: ${result.preenchidasFallback}\n` +
+    `• Falhas de IA: ${result.falhasIA}\n` +
+    `• Já preenchidas (puladas): ${result.puladasJaPreenchidas}\n` +
+    `• Sem dados mínimos: ${result.semDados}\n` +
+    `• Erros: ${result.erros}`;
+
+  console.log(msg);
+  if (ui) ui.alert('✅ Concluído', msg, ui.ButtonSet.OK);
+  return result;
+}
+
+function preencherJustificativaIAForecastVazia_SEM_UI_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetName = '🎯 Análise Forecast IA';
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) throw new Error(`Aba não encontrada: ${sheetName}`);
+
+  const lastRow = sheet.getLastRow();
+  const maxCol = sheet.getMaxColumns();
+  if (lastRow <= 1) {
+    return {
+      totalLinhas: 0,
+      preenchidas: 0,
+      preenchidasIA: 0,
+      preenchidasFallback: 0,
+      falhasIA: 0,
+      puladasJaPreenchidas: 0,
+      semDados: 0,
+      erros: 0,
+      colunaInserida: false
+    };
+  }
+
+  let colunaInserida = false;
+  const colunasInseridas = ensureColumnsBeforeLastUpdate_(sheet, ['Justificativa IA'], '🕐 Última Atualização');
+  if (colunasInseridas > 0) {
+    colunaInserida = true;
+    SpreadsheetApp.flush();
+  }
+
+  const data = sheet.getRange(1, 1, lastRow, maxCol).getValues();
+  const headers = data[0];
+  const rows = data.slice(1);
+
+  const findByPattern = (patterns) => {
+    if (typeof findColumnByPatterns_ === 'function') {
+      return findColumnByPatterns_(headers, patterns);
+    }
+    const norm = (v) => String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const normalizedHeaders = headers.map(norm);
+    for (let i = 0; i < patterns.length; i++) {
+      const p = norm(patterns[i]);
+      const idx = normalizedHeaders.findIndex(h => h.includes(p));
+      if (idx > -1) return idx;
+    }
+    return -1;
+  };
+
+  const colJustificativa   = findLastHeaderIndexExact_(headers, 'Justificativa IA');
+  const colConfianca        = findByPattern(['confiança', 'confianca']);
+  const colMotivo           = findByPattern(['motivo confiança', 'motivo confianca']);
+  const colForecastIA       = findByPattern(['forecast ia']);
+  const colRiscoPrincipal   = findByPattern(['risco principal']);
+  const colFaseAtual        = findByPattern(['fase atual', 'stage']);
+  const colIdleDias         = findByPattern(['idle (dias)', 'idle dias']);
+  const colAtividades       = findByPattern(['atividades (peso)', 'atividades']);
+  const colCicloDias        = findByPattern(['ciclo (dias)', 'ciclo dias']);
+  const colDiasFunil        = findByPattern(['dias funil']);
+  const colMeddicScore      = findByPattern(['meddic score']);
+  const colMeddicGaps       = findByPattern(['meddic gaps']);
+  const colMeddicEvidencias = findByPattern(['meddic evid']);
+  const colBantScore        = findByPattern(['bant score']);
+  const colBantGaps         = findByPattern(['bant gaps']);
+  const colBantEvidencias   = findByPattern(['bant evid']);
+  const colEngajamento      = findByPattern(['qualidade engajamento', 'qualidade do engajamento']);
+  const colMixAtividades    = findByPattern(['mix atividades']);
+  const colConta            = findByPattern(['conta']);
+  const colFlagsRisco       = findByPattern(['flags de risco', 'flags risco']);
+  const colGapsIdent        = findByPattern(['gaps identificados']);
+  const colAnomalias        = findByPattern(['anomalias detectadas', 'anomalias']);
+  const colVelocity         = findByPattern(['velocity predição', 'velocity pred']);
+  const colDataPrevista     = findByPattern(['data prevista']);
+  const colFiscalQ          = findByPattern(['fiscal q']);
+  const colTipoOportunidade = findByPattern(['tipo oportunidade', 'tipo de oportunidade', 'tipo oportunidad']);
+  const colProcesso         = findByPattern(['processo', 'proceso', 'processo tipo', 'processo tipo']);
+
+  if (colJustificativa < 0) {
+    throw new Error('Coluna "Justificativa IA" não encontrada após tentativa de criação.');
+  }
+
+  let preenchidas = 0;
+  let preenchidasIA = 0;
+  let preenchidasFallback = 0;
+  let falhasIA = 0;
+  let puladasJaPreenchidas = 0;
+  let semDados = 0;
+  let erros = 0;
+
+  // Processa e escreve 1 linha por vez — garante que cada resultado persiste na planilha
+  // imediatamente após geração, mesmo se o script for cancelado no meio da execução.
+  for (let idx = 0; idx < rows.length; idx++) {
+    const row = rows[idx];
+    try {
+      const atual = String(row[colJustificativa] || '').trim();
+      if (atual && atual !== '-') {
+        puladasJaPreenchidas++;
+        continue;
+      }
+
+      const confiancaRaw      = colConfianca        > -1 ? row[colConfianca]        : null;
+      const motivo            = colMotivo           > -1 ? String(row[colMotivo]           || '').trim() : '';
+      const forecastIA        = colForecastIA       > -1 ? String(row[colForecastIA]       || '').trim() : '';
+      const risco             = colRiscoPrincipal   > -1 ? String(row[colRiscoPrincipal]   || '').trim() : '';
+      const fase              = colFaseAtual        > -1 ? String(row[colFaseAtual]        || '').trim() : '';
+      const idle              = colIdleDias         > -1 ? String(row[colIdleDias]         || '').trim() : '';
+      const atividades        = colAtividades       > -1 ? String(row[colAtividades]       || '').trim() : '';
+      const cicloDias         = colCicloDias        > -1 ? String(row[colCicloDias]        || '').trim() : '';
+      const diasFunil         = colDiasFunil        > -1 ? String(row[colDiasFunil]        || '').trim() : '';
+      const meddicScore       = colMeddicScore      > -1 ? String(row[colMeddicScore]      || '').trim() : '';
+      const meddicGaps        = colMeddicGaps       > -1 ? String(row[colMeddicGaps]       || '').trim() : '';
+      const meddicEvidencias  = colMeddicEvidencias > -1 ? String(row[colMeddicEvidencias] || '').trim() : '';
+      const bantScore         = colBantScore        > -1 ? String(row[colBantScore]        || '').trim() : '';
+      const bantGaps          = colBantGaps         > -1 ? String(row[colBantGaps]         || '').trim() : '';
+      const bantEvidencias    = colBantEvidencias   > -1 ? String(row[colBantEvidencias]   || '').trim() : '';
+      const engajamento       = colEngajamento      > -1 ? String(row[colEngajamento]      || '').trim() : '';
+      const mixAtividades     = colMixAtividades    > -1 ? String(row[colMixAtividades]    || '').trim() : '';
+      const conta             = colConta            > -1 ? String(row[colConta]            || '').trim() : '';
+      const flagsRisco        = colFlagsRisco       > -1 ? String(row[colFlagsRisco]       || '').trim() : '';
+      const gapsIdent         = colGapsIdent        > -1 ? String(row[colGapsIdent]        || '').trim() : '';
+      const anomalias         = colAnomalias        > -1 ? String(row[colAnomalias]        || '').trim() : '';
+      const velocity          = colVelocity         > -1 ? String(row[colVelocity]         || '').trim() : '';
+      const dataPrevista      = colDataPrevista     > -1 ? String(row[colDataPrevista]     || '').trim() : '';
+      const fiscalQ           = colFiscalQ          > -1 ? String(row[colFiscalQ]          || '').trim() : '';
+      const tipoOportunidade  = colTipoOportunidade > -1 ? String(row[colTipoOportunidade] || '').trim() : '';
+      const processo          = colProcesso         > -1 ? String(row[colProcesso]         || '').trim() : '';
+
+      const confiancaNum = parseFloat(String(confiancaRaw || '').replace('%', '').replace(',', '.'));
+      const confiancaTxt = isNaN(confiancaNum) ? '' : `${Math.round(confiancaNum)}%`;
+
+      const facts = {
+        confiancaTxt, motivo, forecastIA, risco, fase, idle, atividades,
+        cicloDias, diasFunil, meddicScore, meddicGaps, meddicEvidencias,
+        bantScore, bantGaps, bantEvidencias, engajamento, mixAtividades,
+        conta, flagsRisco, gapsIdent, anomalias, velocity, dataPrevista, fiscalQ,
+        tipoOportunidade, processo
+      };
+
+      let justificativa = gerarJustificativaForecastComIA_(facts);
+      if (justificativa) {
+        preenchidasIA++;
+      } else {
+        falhasIA++;
+        justificativa = gerarJustificativaForecastLocal_(facts);
+        preenchidasFallback++;
+      }
+
+      if (!justificativa) {
+        justificativa = 'Sem dados suficientes para detalhar a confiança do forecast nesta linha.';
+        semDados++;
+      }
+
+      // Escreve imediatamente na célula — persiste mesmo se cancelar no meio
+      sheet.getRange(idx + 2, colJustificativa + 1).setValue(justificativa);
+      SpreadsheetApp.flush();
+      preenchidas++;
+
+      console.log(`✅ Linha ${idx + 2}: escrita OK (IA=${preenchidasIA}, Fallback=${preenchidasFallback})`);
+    } catch (e) {
+      erros++;
+      console.error(`⚠️ Erro linha ${idx + 2}: ${e.message}`);
+    }
+  }
+
+  return {
+    totalLinhas: rows.length,
+    preenchidas,
+    preenchidasIA,
+    preenchidasFallback,
+    falhasIA,
+    puladasJaPreenchidas,
+    semDados,
+    erros,
+    colunaInserida
+  };
+}
+
+function gerarJustificativaForecastComIA_(facts) {
+  if (typeof callGeminiAPI !== 'function' || typeof cleanAndParseJSON !== 'function') {
+    return '';
+  }
+
+  try {
+    // Monta seções opcionais apenas quando os dados existem
+    const linhaFunil     = (facts.cicloDias || facts.diasFunil)
+      ? `Tempo no funil: ${[facts.cicloDias ? facts.cicloDias + ' dias (ciclo total)' : '', facts.diasFunil ? facts.diasFunil + ' dias nesta fase' : ''].filter(Boolean).join(', ')}\n`
+      : '';
+    const linhaTiming    = (facts.dataPrevista || facts.fiscalQ)
+      ? `Prazo de fechamento: ${[facts.dataPrevista, facts.fiscalQ].filter(Boolean).join(' | ')}\n`
+      : '';
+    const linhaMeddic    = (facts.meddicScore || facts.meddicGaps)
+      ? `MEDDIC: score ${facts.meddicScore || '?'} | gaps: ${facts.meddicGaps || 'nenhum'}${facts.meddicEvidencias ? ' | confirmados: ' + facts.meddicEvidencias : ''}\n`
+      : '';
+    const linhaBant      = (facts.bantScore || facts.bantGaps)
+      ? `BANT: score ${facts.bantScore || '?'} | gaps: ${facts.bantGaps || 'nenhum'}${facts.bantEvidencias ? ' | confirmados: ' + facts.bantEvidencias : ''}\n`
+      : '';
+    const linhaGaps      = facts.gapsIdent       ? `Gaps específicos: ${facts.gapsIdent}\n`          : '';
+    const linhaEngaj     = facts.engajamento    ? `Qualidade engajamento: ${facts.engajamento}\n`  : '';
+    const linhaMix       = facts.mixAtividades  ? `Mix de atividades: ${facts.mixAtividades}\n`    : '';
+    const linhaVelocity  = facts.velocity       ? `Velocity/tendência: ${facts.velocity}\n`       : '';
+    const linhaAnomalias = facts.anomalias      ? `Anomalias detectadas: ${facts.anomalias}\n`     : '';
+    const linhaFlags     = facts.flagsRisco     ? `Flags de risco: ${facts.flagsRisco}\n`          : '';
+    // Tier de inatividade: orienta o piso de confiança esperado na justificativa
+    const _idleN_    = parseInt(String(facts.idle || '0')) || 0;
+    const _tierLbl_  = _idleN_ <  15 ? '🟢 Ativo (<15d — sem penalidade de idle)'
+                     : _idleN_ <  30 ? '🟡 Moderado (15–29d — leve: -5pts easy / -10pts nova)'
+                     : _idleN_ <  60 ? '🟠 Em risco (30–59d — média: -10pts easy / -20pts nova)'
+                     : _idleN_ <  90 ? '🔴 Crítico (60–89d — alta: -20pts easy / -30pts nova)'
+                     :                 '💀 Quase morto (≥90d — severa: -30pts easy / -40pts nova)';
+    const linhaIdleTier = `Tier inatividade: ${_tierLbl_}\n`;
+    // Tipo Oportunidade: contexto crítico — Renovacao/Adicional/TransferToken são intrinsecamente
+    // mais fáceis de fechar que Nova. A IA deve considerar isso no score de confiança.
+    const tiposClienteExistente = ['adicional', 'renovação', 'renovacao', 'transfertoken'];
+    const isClienteExistente = tiposClienteExistente.some(t => (facts.tipoOportunidade || '').toLowerCase().includes(t));
+    const linhaTipoOpp   = facts.tipoOportunidade
+      ? `Tipo Oportunidade: ${facts.tipoOportunidade}${isClienteExistente ? ' (cliente existente — conversão facilitada, risco de desconhecimento não se aplica)' : ' (nova aquisição)'}\n`
+      : '';
+    const linhaProcesso  = facts.processo       ? `Processo: ${facts.processo}\n`                 : '';
+
+    const prompt =
+      'Você é um analista sênior de vendas B2B. Gere uma justificativa de 2 a 3 frases ' +
+      'explicando o nível de confiança do forecast desta oportunidade. ' +
+      'Sua análise deve cobrir obrigatoriamente: (1) o percentual de confiança e categoria forecast, ' +
+      '(2) a fase atual e quanto tempo o deal está no funil vs. o prazo de fechamento, ' +
+      '(3) a maturidade da qualificação (MEDDIC/BANT — o que está confirmado e o que falta), ' +
+      '(4) a qualidade e tipo do engajamento, e (5) o principal fator de risco ou avanço que justifica a confiança. ' +
+      'Se o Tipo Oportunidade for Adicional, Renovação ou TransferToken, incremente a confiança base pois o cliente já conhece a empresa. ' +
+      'Use os dados abaixo. Seja direto, preciso e nunca invente informações.\n\n' +
+      linhaTipoOpp +
+      linhaProcesso +
+      `Conta: ${facts.conta || 'N/A'}\n` +
+      `Confiança: ${facts.confiancaTxt || 'N/A'}\n` +
+      `Motivo da confiança: ${facts.motivo || 'N/A'}\n` +
+      `Forecast IA: ${facts.forecastIA || 'N/A'}\n` +
+      `Fase atual: ${facts.fase || 'N/A'}\n` +
+      linhaFunil +
+      linhaTiming +
+      `Idle (dias sem atividade): ${facts.idle || 'N/A'}\n` +
+      linhaIdleTier +
+      `Atividades (peso ponderado): ${facts.atividades || 'N/A'}\n` +
+      linhaEngaj +
+      linhaMix +
+      linhaMeddic +
+      linhaBant +
+      linhaGaps +
+      `Risco principal: ${facts.risco || 'N/A'}\n` +
+      linhaVelocity +
+      linhaAnomalias +
+      linhaFlags +
+      '\nResponda SOMENTE JSON: {"justificativa":"..."}';
+
+    // maxOutputTokens: 2048 — gemini-2.5-pro usa ~1000 tokens de thinking obrigatório.
+    // Com 2048, sobram ~1000 tokens para o JSON de saída (mais que suficiente para 2 frases).
+    // Nota: thinkingBudget:0 é inválido no 2.5-pro ("only works in thinking mode").
+    const raw = callGeminiAPI(prompt, { temperature: 0.1, maxOutputTokens: 2048 });
+    const parsed = cleanAndParseJSON(raw);
+    const text = parsed && typeof parsed === 'object'
+      ? String(parsed.justificativa || parsed.Justificativa || '').trim()
+      : '';
+
+    if (!text || text === '-') return '';
+    return text.replace(/\s+/g, ' ').trim();
+  } catch (e) {
+    return '';
+  }
+}
+
+function gerarJustificativaForecastLocal_(facts) {
+  const partes = [];
+  if (facts.confiancaTxt && facts.forecastIA) {
+    partes.push(`Confiança da IA em ${facts.confiancaTxt} para o forecast ${facts.forecastIA}.`);
+  } else if (facts.confiancaTxt) {
+    partes.push(`Confiança da IA em ${facts.confiancaTxt} para o forecast atual.`);
+  } else if (facts.forecastIA) {
+    partes.push(`Forecast IA atual: ${facts.forecastIA}.`);
+  }
+
+  if (facts.motivo && facts.motivo !== '-') {
+    partes.push(`Motivo da confiança: ${facts.motivo}.`);
+  }
+  if (facts.risco && facts.risco !== '-') {
+    partes.push(`Risco principal observado: ${facts.risco}.`);
+  }
+  if (facts.fase && facts.fase !== '-') {
+    partes.push(`Fase atual: ${facts.fase}.`);
+  }
+  if (facts.idle && facts.idle !== '-' && String(facts.idle).toUpperCase() !== 'SEM REGISTRO') {
+    const _idleN   = parseInt(String(facts.idle)) || 0;
+    const _tierTxt = _idleN >= 90 ? ' 💀 CRÍTICO — deal quase morto, requalificação urgente'
+                   : _idleN >= 60 ? ' 🔴 Alto risco (60–89d sem atividade)'
+                   : _idleN >= 30 ? ' 🟠 Em risco (30–59d sem atividade)'
+                   : _idleN >= 15 ? ' 🟡 Atenção (15–29d sem atividade)'
+                   : '';
+    partes.push(`Idle: ${facts.idle} dias${_tierTxt}.`);
+    const _tiposExist = ['adicional', 'renov', 'transfertoken', 'upsell', 'expans', 'aumento', 'add-on'];
+    const _isExist    = _tiposExist.some(function(t) { return (facts.tipoOportunidade || '').toLowerCase().indexOf(t) > -1; });
+    if (_idleN >= 60 && _isExist) {
+      partes.push('Mesmo sendo cliente existente, inatividade crítica de ' + facts.idle + 'd exige retomada imediata para evitar CHURN.');
+    } else if (_idleN >= 30 && _isExist) {
+      partes.push('Cliente existente com inatividade moderada — retomada de contato recomendada para proteger a renovação.');
+    } else if (_idleN >= 30 && !_isExist) {
+      partes.push('Para nova aquisição, ' + facts.idle + ' dias sem atividade reduz significativamente a probabilidade de fechamento.');
+    }
+  }
+  if (facts.atividades && facts.atividades !== '-') {
+    partes.push(`Atividades registradas: ${facts.atividades}.`);
+  }
+
+  return partes.join(' ').replace(/\s+/g, ' ').trim();
 }
 
 // [MOVIDO PARA BACKUP 2026-02-21]

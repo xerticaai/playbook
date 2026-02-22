@@ -1174,20 +1174,10 @@ function renderDashboard() {
 
     // SEÇÃO 5: TOP 5 OPORTUNIDADES (ABERTAS / GANHAS / PERDIDAS)
     log('[RENDER] === SEÇÃO 5: TOP 5 OPORTUNIDADES ===');
-    const topOppsAIEl = document.getElementById('exec-top-opps-ai-analysis');
-    if (topOppsAIEl) {
-      if (DATA.aiAnalysis && DATA.aiAnalysis.topOpportunitiesAnalysis) {
-        topOppsAIEl.innerHTML = DATA.aiAnalysis.topOpportunitiesAnalysis;
-      } else {
-        topOppsAIEl.innerHTML = '<p style="color: var(--text-gray);">Resumo executivo por regras: use os destaques e recomendacoes abaixo para decisao rapida.</p>';
-      }
-    }
-
     const topOppsContainer = document.getElementById('exec-top-opps-container');
     const topOppsNote = document.getElementById('exec-top5-note');
     const topOppsConfidenceCard = document.getElementById('exec-top5-confidence-card');
     const topOppsWeightedCard = document.getElementById('exec-top5-weighted-card');
-    const topOppsBaseFooter = document.getElementById('exec-top5-base-footer');
     const topOppsTabs = Array.from(document.querySelectorAll('.top-opps-tab'));
 
     const normalizeConfidencePercent = (value) => {
@@ -1222,23 +1212,59 @@ function renderDashboard() {
       return trimmed.slice(0, maxLen - 1) + '…';
     };
 
+    const getTopOppsMetricMode = () => ((window.execDisplayMode || 'gross') === 'net' ? 'net' : 'gross');
+
+    const getTopOppsMetricLabel = (mode) => mode === 'net' ? 'Net' : 'Gross';
+
+    const getTopOppsMetricValue = (deal, mode) => {
+      const grossValue = Number(deal.grossValue || deal.value || 0);
+      const netValue = Number(deal.netValue || 0);
+      if (mode === 'net') {
+        if (netValue > 0) return netValue;
+        return grossValue;
+      }
+      return grossValue;
+    };
+
+    const getTopOppsFiltersLabel = () => {
+      const f = window.currentFilters || {};
+      const parts = [];
+      if (f.year) parts.push(`Ano ${f.year}`);
+      if (f.quarter) parts.push(`Quarter ${f.quarter}`);
+      if (f.month) parts.push(`Mês ${f.month}`);
+      if (f.seller) parts.push(`Vendedor ${f.seller}`);
+      if (f.segmento_consolidado) parts.push(`Segmento ${f.segmento_consolidado}`);
+      if (f.billing_state) parts.push(`UF ${f.billing_state}`);
+      if (f.billing_city) parts.push(`Cidade ${f.billing_city}`);
+      return parts.length ? parts.join(' · ') : 'Sem filtros adicionais';
+    };
+
     const normalizeOpenDeal = (deal) => {
       const quarter = deal.fiscalQ || deal.quarter || deal.Fiscal_Q || deriveQuarterLabel(deal.closeDate || deal.Data_Prevista);
       const rawIdle = deal.daysIdle ?? deal.Idle_Dias;
       const rawActivities = deal.activities ?? deal.Atividades;
       const idleDays = (rawIdle === '' || rawIdle == null) ? null : Number(rawIdle);
       const activities = (rawActivities === '' || rawActivities == null) ? null : Number(rawActivities);
+      const grossValue = Number(deal.val || deal.Gross || deal.gross || 0);
+      const netValue = Number(deal.net || deal.Net || 0);
       return {
         name: deal.name || deal.Oportunidade || 'Deal sem nome',
         account: deal.account || deal.accountName || deal.Conta || 'Conta nao informada',
         owner: deal.seller || deal.owner || deal.Vendedor || 'N/A',
-        value: deal.val || deal.Gross || 0,
+        value: grossValue,
+        grossValue,
+        netValue,
         confidence: normalizeConfidencePercent(deal.confidence ?? deal.Confianca),
         stage: deal.stage || deal.Fase_Atual || '',
         idleDays: Number.isNaN(idleDays) ? null : idleDays,
         activities: Number.isNaN(activities) ? null : activities,
         insight: deal.pipelineAnalysis || deal.insight || '',
         auditQuestions: deal.auditQuestions || '',
+        suggestedAction: deal.acao_recomendada || deal.Acao_Sugerida || deal.Acao_Recomendada || deal.recomendacao_acao || deal.proxima_acao || '',
+        segment: deal.Segmento_consolidado || deal.segment || '',
+        state: deal.Estado_Provincia_de_cobranca || deal.state || '',
+        city: deal.Cidade_de_cobranca || deal.city || '',
+        portfolio: deal.Portfolio_FDM || deal.portfolio || '',
         quarter: quarter || 'Quarter N/A'
       };
     };
@@ -1253,17 +1279,28 @@ function renderDashboard() {
       const activities = (rawActivities === '' || rawActivities == null) ? null : Number(rawActivities);
       const meddic = (rawMeddic === '' || rawMeddic == null) ? null : Number(rawMeddic);
       const avoidable = /^(sim|yes|true|1)$/i.test(String(rawAvoidable).trim());
+      const grossValue = Number(deal.Gross || deal.val || deal.gross || 0);
+      const netValue = Number(deal.Net || deal.net || 0);
       return {
         name: deal.Oportunidade || deal.Opportunity_Name || deal.opportunityName || deal.name || 'Deal sem nome',
         account: deal.Conta || deal.account || 'Conta nao informada',
         owner: deal.Vendedor || deal.owner || 'N/A',
-        value: deal.Gross || deal.val || 0,
+        value: grossValue,
+        grossValue,
+        netValue,
         closeDate: deal.Data_Fechamento || deal.closeDate || '',
         cycle: Number.isNaN(cycle) ? null : cycle,
         activities: Number.isNaN(activities) ? null : activities,
         meddic: Number.isNaN(meddic) ? null : meddic,
         avoidable,
         resultType: deal.Tipo_Resultado || '',
+        stage: deal.Fase_Atual || deal.stage || '',
+        confidence: normalizeConfidencePercent(deal.Confianca ?? deal.confidence),
+        suggestedAction: deal.acao_recomendada || deal.Acao_Sugerida || deal.Acao_Recomendada || deal.recomendacao_acao || deal.proxima_acao || '',
+        segment: deal.Segmento_consolidado || deal.segment || '',
+        state: deal.Estado_Provincia_de_cobranca || deal.state || '',
+        city: deal.Cidade_de_cobranca || deal.city || '',
+        portfolio: deal.Portfolio_FDM || deal.portfolio || '',
         reason: kind === 'won'
           ? (deal.Fatores_Sucesso || deal.Win_Reason || deal.winReason || '')
           : (deal.Causa_Raiz || deal.Loss_Reason || deal.lossReason || ''),
@@ -1273,6 +1310,7 @@ function renderDashboard() {
 
     const normalizeSalesSpecialistDeal = (deal) => {
       const gross = Number(deal.booking_total_gross || deal.gross || deal.Gross || 0);
+      const net = Number(deal.booking_total_net || deal.net || deal.Net || 0);
       const status = String(deal.forecast_status || deal.Status || '').toUpperCase();
       const closeDate = deal.close_date || deal.closeDate || deal.Data_Fechamento || '';
       return {
@@ -1280,15 +1318,20 @@ function renderDashboard() {
         account: deal.conta || deal.Conta || deal.account || deal.account_name || 'Conta nao informada',
         owner: deal.vendedor || deal.Vendedor || deal.owner || 'N/A',
         value: Number.isNaN(gross) ? 0 : gross,
+        grossValue: Number.isNaN(gross) ? 0 : gross,
+        netValue: Number.isNaN(net) ? 0 : net,
         stage: status || 'FORECAST_SPECIALIST',
         quarter: deal.fiscalQ || deal.Fiscal_Q || deriveQuarterLabel(closeDate) || 'Quarter N/A',
         closeDate,
         source: 'ss',
         forecastStatus: status || ''
+        ,
+        suggestedAction: deal.acao_recomendada || deal.Acao_Sugerida || deal.Acao_Recomendada || deal.recomendacao_acao || deal.proxima_acao || ''
       };
     };
 
     const buildInsight = (kind, deal) => {
+      const suggestedFromBQ = truncateText(deal.suggestedAction || '', 220);
       if (kind === 'open') {
         const conf = deal.confidence || 0;
         const idle = deal.idleDays != null ? Number(deal.idleDays) : null;
@@ -1305,7 +1348,7 @@ function renderDashboard() {
         else if (conf >= 50) action = 'Garantir proposta clara e timeline de decisao';
         else if (conf < 30) action = 'Requalificar oportunidade e validar fit';
         if (idle != null && idle >= 30) action = 'Reativar contato e redefinir proximo passo';
-        return { summary, action };
+        return { summary, action: suggestedFromBQ || action };
       }
 
       if (kind === 'won') {
@@ -1317,7 +1360,7 @@ function renderDashboard() {
         else if (deal.reason && /agilidade|timing|rapido|veloc/i.test(deal.reason)) action = 'Codificar playbook de velocidade e reduzir atrito';
         else if (deal.reason && /champion|sponsor|decisor/i.test(deal.reason)) action = 'Mapear champions cedo e formalizar patrocinios';
         else if (deal.reason && /preco|valor|orcamento|roi/i.test(deal.reason)) action = 'Reforcar ROI e business case nas propostas';
-        return { summary, action };
+        return { summary, action: suggestedFromBQ || action };
       }
 
       const summary = [deal.resultType, deal.reason].filter(Boolean).join(' · ') || 'Perda com causa a investigar';
@@ -1327,7 +1370,7 @@ function renderDashboard() {
       else if (deal.reason && /concorr|compet/i.test(deal.reason)) action = 'Diferenciar proposta e usar battlecards cedo';
       else if (deal.reason && /preco|valor|orcamento|roi/i.test(deal.reason)) action = 'Trabalhar ROI cedo e alinhar expectativas financeiras';
       else if (deal.reason && /prazo|tempo|ciclo/i.test(deal.reason)) action = 'Definir timeline com decisores e reduzir ciclo';
-      return { summary, action };
+      return { summary, action: suggestedFromBQ || action };
     };
 
     const detectTheme = (text, themes) => {
@@ -1350,78 +1393,11 @@ function renderDashboard() {
       return ranked.slice(0, 2).map(([label, count]) => `${label} (${count})`).join(' · ');
     };
 
-    const renderTopOppsSummary = (tab, top5Deals, normalized, totalBase, top5Total, top5AvgConf, targetQuarter, baseLabel) => {
-      const summaryEl = document.getElementById('exec-top5-summary');
-      if (!summaryEl) return;
-
-      const topDeal = top5Deals[0];
-      const topDealShare = totalBase > 0 && topDeal ? ((topDeal.value || 0) / totalBase * 100).toFixed(1) : '0.0';
-      const periodLabel = targetQuarter ? ` (${targetQuarter})` : '';
-
-      let highlight = 'Sem dados suficientes para resumir.';
-      let action = 'Defina filtros para detalhar o periodo.';
-      let extra = '';
-
-      if (tab === 'open') {
-        const highRisk = top5Deals.find(deal => (deal.confidence || 0) < 30 || (deal.idleDays != null && Number(deal.idleDays) >= 30));
-        highlight = topDeal
-          ? `Concentracao: ${topDeal.account} representa ${topDealShare}% do ${baseLabel}${periodLabel}.`
-          : 'Concentracao indisponivel.';
-        action = highRisk
-          ? `Prioridade de risco: ${highRisk.account} com ${highRisk.confidence || 0}% de confianca e ${highRisk.idleDays || 0} dias idle.`
-          : 'Sem riscos criticos detectados no Top 5.';
-        extra = top5AvgConf != null ? `Confianca media: ${top5AvgConf}% em ${top5Deals.length} deals.` : '';
-      } else if (tab === 'won') {
-        const themes = [
-          { label: 'Relacionamento/Base instalada', match: ['relacionamento', 'base instalada', 'incumb'] },
-          { label: 'ARP/Compras publicas', match: ['arp', 'ata'] },
-          { label: 'Velocidade/Timing', match: ['agilidade', 'timing', 'rapido', 'ciclo'] },
-          { label: 'Preco/ROI', match: ['preco', 'valor', 'orcamento', 'roi'] },
-          { label: 'Champion/Decisor', match: ['champion', 'sponsor', 'decisor'] }
-        ];
-        const themeSummary = summarizeThemes(top5Deals, deal => deal.reason || '', themes);
-        highlight = topDeal
-          ? `Maior vitoria: ${topDeal.account} (${formatMoney(topDeal.value || 0)}).`
-          : 'Maior vitoria indisponivel.';
-        action = themeSummary ? `Fatores dominantes: ${themeSummary}.` : 'Sem fator dominante claro.';
-        extra = `Total Top 5: ${formatMoney(top5Total)} (${top5Deals.length} deals).`;
-      } else {
-        const themes = [
-          { label: 'Qualificacao fraca', match: ['qualificacao', 'bant', 'meddic'] },
-          { label: 'Abandono/Engajamento', match: ['abandono', 'engajamento'] },
-          { label: 'Concorrencia', match: ['concorr', 'compet'] },
-          { label: 'Preco/Orcamento', match: ['preco', 'valor', 'orcamento'] },
-          { label: 'Ciclo longo', match: ['ciclo', 'prazo', 'tempo'] }
-        ];
-        const themeSummary = summarizeThemes(top5Deals, deal => deal.reason || '', themes);
-        highlight = topDeal
-          ? `Maior perda: ${topDeal.account} (${formatMoney(topDeal.value || 0)}).`
-          : 'Maior perda indisponivel.';
-        action = themeSummary ? `Causas dominantes: ${themeSummary}.` : 'Sem causa dominante clara.';
-        extra = `Total Top 5: ${formatMoney(top5Total)} (${top5Deals.length} deals).`;
-      }
-
-      summaryEl.innerHTML = `
-        <div style="font-weight: 700; margin-bottom: 8px;">Resumo Executivo</div>
-        <div style="font-size: 12px; color: var(--text-gray); line-height: 1.6;">${highlight}</div>
-        <div style="font-size: 12px; color: var(--primary-cyan); line-height: 1.6; margin-top: 6px;">${action}</div>
-        ${extra ? `<div style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">${extra}</div>` : ''}
-      `;
-    };
-
     const setActiveTopOppsTab = (tab) => {
-      const tabColors = {
-        open: '#00BEFF',
-        won: '#10b981',
-        lost: '#ef4444'
-      };
       topOppsTabs.forEach(button => {
         const isActive = button.dataset.topOppsTab === tab;
-        const baseColor = tabColors[button.dataset.topOppsTab] || '#00BEFF';
         button.classList.toggle('active', isActive);
-        button.style.background = isActive ? `${baseColor}33` : `${baseColor}14`;
-        button.style.color = isActive ? baseColor : 'var(--text-gray)';
-        button.style.borderColor = isActive ? `${baseColor}77` : `${baseColor}33`;
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
       });
     };
 
@@ -1438,6 +1414,8 @@ function renderDashboard() {
     const renderTopOppsTab = (tab) => {
       if (!topOppsContainer) return;
       topOppsContainer.innerHTML = '';
+      const metricMode = getTopOppsMetricMode();
+      const metricLabel = getTopOppsMetricLabel(metricMode);
 
       const period = window.currentTopOppsPeriod || 'all';
       const fy = window.currentFY || 'FY26';
@@ -1452,51 +1430,39 @@ function renderDashboard() {
       };
 
       let baseDeals = [];
-      let fallbackDeals = [];
       let normalized = [];
-      let fallbackUsed = false;
       let baseLabel = 'pipeline';
 
       if (tab === 'open') {
         baseLabel = 'pipeline';
-        const openDeals = getFilteredDealsByPeriod(allDeals || []);
-        baseDeals = openDeals;
-        fallbackDeals = (window.topOppsFallback && window.topOppsFallback.pipeline) ? window.topOppsFallback.pipeline : [];
-        const source = baseDeals.length > 0 ? baseDeals : fallbackDeals;
-        fallbackUsed = baseDeals.length === 0 && fallbackDeals.length > 0;
-        normalized = source.map(normalizeOpenDeal);
+        baseDeals = getFilteredDealsByPeriod(allDeals || []);
+        normalized = baseDeals.map(normalizeOpenDeal);
       } else if (tab === 'won') {
         baseLabel = 'ganhos';
         baseDeals = filterClosedByQuarter(Array.isArray(DATA.wonAgg) ? DATA.wonAgg : []);
-        fallbackDeals = filterClosedByQuarter((window.topOppsFallback && window.topOppsFallback.won) ? window.topOppsFallback.won : []);
-        const source = baseDeals.length > 0 ? baseDeals : fallbackDeals;
-        fallbackUsed = baseDeals.length === 0 && fallbackDeals.length > 0;
-        normalized = source.map(deal => normalizeClosedDeal(deal, 'won'));
+        normalized = baseDeals.map(deal => normalizeClosedDeal(deal, 'won'));
       } else {
         baseLabel = 'perdas';
         baseDeals = filterClosedByQuarter(Array.isArray(DATA.lostAgg) ? DATA.lostAgg : []);
-        fallbackDeals = filterClosedByQuarter((window.topOppsFallback && window.topOppsFallback.lost) ? window.topOppsFallback.lost : []);
-        const source = baseDeals.length > 0 ? baseDeals : fallbackDeals;
-        fallbackUsed = baseDeals.length === 0 && fallbackDeals.length > 0;
-        normalized = source.map(deal => normalizeClosedDeal(deal, 'lost'));
+        normalized = baseDeals.map(deal => normalizeClosedDeal(deal, 'lost'));
       }
 
       const top5Deals = normalized
-        .sort((a, b) => (b.value || 0) - (a.value || 0))
+        .sort((a, b) => getTopOppsMetricValue(b, metricMode) - getTopOppsMetricValue(a, metricMode))
         .slice(0, 5);
 
-      const totalBase = normalized.reduce((sum, d) => sum + (d.value || 0), 0);
-      const top5Total = top5Deals.reduce((sum, d) => sum + (d.value || 0), 0);
+      const totalBase = normalized.reduce((sum, d) => sum + getTopOppsMetricValue(d, metricMode), 0);
+      const top5Total = top5Deals.reduce((sum, d) => sum + getTopOppsMetricValue(d, metricMode), 0);
       const top5Percent = totalBase > 0 ? ((top5Total / totalBase) * 100).toFixed(1) : 0;
       const top5AvgConf = tab === 'open' && top5Deals.length > 0
         ? Math.round(top5Deals.reduce((sum, d) => sum + (d.confidence || 0), 0) / top5Deals.length)
         : null;
       const weightedTop5 = tab === 'open'
-        ? top5Deals.reduce((sum, d) => sum + ((d.value || 0) * ((d.confidence || 0) / 100)), 0)
+        ? top5Deals.reduce((sum, d) => sum + (getTopOppsMetricValue(d, metricMode) * ((d.confidence || 0) / 100)), 0)
         : 0;
       const weightedTop5Pct = totalBase > 0 ? ((weightedTop5 / totalBase) * 100).toFixed(1) : 0;
       const periodLabel = isQuarterPeriod ? `período ${targetQuarter}` : 'período selecionado';
-      const baseContext = fallbackUsed ? 'base histórica (fallback)' : `base do ${periodLabel}`;
+      const baseContext = `base do ${periodLabel}`;
 
       if (topOppsConfidenceCard) {
         topOppsConfidenceCard.style.display = tab === 'open' ? 'block' : 'none';
@@ -1506,43 +1472,38 @@ function renderDashboard() {
       }
 
       setTextSafe('exec-top5-total', formatMoney(top5Total));
-      setTextSafe('exec-top5-percent', `${top5Percent}% da ${baseLabel} · ${baseContext}`);
+      setTextSafe('exec-top5-percent', `${top5Percent}% da ${baseLabel} · ${metricLabel} · ${baseContext}`);
       setTextSafe('exec-top5-confidence', top5AvgConf == null ? '-' : `${top5AvgConf}%`);
       setTextSafe('exec-top5-deals', `${top5Deals.length} deals`);
       if (tab === 'open') {
         setTextSafe('exec-top5-weighted', formatMoney(weightedTop5));
-        setTextSafe('exec-top5-weighted-sub', `${weightedTop5Pct}% da base (${periodLabel})`);
+        setTextSafe('exec-top5-weighted-sub', `${weightedTop5Pct}% da base (${metricLabel})`);
       }
-
-      if (topOppsBaseFooter) {
-        const updatedAtLabel = formatDateTime(safe(DATA, 'updatedAt', '')) || '-';
-        topOppsBaseFooter.textContent = `Base usada: ${normalized.length} deals | Soma base: ${formatMoney(totalBase)} | Regra: Top 5 por Gross | Contexto: ${baseContext} | Atualizado: ${updatedAtLabel}`;
-      }
-
-      renderTopOppsSummary(tab, top5Deals, normalized, totalBase, top5Total, top5AvgConf, targetQuarter, baseLabel);
 
       window.execTopOppsContext = {
         tab,
+        metricMode,
+        metricLabel,
         baseLabel,
         periodLabel,
         baseContext,
-        fallbackUsed,
         targetQuarter,
         normalized,
         top5Deals,
         totalBase,
         top5Total,
         weightedTop5,
+        filtersLabel: getTopOppsFiltersLabel(),
         sql: tab === 'open'
-          ? `SELECT Oportunidade, Conta, Vendedor, Gross, Confianca, Fiscal_Q FROM pipeline WHERE <filtros_herdados> ORDER BY Gross DESC LIMIT 5`
+          ? `SELECT Oportunidade, Conta, Vendedor, Gross, Net, Confianca, Fiscal_Q FROM pipeline WHERE <filtros_herdados> ORDER BY ${metricLabel} DESC LIMIT 5`
           : tab === 'won'
-            ? `SELECT Oportunidade, Conta, Vendedor, Gross, Fiscal_Q FROM closed_deals_won WHERE <filtros_herdados> ORDER BY Gross DESC LIMIT 5`
-            : `SELECT Oportunidade, Conta, Vendedor, Gross, Fiscal_Q FROM closed_deals_lost WHERE <filtros_herdados> ORDER BY Gross DESC LIMIT 5`
+            ? `SELECT Oportunidade, Conta, Vendedor, Gross, Net, Fiscal_Q FROM closed_deals_won WHERE <filtros_herdados> ORDER BY ${metricLabel} DESC LIMIT 5`
+            : `SELECT Oportunidade, Conta, Vendedor, Gross, Net, Fiscal_Q FROM closed_deals_lost WHERE <filtros_herdados> ORDER BY ${metricLabel} DESC LIMIT 5`
       };
 
       if (topOppsNote) {
         topOppsNote.style.display = 'block';
-        topOppsNote.textContent = `Regra de período: ${periodLabel}. Contexto aplicado: ${baseContext}.`;
+        topOppsNote.textContent = `Ordenação Top 5: ${metricLabel}. Filtros aplicados: ${getTopOppsFiltersLabel()}.`;
       }
 
       if (top5Deals.length === 0) {
@@ -1552,6 +1513,9 @@ function renderDashboard() {
 
       top5Deals.forEach((deal, idx) => {
         const conf = deal.confidence || 0;
+        const grossValue = Number(deal.grossValue || deal.value || 0);
+        const netValue = Number(deal.netValue || 0);
+        const rankingValue = getTopOppsMetricValue(deal, metricMode);
         let confBadge = 'badge-warning';
         if (conf >= 90) confBadge = 'badge-success';
         else if (conf > 0 && conf < 50) confBadge = 'badge-danger';
@@ -1578,16 +1542,30 @@ function renderDashboard() {
                 Conta: <strong style="color: var(--text-white);">${deal.account}</strong>
               </div>
             </div>
-            <div class="deal-value">${formatMoney(deal.value || 0)}</div>
+            <div class="deal-value">${formatMoney(rankingValue)}</div>
           </div>
           <div class="deal-meta" style="margin-top: 10px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
               <span><strong>Responsavel:</strong> ${deal.owner}</span>
-              ${tab === 'open' ? `<span class="badge ${confBadge}">${conf}% confianca</span>` : '<span class="badge badge-warning">Fechado</span>'}
+              ${tab === 'open'
+                ? `<span class="badge ${confBadge}">${conf}% confianca</span>`
+                : tab === 'won'
+                  ? '<span class="badge badge-success">Ganho</span>'
+                  : '<span class="badge badge-danger">Perdido</span>'}
             </div>
-            ${deal.stage ? `<div style="margin-top: 8px; font-size: 12px; color: var(--text-gray);"><strong>Stage:</strong> ${deal.stage}</div>` : ''}
+            <div class="exec-top5-detail-grid">
+              <div><strong>Gross:</strong> ${formatMoney(grossValue)}</div>
+              <div><strong>Net:</strong> ${netValue > 0 ? formatMoney(netValue) : '-'}</div>
+              ${deal.stage ? `<div><strong>Fase:</strong> ${deal.stage}</div>` : ''}
+              ${deal.closeDate ? `<div><strong>Fechamento:</strong> ${deal.closeDate}</div>` : ''}
+              ${deal.cycle ? `<div><strong>Ciclo:</strong> ${deal.cycle} dias</div>` : ''}
+              ${deal.activities ? `<div><strong>Atividades:</strong> ${deal.activities}</div>` : ''}
+              ${deal.segment ? `<div><strong>Segmento:</strong> ${deal.segment}</div>` : ''}
+              ${deal.state ? `<div><strong>UF:</strong> ${deal.state}</div>` : ''}
+              ${deal.portfolio ? `<div><strong>Portfólio:</strong> ${deal.portfolio}</div>` : ''}
+              ${deal.meddic != null ? `<div><strong>MEDDIC:</strong> ${deal.meddic}</div>` : ''}
+            </div>
             ${deal.resultType ? `<div style="margin-top: 8px; font-size: 12px; color: var(--text-gray);"><strong>Resultado:</strong> ${deal.resultType}</div>` : ''}
-            ${deal.cycle ? `<div style="margin-top: 6px; font-size: 12px; color: var(--text-gray);"><strong>Ciclo:</strong> ${deal.cycle} dias</div>` : ''}
             ${deal.reason ? `<div style="margin-top: 6px; font-size: 12px; color: var(--text-gray);"><strong>Motivo:</strong> ${deal.reason}</div>` : ''}
             ${questionsArray.length > 0 ? `
               <details style="margin-top: 12px; padding: 12px; background: rgba(225,72,73,0.1); border-left: 3px solid var(--danger); border-radius: 4px;">
@@ -1617,17 +1595,18 @@ function renderDashboard() {
                 </div>
               </details>
             ` : ''}
-            <div style="margin-top: 10px; font-size: 12px; color: var(--text-gray);"><strong>Resumo:</strong> ${insight.summary}</div>
-            <div style="margin-top: 6px; font-size: 12px; color: var(--primary-cyan);"><strong>Recomendacao:</strong> ${insight.action}</div>
+            <div class="exec-top5-summary-box"><strong>Resumo:</strong> ${insight.summary}</div>
+            <div class="exec-top5-action-box"><strong>Recomendação:</strong> ${insight.action}</div>
           </div>
         `;
-        card.onclick = () => openExecutiveDrilldown({
+        card.onclick = () => window.openExecutiveDrilldown({
           title: `Drill-down · Top 5 ${tab === 'open' ? 'Abertas' : tab === 'won' ? 'Ganhas' : 'Perdidas'}`,
-          subtitle: `${periodLabel} · ${baseContext}`,
-          rows: normalized,
+          subtitle: `${periodLabel} · ${baseContext} · ${metricLabel}`,
+          rows: top5Deals,
           selected: deal,
-          rule: 'Top 5 por Gross',
-          baseLabel: `${normalized.length} deals · ${formatMoney(totalBase)}`,
+          rule: `Top 5 por ${metricLabel}`,
+          baseLabel: `${top5Deals.length} deals · ${formatMoney(top5Total)}`,
+          filtersLabel: getTopOppsFiltersLabel(),
           sql: window.execTopOppsContext?.sql || 'Regra SQL indisponível'
         });
         topOppsContainer.appendChild(card);
@@ -1639,13 +1618,14 @@ function renderDashboard() {
         el.style.cursor = 'pointer';
         el.addEventListener('click', () => {
           const ctx = window.execTopOppsContext || {};
-          openExecutiveDrilldown({
+          window.openExecutiveDrilldown({
             title: `Drill-down · Top 5 ${ctx.tab === 'open' ? 'Abertas' : ctx.tab === 'won' ? 'Ganhas' : 'Perdidas'}`,
-            subtitle: `${ctx.periodLabel || 'período selecionado'} · ${ctx.baseContext || 'base aplicada'}`,
-            rows: ctx.normalized || [],
+            subtitle: `${ctx.periodLabel || 'período selecionado'} · ${ctx.baseContext || 'base aplicada'} · ${ctx.metricLabel || 'Gross'}`,
+            rows: ctx.top5Deals || [],
             selected: (ctx.top5Deals && ctx.top5Deals[0]) || null,
-            rule: 'Top 5 por Gross',
-            baseLabel: `${(ctx.normalized || []).length} deals · ${formatMoney(ctx.totalBase || 0)}`,
+            rule: `Top 5 por ${ctx.metricLabel || 'Gross'}`,
+            baseLabel: `${(ctx.top5Deals || []).length} deals · ${formatMoney(ctx.top5Total || 0)}`,
+            filtersLabel: ctx.filtersLabel || getTopOppsFiltersLabel(),
             sql: ctx.sql || 'Regra SQL indisponível'
           });
         });
@@ -1701,184 +1681,6 @@ function renderDashboard() {
       return { rows: [...openRows, ...wonRows, ...lostRows], title: 'Drill-down Executivo', rule: 'Base consolidada de oportunidades' };
     };
 
-    const getCurrentFiltersLabel = () => {
-      const f = window.currentFilters || {};
-      const parts = [];
-      if (f.year) parts.push(`Ano: ${f.year}`);
-      if (f.quarter) parts.push(`Quarter: ${f.quarter}`);
-      if (f.month) parts.push(`Mês: ${f.month}`);
-      if (f.phase) parts.push(`Fase: ${f.phase}`);
-      if (f.seller) parts.push(`Vendedor: ${f.seller}`);
-      if (f.owner_preventa) parts.push(`Pré-venda: ${f.owner_preventa}`);
-      if (f.billing_city) parts.push(`Cidade (Cobrança): ${f.billing_city}`);
-      if (f.billing_state) parts.push(`Estado (Cobrança): ${f.billing_state}`);
-      if (f.vertical_ia) parts.push(`Vertical IA: ${f.vertical_ia}`);
-      if (f.sub_vertical_ia) parts.push(`Subvertical IA: ${f.sub_vertical_ia}`);
-      if (f.sub_sub_vertical_ia) parts.push(`Sub-subvertical IA: ${f.sub_sub_vertical_ia}`);
-      if (f.subsegmento_mercado) parts.push(`Subsegmento: ${f.subsegmento_mercado}`);
-      if (f.segmento_consolidado) parts.push(`Segmento de Mercado: ${f.segmento_consolidado}`);
-      if (f.portfolio_fdm) parts.push(`Portfólio FDM: ${f.portfolio_fdm}`);
-      return parts.length ? parts.join(' | ') : 'Sem filtros adicionais';
-    };
-
-    const renderExecutiveDrilldown = () => {
-      const state = window.execDrilldownState || {};
-      const rows = Array.isArray(state.filteredRows) ? state.filteredRows : [];
-      const titleEl = document.getElementById('exec-dd-title');
-      const subtitleEl = document.getElementById('exec-dd-subtitle');
-      const metaEl = document.getElementById('exec-dd-meta');
-      const listEl = document.getElementById('exec-dd-list');
-      const detailEl = document.getElementById('exec-dd-detail');
-      const chipsEl = document.getElementById('exec-dd-source-chips');
-      const sqlEl = document.getElementById('exec-dd-sql');
-      if (!titleEl || !subtitleEl || !metaEl || !listEl || !detailEl || !chipsEl || !sqlEl) return;
-
-      titleEl.textContent = state.title || 'Drill-down Executivo';
-      subtitleEl.textContent = state.subtitle || 'Resumo → Lista → Detalhe';
-      metaEl.innerHTML = `
-        <div><strong>Regra de cálculo:</strong> ${state.rule || '-'}</div>
-        <div><strong>Base usada:</strong> ${state.baseLabel || `${(state.rows || []).length} deals`}</div>
-        <div><strong>Filtros herdados:</strong> ${getCurrentFiltersLabel()}</div>
-        <div><strong>Última atualização:</strong> ${formatDateTime(safe(DATA, 'updatedAt', '')) || '-'}</div>
-      `;
-
-      const distinctSources = Array.from(new Set((state.rows || []).map(r => r.source || 'other')));
-      chipsEl.innerHTML = ['all', ...distinctSources].map(src => {
-        const active = (state.activeSource || 'all') === src;
-        const label = src === 'all' ? 'Tudo' : src.toUpperCase();
-        return `<button class="exec-dd-chip ${active ? 'active' : ''}" onclick="setExecutiveDrilldownSource('${src}')">${label}</button>`;
-      }).join('');
-
-      sqlEl.textContent = state.sql || 'Regra SQL indisponível';
-
-      if (!rows.length) {
-        listEl.innerHTML = '<div class="exec-dd-item"><div class="exec-dd-item-title">Nenhum resultado</div><div class="exec-dd-item-meta">Ajuste busca/fonte para visualizar dados.</div></div>';
-        detailEl.textContent = 'Sem item selecionado.';
-        return;
-      }
-
-      listEl.innerHTML = rows.map((row, idx) => `
-        <div class="exec-dd-item" onclick="selectExecutiveDrilldownItem(${idx})">
-          <div class="exec-dd-item-title">${escapeHtml(row.name || 'Deal sem nome')}</div>
-          <div class="exec-dd-item-meta">
-            <span>${escapeHtml(row.account || 'Conta não informada')} · ${escapeHtml(row.owner || 'N/A')}</span>
-            <span>${formatMoney(row.value || 0)} · ${escapeHtml(row.quarter || 'Quarter N/A')} · ${(row.source || 'other').toUpperCase()}</span>
-          </div>
-        </div>
-      `).join('');
-
-      const selected = state.selected || rows[0];
-      detailEl.innerHTML = `
-        <div style="font-size:13px;font-weight:700;color:var(--text-main);margin-bottom:6px;">${escapeHtml(selected.name || 'Deal')}</div>
-        <div><strong>Conta:</strong> ${escapeHtml(selected.account || 'N/A')}</div>
-        <div><strong>Vendedor:</strong> ${escapeHtml(selected.owner || 'N/A')}</div>
-        <div><strong>Origem:</strong> ${(selected.source || 'other').toUpperCase()}</div>
-        <div><strong>Valor:</strong> ${formatMoney(selected.value || 0)}</div>
-        <div><strong>Quarter:</strong> ${escapeHtml(selected.quarter || 'N/A')}</div>
-        ${selected.forecastStatus ? `<div><strong>Forecast:</strong> ${escapeHtml(selected.forecastStatus)}</div>` : ''}
-        ${selected.stage ? `<div><strong>Stage:</strong> ${escapeHtml(selected.stage)}</div>` : ''}
-        ${selected.confidence != null ? `<div><strong>Confiança:</strong> ${selected.confidence}%</div>` : ''}
-        ${selected.idleDays != null ? `<div><strong>Idle:</strong> ${selected.idleDays} dias</div>` : ''}
-        ${selected.activities != null ? `<div><strong>Atividades:</strong> ${selected.activities}</div>` : ''}
-        ${selected.meddic != null ? `<div><strong>MEDDIC:</strong> ${selected.meddic}</div>` : ''}
-        ${selected.avoidable ? `<div><strong>Evitável:</strong> Sim</div>` : ''}
-        ${selected.cycle != null ? `<div><strong>Ciclo:</strong> ${selected.cycle} dias</div>` : ''}
-        ${selected.resultType ? `<div><strong>Resultado:</strong> ${escapeHtml(selected.resultType)}</div>` : ''}
-        ${selected.reason ? `<div><strong>Motivo:</strong> ${escapeHtml(selected.reason)}</div>` : ''}
-        ${selected.closeDate ? `<div><strong>Data fechamento:</strong> ${escapeHtml(selected.closeDate)}</div>` : ''}
-      `;
-    };
-
-    window.setExecutiveDrilldownSource = function(source) {
-      window.execDrilldownState = window.execDrilldownState || {};
-      window.execDrilldownState.activeSource = source;
-      applyExecutiveDrilldownFilters();
-    };
-
-    window.selectExecutiveDrilldownItem = function(idx) {
-      const state = window.execDrilldownState || {};
-      state.selected = (state.filteredRows || [])[idx] || null;
-      window.execDrilldownState = state;
-      renderExecutiveDrilldown();
-    };
-
-    window.applyExecutiveDrilldownFilters = function() {
-      const state = window.execDrilldownState || {};
-      const searchEl = document.getElementById('exec-dd-search');
-      const sortEl = document.getElementById('exec-dd-sort');
-      const text = (searchEl?.value || '').toLowerCase().trim();
-      const source = state.activeSource || 'all';
-      const sort = sortEl?.value || 'value_desc';
-
-      let rows = Array.isArray(state.rows) ? [...state.rows] : [];
-      if (source !== 'all') rows = rows.filter(r => (r.source || 'other') === source);
-      if (text) {
-        rows = rows.filter(r => [r.name, r.account, r.owner, r.quarter, r.stage, r.resultType, r.reason]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase()
-          .includes(text));
-      }
-
-      if (sort === 'value_asc') rows.sort((a, b) => (a.value || 0) - (b.value || 0));
-      else if (sort === 'name_asc') rows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-      else rows.sort((a, b) => (b.value || 0) - (a.value || 0));
-
-      state.filteredRows = rows;
-      state.selected = rows.find(r => state.selected && r.name === state.selected.name && r.owner === state.selected.owner) || rows[0] || null;
-      window.execDrilldownState = state;
-      renderExecutiveDrilldown();
-    };
-
-    window.toggleExecutiveDrilldownSql = function() {
-      const sqlEl = document.getElementById('exec-dd-sql');
-      if (sqlEl) sqlEl.classList.toggle('active');
-    };
-
-    window.exportExecutiveDrilldownCsv = function() {
-      const state = window.execDrilldownState || {};
-      const rows = Array.isArray(state.filteredRows) ? state.filteredRows : [];
-      if (!rows.length) return;
-      const headers = ['source','name','account','owner','value','quarter','stage','confidence','idleDays','activities','cycle','resultType','reason','closeDate'];
-      const csv = [headers.join(',')]
-        .concat(rows.map(row => headers.map(h => {
-          const value = row[h] == null ? '' : String(row[h]).replace(/"/g, '""');
-          return `"${value}"`;
-        }).join(',')))
-        .join('\n');
-
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `drilldown_executivo_${new Date().toISOString().slice(0,10)}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    };
-
-    window.closeExecutiveDrilldown = function() {
-      document.getElementById('exec-drilldown-backdrop')?.classList.remove('active');
-      document.getElementById('exec-drilldown-panel')?.classList.remove('active');
-    };
-
-    const openExecutiveDrilldown = (config) => {
-      window.execDrilldownState = {
-        ...config,
-        rows: Array.isArray(config.rows) ? config.rows : [],
-        filteredRows: Array.isArray(config.rows) ? [...config.rows] : [],
-        activeSource: 'all',
-        selected: config.selected || null
-      };
-      renderExecutiveDrilldown();
-      document.getElementById('exec-dd-search').value = '';
-      document.getElementById('exec-dd-sort').value = 'value_desc';
-      document.getElementById('exec-dd-sql').classList.remove('active');
-      document.getElementById('exec-drilldown-backdrop')?.classList.add('active');
-      document.getElementById('exec-drilldown-panel')?.classList.add('active');
-    };
-
     const bindExecutiveKpiDrilldown = () => {
       const summaryRoot = document.querySelector('.exec-tab-content[data-content="resumo"]');
       if (!summaryRoot) return;
@@ -1890,7 +1692,7 @@ function renderDashboard() {
           const metricNode = card.querySelector('[id^="exec-"]');
           const metricId = metricNode ? metricNode.id : '';
           const cfg = buildDrilldownRowsFromMetric(metricId);
-          openExecutiveDrilldown({
+          window.openExecutiveDrilldown({
             title: `Drill-down · ${cfg.title}`,
             subtitle: 'Resumo → Lista → Detalhe',
             rows: cfg.rows,

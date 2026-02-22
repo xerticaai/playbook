@@ -68,12 +68,9 @@ const MODEL_ID = "gemini-2.5-pro";
 
 /** @constant {array} Modelos de fallback caso o principal falhe (em ordem de prioridade) */
 const FALLBACK_MODELS = [
-  "gemini-1.5-pro-002",
-  "gemini-1.5-flash-002", 
-  "gemini-1.5-flash",
-  "gemini-2.5-flash",
-  "gemini-3.1-pro-preview",
-  "gemini-2.5-flash-lite"
+  "gemini-2.5-flash",       // fallback primário: suporta thinkingBudget:0, rápido e barato
+  "gemini-2.5-flash-lite"   // fallback leve para casos de quota esgotada
+  // REMOVIDOS: gemini-1.5-* (desativados pela Google, retornam 404)
 ];
 
 /** @constant {string} Nome do projeto GCP */
@@ -258,7 +255,11 @@ const ENUMS = {
     GTM_VIP: "OPORTUNIDADE ESTRATÉGICA GTM",
     STAGE_DRIFT: "DERIVA DE FASE DETECTADA",
     INTEGRITY_ALERT: "EDIÇÃO MANUAL DETECTADA",
-    COLD_GATE: "GATE CRÍTICO ATIVO"
+    COLD_GATE: "GATE CRÍTICO ATIVO",
+    OCULTACAO_MATURIDADE: "OCULTACAO-MATURIDADE",
+    FALSO_ENGAJAMENTO: "FALSO-ENGAJAMENTO",
+    ESTAGNACAO_FUNIL: "ESTAGNACAO-FUNIL",
+    EFEITO_HALO: "EFEITO-HALO"
   },
   ACTION_CODE: {
     CRM_AUDIT: "AUDITORIA-CRM",       
@@ -477,6 +478,65 @@ function calculateBANTScore_(item, activity) {
   };
 }
 
+/**
+ * computeDealAdjustments_ — Tier matrix de confiança: tipo de deal × inatividade.
+ *
+ * TIER MATRIX (penalidade em pontos sobre a base):
+ *   Tipo        | Base | 🟢<15d | 🟡15-29d | 🟠30-59d | 🔴60-89d | 💀≥90d
+ *   RETENCAO    |  75  |    0   |    -5    |   -10    |   -20    |   -30
+ *   UPSELL      |  70  |    0   |    -5    |   -10    |   -20    |   -30
+ *   NOVA        |  55  |    0   |   -10    |   -20    |   -30    |   -40
+ *
+ * @param {object}        item      — deal (oppName, products, tipoOportunidade)
+ * @param {number|string} idleDays  — dias sem atividade
+ * @returns {object}
+ */
+function computeDealAdjustments_(item, idleDays) {
+  const haystack = (
+    (item.oppName        || '') + ' ' +
+    (item.products       || '') + ' ' +
+    (item.tipoOportunidade || '')
+  ).toUpperCase();
+
+  const isRetencao = /RENOV|RENEW|RETEN|TRANSFER[\s_]?TOKEN|TRANSFERENCIA/.test(haystack);
+  const isUpsell   = /ADD[\-\s]?ON|ADICIONAL|UPSELL|AUMENTO|EXPANS/.test(haystack);
+  const isEasyDeal = isRetencao || isUpsell;
+  const dealTier   = isRetencao ? 'RETENCAO' : (isUpsell ? 'UPSELL' : 'NOVA');
+
+  const idle = (typeof idleDays === 'number') ? idleDays : (parseInt(String(idleDays)) || 0);
+
+  var idleTier, idleLabel, idleEmoji;
+  if      (idle <  15) { idleTier = 'VERDE';    idleLabel = 'Ativo (<15 dias)';          idleEmoji = '🟢'; }
+  else if (idle <  30) { idleTier = 'AMARELO';  idleLabel = 'Moderado (15–29 dias)';     idleEmoji = '🟡'; }
+  else if (idle <  60) { idleTier = 'LARANJA';  idleLabel = 'Em risco (30–59 dias)';     idleEmoji = '🟠'; }
+  else if (idle <  90) { idleTier = 'VERMELHO'; idleLabel = 'Crítico (60–89 dias)';      idleEmoji = '🔴'; }
+  else                 { idleTier = 'CRITICO';  idleLabel = 'Quase morto (≥90 dias)';   idleEmoji = '💀'; }
+
+  const PENALTIES = {
+    RETENCAO: { VERDE: 0, AMARELO: -5,  LARANJA: -10, VERMELHO: -20, CRITICO: -30 },
+    UPSELL:   { VERDE: 0, AMARELO: -5,  LARANJA: -10, VERMELHO: -20, CRITICO: -30 },
+    NOVA:     { VERDE: 0, AMARELO: -10, LARANJA: -20, VERMELHO: -30, CRITICO: -40 }
+  };
+  const BASE_CONF = { RETENCAO: 75, UPSELL: 70, NOVA: 55 };
+
+  const penalty   = PENALTIES[dealTier][idleTier];
+  const baseConf  = BASE_CONF[dealTier];
+  const floorConf = Math.max(baseConf + penalty, isEasyDeal ? 30 : 10);
+
+  const dealContextText = isEasyDeal
+    ? 'RENOVAÇÃO / UPSELL / TRANSFER TOKEN (Atrito Baixo: Cliente já da base, ciclo natural/automático. Piso de confiança: ' + floorConf + '%. Seja brando com gaps de BANT/MEDDIC a menos que haja risco explícito de CHURN.)'
+    : 'NOVO NEGÓCIO / VENDA TRADICIONAL (Atrito Normal: Exige qualificação completa de BANT/MEDDIC. Piso pelo motor: ' + floorConf + '% dado inatividade ' + idleLabel + '.)';
+
+  const idleTierContext = '\n' + idleEmoji + ' NÍVEL INATIVIDADE: ' + idleLabel +
+    ' | Penalidade no score: ' + Math.abs(penalty) + ' pts' +
+    (isEasyDeal && penalty !== 0 ? ' (atenuada: cliente existente)' : '') +
+    ' | Piso calculado pelo motor: ' + floorConf + '%';
+
+  return { isEasyDeal: isEasyDeal, dealTier: dealTier, idleTier: idleTier, idleLabel: idleLabel,
+           idleEmoji: idleEmoji, penalty: penalty, baseConf: baseConf, floorConf: floorConf,
+           dealContextText: dealContextText, idleTierContext: idleTierContext };
+}
+
 function getOpenPrompt(item, profile, fiscal, activity, meddic, bant, personas, nextStepCheck, inactivityGate, audit, idleDays, govFlags, inconsistency, govInfo) {
   const today = getTodayContext_();
   const joinedFlags = (govFlags && govFlags.length) ? govFlags.join(", ") : "-";
@@ -489,11 +549,67 @@ function getOpenPrompt(item, profile, fiscal, activity, meddic, bant, personas, 
     ? bant.evidenceWithCitations.join(", ") 
     : "-";
 
+  const adj = computeDealAdjustments_(item, idleDays);
+  const isEasyDeal     = adj.isEasyDeal;
+  const dealContextText = adj.dealContextText;
+
+  // ── DETECTOR DE SANDBAGGING ───────────────────────────────────────────────────
+  // Cruza fase, MEDDIC, atividade ponderada e dias para o fechamento.
+  // Se o deal está em fase precoce mas com maturidade de fase final → SANDBAGGING.
+  const _daysToClose    = (item.closed instanceof Date) ? Math.ceil((item.closed - new Date()) / 86400000) : 999;
+  const _isEarlyStage   = /qualific|prospec|descobert|discover|lead/i.test(item.stage || '');
+  const _meddicScore    = (meddic && typeof meddic.score === 'number') ? meddic.score : 0;
+  const _weightedAct    = (activity && typeof activity.weightedCount === 'number') ? activity.weightedCount : 0;
+  const _isSandbag      = _isEarlyStage && _meddicScore >= 55 && _weightedAct >= 4 && _daysToClose >= 0 && _daysToClose <= 30;
+  const sandbagAlert    = _isSandbag
+    ? '⚠️ SANDBAGGING DETECTADO: deal em fase precoce ("' + (item.stage || '?') + '", ' + item.probabilidad + '%) mas com MEDDIC score ' + _meddicScore + ', ' + _weightedAct + ' atividades ponderadas e fechamento em ' + _daysToClose + ' dias. Forte indício de retenção artificial de fase.'
+    : 'OK';
+
+  // ── DETECTOR DE GHOSTING DO DECISOR ──────────────────────────────────────────
+  // Verifica se Champion / Economic Buyer aparecem nas atividades RECENTES (primeiros 600 chars = ~3 atividades).
+  // Alto engajamento sem decisor = "Happy Ears".
+  const _recentText     = (activity.fullText || '').substring(0, 700).toLowerCase();
+  const _champRaw       = (personas && personas.champion) ? String(personas.champion) : '';
+  const _buyerRaw       = (personas && personas.economicBuyer) ? String(personas.economicBuyer) : '';
+  const _isUnknown      = (s) => !s || /n.o identificado|not identified|n\/a/i.test(s);
+  const _firstName      = (s) => s.trim().split(/\s+/)[0].toLowerCase();
+  const _champMissing   = !_isUnknown(_champRaw) && activity.count > 3 && !_recentText.includes(_firstName(_champRaw));
+  const _buyerMissing   = !_isUnknown(_buyerRaw) && activity.count > 3 && !_recentText.includes(_firstName(_buyerRaw));
+  const _ghostNames     = [
+    _champMissing ? 'Champion "' + _champRaw + '"' : '',
+    _buyerMissing ? 'Economic Buyer "' + _buyerRaw + '"' : ''
+  ].filter(Boolean).join(' e ');
+  const ghostingAlert   = (_champMissing || _buyerMissing)
+    ? '⚠️ GHOSTING DETECTADO: ' + _ghostNames + ' não aparecem nas atividades recentes apesar de ' + activity.count + ' interações totais. Risco de "Happy Ears": equipe técnica engajada, decisor(es) ausentes.'
+    : 'OK';
+
+  // ── EFEITO HALO + ESTAGNAÇÃO DE FUNIL ─────────────────────────────────────
+  const _todayMs          = new Date().getTime();
+  const _stageChangeDate  = item.lastStageChangeDate instanceof Date ? item.lastStageChangeDate : (item.lastStageChangeDate ? new Date(item.lastStageChangeDate) : null);
+  const _accountLastAct   = item.accountLastActivity instanceof Date ? item.accountLastActivity : (item.accountLastActivity ? new Date(item.accountLastActivity) : null);
+  const diasNaFase        = _stageChangeDate ? Math.ceil((_todayMs - _stageChangeDate.getTime()) / 86400000) : -1;
+  const diasInativoConta  = _accountLastAct  ? Math.ceil((_todayMs - _accountLastAct.getTime())  / 86400000) : -1;
+  const diasNaFaseText    = diasNaFase        >= 0 ? diasNaFase        + ' dias' : 'N/D';
+  const diasContaText     = diasInativoConta  >= 0 ? diasInativoConta  + ' dias' : 'N/D';
+  // Efeito Halo: opp idle mas conta recentemente ativa
+  const _haloAtivo  = (typeof idleDays === 'number' && idleDays > 30) && (diasInativoConta >= 0 && diasInativoConta < 15);
+  const haloAlert   = _haloAtivo
+    ? '✅ EFEITO HALO ATIVO: Opp inativa há ' + idleDays + 'd mas Conta teve atividade há apenas ' + diasInativoConta + 'd — atividades podem estar registradas em negócios paralelos no CRM. NÃO penalize confiança pela inatividade desta opp.'
+    : 'OK';
+  // Estagnação de funil: alto engajamento mas presa na mesma fase >45d
+  const _stageDays  = diasNaFase >= 0 ? diasNaFase : 0;
+  const _actHigh    = (activity && typeof activity.count === 'number') ? activity.count >= 5 : false;
+  const _isStuck    = _actHigh && _stageDays > 45;
+  const stuckAlert  = _isStuck
+    ? '⚠️ ESTAGNAÇÃO DE FUNIL: ' + activity.count + ' atividades mas opp presa em "' + (item.stage || '?') + '" há ' + _stageDays + ' dias sem avançar de fase.'
+    : 'OK';
+
   const baseData = `
 DATA_ATUAL: ${today.br} (timezone: ${today.tz})
 REGRA ANTI-ALUCINACAO: Não invente datas, números, fatos ou marcos. Use apenas o que estiver explicitamente nos dados abaixo. Se faltar evidência, responda "N/A".
 
 DEAL: ${item.oppName} | CLIENTE: ${item.accName} (${profile})
+NATUREZA DO NEGÓCIO: ${dealContextText}
 VALOR: ${item.gross} | NET REVENUE: ${item.net} | PRODUTOS: ${item.products}
 FASE CRM: ${item.stage} (${item.probabilidad}%) | FORECAST SF: ${item.forecast_sf}
 CRIADO: ${formatDateRobust(item.created)} | FECHAMENTO: ${formatDateRobust(item.closed)}
@@ -504,12 +620,20 @@ DESCRIÇÃO CRM: "${(item.desc || "").substring(0, 900)}"
 HISTÓRICO (top5): ${audit}
 FLAGS SISTEMA: ${joinedFlags}
 ALERTA INCOERÊNCIA: ${inconsistency}
+ALERTA OCULTACAO MATURIDADE: ${sandbagAlert}
+ALERTA FALSO ENGAJAMENTO (DECISOR AUSENTE): ${ghostingAlert}
+DIAS NA FASE ATUAL: ${diasNaFaseText} sem avançar no funil.
+INATIVIDADE DA CONTA (Efeito Halo): ${diasContaText}
+ALERTA ESTAGNAÇÃO FUNIL: ${stuckAlert}
+ALERTA EFEITO HALO: ${haloAlert}
 GOVERNO: ${govInfo.isGov ? 'SIM' : 'NAO'} | MARCOS: ${govInfo.stages.join(' > ') || 'N/A'}
+TIPO OPORTUNIDADE: ${item.tipoOportunidade || 'Nova'} | PROCESSO: ${item.processoTipo || '-'}${adj.idleTierContext}
+INSTRUÇÃO TIPO OPP: Motor calculou piso de confiança = ${adj.floorConf}%. Se cliente existente (Adicional/Renovação/TransferToken/Upsell), mantenha confiança ≥ ${adj.floorConf}% e NÃO penalize por gaps de BANT/MEDDIC salvo evidência de CHURN. Se Nova aquisição, applique penalidade progressiva por inatividade conforme tier acima.
 
 DEAL VELOCITY (momentum do negócio):
 Predição: ${item._velocityMetrics ? item._velocityMetrics.prediction : 'N/D'} | Risk Score: ${item._velocityMetrics ? item._velocityMetrics.riskScore + '%' : 'N/D'}
 Stage Velocity: ${item._velocityMetrics ? item._velocityMetrics.stageVelocity + 'd/fase' : '-'} | Value Velocity: ${item._velocityMetrics ? item._velocityMetrics.valueVelocity + '% /d' : '-'} | Activity Momentum: ${item._velocityMetrics ? item._velocityMetrics.activityMomentum + '%' : '-'}
-Instrução: Se predição for DESACELERANDO ou ESTAGNADO, refletir no risco_principal e penalizar confiança.
+INSTRUÇÃO VELOCITY (ESTRITA): Se predição for DESACELERANDO ou ESTAGNADO, a PRIMEIRA frase do campo risco_principal DEVE começar com "🔴 VELOCITY [predição]: [motivo direto baseado nos dados]". Penalize a confiança proporcionalmente ao Risk Score.
 
 EVIDÊNCIAS DE QUALIFICAÇÃO:
 MEDDIC - Critérios Encontrados: ${meddicEvidence}
@@ -549,6 +673,19 @@ REGRAS DE OURO (estritas):
 8) Se for GOVERNO e houver marcos (ETP/TR/EDITAL/PNCP/ARP etc.), NÃO penalize apenas por idle; exija evidência do próximo marco.
 9) AÇÃO: NUNCA use "GENERICO". Escolha exatamente uma:
 [AUDITORIA-CRM, VALIDAR-DATA, AUMENTAR-CADENCIA, CHECAR-DEAL-DESK, REQUALIFICAR, FECHAMENTO-IMEDIATO, ENCERRAR-INATIVO]
+10) TIER MATRIX — PISO DE CONFIANÇA CALCULADO PELO MOTOR = ${adj.floorConf}%:
+    Tipo         | Base | 🟢<15d | 🟡15-29d | 🟠30-59d | 🔴60-89d | 💀≥90d
+    Renovação/TT |  75  |   75   |    70    |    65    |    55    |    45
+    Adicional/UP |  70  |   70   |    65    |    60    |    50    |    40
+    Nova acq.    |  55  |   55   |    45    |    35    |    25    |    15
+    → Este deal: tipo "${adj.dealTier}" × inatividade "${adj.idleLabel}" → PISO = ${adj.floorConf}%.
+    → Se cliente existente: confiança NÃO deve cair abaixo de ${adj.floorConf}% sem evidência concreta de CHURN. A justificativa DEVE mencionar a facilidade inerente.
+    → Se Nova aquisição: aplique penalidade progressiva por inatividade; descubra por que o deal está parado.
+11) QUALIDADE ENGAJAMENTO (REGRA ESTRITA): Se o campo INATIVO (Idle Days) for maior que 30 dias, o campo engagement_quality DEVE ser obrigatoriamente "BAIXA", independentemente do volume passado de atividades. Engajamento antigo não conta como engajamento ativo.
+12) OCULTAÇÃO DE MATURIDADE: Se ALERTA OCULTACAO MATURIDADE != 'OK', o campo check_incoerencia DEVE conter exatamente "Sinal forte de Ocultação de Maturidade. Oportunidade retida em fase inicial, mas com maturidade e engajamento de fase de fecho." e a label "OCULTACAO-MATURIDADE" DEVE ser adicionada. Além disso, eleve o Forecast IA para COMMIT ou UPSIDE conforme o score de confiança calculado — não respeite a fase declarada pelo vendedor.
+13) FALSO ENGAJAMENTO (DECISOR AUSENTE): Se ALERTA FALSO ENGAJAMENTO (DECISOR AUSENTE) != 'OK', a primeira frase do risco_principal (antes mesmo da regra de Velocity) DEVE ser: "👻 FALSO ENGAJAMENTO: [nome(s)] ausente(s) nas últimas interações — risco de Happy Ears. A equipe técnica está engajada mas o(s) decisor(es) estão ausentes." e a label "FALSO-ENGAJAMENTO" DEVE ser adicionada.
+14) EFEITO HALO: Se ALERTA EFEITO HALO != 'OK', NÃO aplique penalidade de inatividade a esta oportunidade. A conta está ativa (atividade recente em negócios paralelos no CRM). Mantenha a confiança no piso mínimo do tier (${adj.floorConf}%) e mencione o efeito halo na justificativa.
+15) ESTAGNAÇÃO DE FUNIL: Se ALERTA ESTAGNAÇÃO FUNIL != 'OK', penalize a confiança em pelo menos 10 pontos adicionais, adicione a label "ESTAGNACAO-FUNIL" e mencione explicitamente no risco_principal que o deal está preso na mesma fase há muitos dias apesar do volume de atividades — questiona se o engajamento está convertendo em avanço real de fase.
 
 ESCALA DE CONFIANÇA (0-100):
 - 0-20: Muito baixa (múltiplos bloqueadores críticos, alta chance de perda)
@@ -567,15 +704,15 @@ RETORNE APENAS JSON (sem markdown):
 {
   "forecast_cat": "COMMIT|UPSIDE|PIPELINE",
   "confianca": 50,
-  "motivo_confianca": "Frase curta e profissional explicando o score.",
-  "justificativa": "Análise técnica detalhada com base nas evidências fornecidas.",
+  "motivo_confianca": "TL;DR EXECUTIVO: máximo 15 palavras apontando o FATOR LETAL. Exemplos: 'Inatividade 60d e decisor não mapeado.' | 'Renovação orgânica, atrito baixo, cliente ativo.' | '5 slippages e fase estagnada há 90 dias.' NÃO repita a justificativa detalhada aqui.",
+  "justificativa": "DOSSIÊ: Análise técnica densa (3-5 frases) cobrindo: (1) score de confiança e category, (2) fase + tempo no funil vs prazo, (3) maturidade MEDDIC/BANT com evidências concretas, (4) qualidade e recorrência do engajamento, (5) principal fator de risco ou avanço. NÃO seja uma repetição do motivo_confianca.",
   "engagement_quality": "BAIXA|MÉDIA|ALTA",
   "acao_code": "",
   "acao_desc": "Instrução tática baseada em evidências.",
   "check_incoerencia": "OK ou explicação detalhada",
-  "perguntas_auditoria": ["Pergunta 1", "Pergunta 2", "Pergunta 3"],
+  "perguntas_auditoria": "Gere 3 perguntas INCISIVAS e AGRESSIVAS para o gestor usar no 1:1 com o vendedor. REGRA 1: Se 'Mudanças Close Date' > 2, PELO MENOS UMA das perguntas deve confrontar o slippage diretamente (ex: 'Você alterou a data de fechamento X vezes — o que exatamente está travando a assinatura?'). REGRA 2: Se houver 'Anomalias Detectadas' diferentes de OK/-, ao menos uma pergunta deve referenciar a anomalia específica. REGRA 3: Se o deal estiver em fase 'Negociação' ou 'Deal Desk', NÃO faça perguntas genéricas de BANT; foque no que está travando o fechamento.",
   "gaps_identificados": ["Gap 1", "Gap 2"],
-  "risco_principal": "Descrição do maior risco com base em evidências",
+  "risco_principal": "Se Velocity for DESACELERANDO ou ESTAGNADO, começa obrigatoriamente com '🔴 VELOCITY [predição]: [causa]'. Senão, descreva o maior risco com base em evidências.",
   "evidencia_citada": "Trecho específico que suportou a decisão",
   "personas_assessment": "Avaliação da qualidade de personas identificadas",
   "labels": ["TAG1", "TAG2"]
@@ -584,14 +721,20 @@ RETORNE APENAS JSON (sem markdown):
 
 function getClosedPrompt(mode, item, profile, fiscal, activity, meddic, audit, idleDays, lossReasonNormalized, detailedChanges, activityBreakdown) {
   const today = getTodayContext_();
+
+  const adj = computeDealAdjustments_(item, idleDays);
+  const isEasyDeal      = adj.isEasyDeal;
+  const dealContextText = adj.dealContextText;
+
   const baseData = `
 DATA_ATUAL: ${today.br} (timezone: ${today.tz})
 DEAL: ${item.oppName} | CLIENTE: ${item.accName} (${profile})
+NATUREZA DO NEGÓCIO: ${dealContextText}
 VALOR: ${item.gross} | NET REVENUE: ${item.net} | PRODUTOS: ${item.products}
 FASE CRM: ${item.stage} (${item.probabilidad}%) | FECHAMENTO: ${formatDateRobust(item.closed)}
 MOTIVO (SE HOUVER): ${item.reason || "N/A"}
 MOTIVO NORMALIZADO: ${lossReasonNormalized || "OUTRO"}
-ATIVIDADE: ${activity.count} ações | INATIVO: ${idleDays} dias
+ATIVIDADE: ${activity.count} ações | INATIVO: ${idleDays} dias${adj.idleTierContext}
 TEXTO ATIVIDADES: "${(activity.fullText || "").substring(0, 1500)}"
 DISTRIBUIÇÃO ATIVIDADES: ${activityBreakdown ? activityBreakdown.typeDistribution : 'N/D'} | PICO: ${activityBreakdown ? activityBreakdown.peakPeriod : 'N/D'} | CADÊNCIA: ${activityBreakdown ? activityBreakdown.avgCadence + 'd' : 'N/D'}
 MUDANÇAS CRM: ${detailedChanges ? detailedChanges.totalChanges + ' total' : '0'} | Críticas: ${detailedChanges ? detailedChanges.criticalChanges : 0} | Close Date: ${detailedChanges ? detailedChanges.closeDateChanges : 0} | Padrão: ${detailedChanges ? detailedChanges.changePattern : 'N/D'}
@@ -615,6 +758,7 @@ ANALISE REQUERIDA:
 6. MEDDIC: Quais pilares MEDDIC foram mais fortes?
 7. DIFERENCIAÇÃO: O que nos diferenciou da concorrência?
 8. TIMING: Janela de oportunidade foi bem aproveitada?
+CONTEXTO: Se for Renovação/Transfer Token, destaque que o sucesso primário é a retenção/manutenção contínua do cliente — o valor está em não ter perdido o cliente, não necessariamente em uma nova venda.
 
 RETORNE APENAS JSON (sem markdown):
 {
@@ -646,6 +790,7 @@ ANALISE REQUERIDA:
 8. GESTÃO: Houve follow-up adequado ou deal ficou abandonado?
 9. MEDDIC: Quais gaps críticos não foram endereçados?
 10. APRENDIZADO: O que poderíamos ter feito diferente?
+CONTEXTO: Se for Renovação/Transfer Token perdido, classifique como CHURN. Foque criticamente nos motivos que levaram o cliente a nos abandonar — concorrente, insatisfação com produto, preço, falta de engajamento de CS/AM. Este é o sinal de alerta mais crítico para retenção.
 
 RETORNE APENAS JSON (sem markdown):
 {
@@ -945,8 +1090,10 @@ function callGeminiAPI(prompt, optionalConfig) {
         const finishReason = content?.candidates?.[0]?.finishReason;
         console.log(`   Finish reason: ${finishReason}`);
         
-        // Se atingiu MAX_TOKENS no modelo com thinking, tentar próximo modelo
-        if (finishReason === 'MAX_TOKENS' && modelId === MODEL_ID) {
+        // Se atingiu MAX_TOKENS em QUALQUER modelo com thinking (gemini-2.5-*), tentar próximo modelo
+        // gemini-2.5-pro e gemini-2.5-flash ambos usam ~200-217 tokens de thinking overhead
+        const isThinkingModel = modelId.includes('gemini-2.5');
+        if (finishReason === 'MAX_TOKENS' && isThinkingModel) {
           console.warn(`⚠️ ${modelId} atingiu MAX_TOKENS (thinking overhead). Tentando modelo mais leve...`);
           logToSheet("WARN", "AI", `${modelId} MAX_TOKENS - tentando fallback`);
           break; // Vai para próximo modelo
@@ -1099,8 +1246,12 @@ function buildOpenOutputRow(runId, item, profile, fiscal, activity, meddic, ia, 
   }
   cicloDias = cicloValidation.correctedCiclo;
 
-  // QUALIDADE DO ENGAJAMENTO (novo campo da IA)
-  const engagementQuality = ia.engagement_quality || "N/D";
+  // QUALIDADE DO ENGAJAMENTO — com override determinístico por inatividade.
+  // Independente do que a IA retornou: idle > 30d = BAIXA (engajamento antigo não conta).
+  const _idleNum = (typeof idle === 'number') ? idle : (parseInt(String(idle)) || 0);
+  const engagementQuality = _idleNum > 30
+    ? 'BAIXA'
+    : (ia.engagement_quality || 'N/D');
   
   // Pré-formatar datas uma única vez
   const closedDateFormatted = item.closed ? formatDateRobust(item.closed) : "-";
@@ -1109,7 +1260,6 @@ function buildOpenOutputRow(runId, item, profile, fiscal, activity, meddic, ia, 
   const verticalIA = item.verticalIA || "-";
   const subVerticalIA = item.subVerticalIA || "-";
   const subSubVerticalIA = item.subSubVerticalIA || "-";
-  const justificativaSegmentacaoIA = item.justificativaIA || "-";
   const lastUpdateFormatted = formatDateRobust(new Date());
 
   return [
@@ -1179,9 +1329,10 @@ function buildOpenOutputRow(runId, item, profile, fiscal, activity, meddic, ia, 
     verticalIA,
     subVerticalIA,
     subSubVerticalIA,
-    justificativaSegmentacaoIA,
     ia.evidencia_citada || "-",
     ia.personas_assessment || "-",
+    item.tipoOportunidade || "-",
+    item.processoTipo || "-",
     lastUpdateFormatted
   ];
 }
@@ -2219,7 +2370,11 @@ function getColumnMapping(headers) {
       // Inglês
       "Billing Calendar", "Billing Schedule", "Payment Calendar", "Payment Schedule",
       "Invoicing Calendar", "Revenue Recognition Calendar"
-    ])
+    ]),
+    p_tipo_oportunidad: find(["Tipo De Oportunidad", "Tipo Oportunidad", "Tipo de Oportunidade", "Tipo Oportunidade"]),
+    p_proceso_tipo: find(["Proceso"]),
+    p_account_last_activity: find(["Account: Last Activity", "Última Atividade da Conta", "Last Account Activity", "Ult. Atividade Conta"]),
+    p_last_stage_change_date: find(["Last Stage Change Date", "Data Última Mudança Fase", "Data Mudança Fase", "Stage Change Date"])
   };
   
   // Detecta se é aba de ANÁLISE (tem Ciclo, AI Insight, etc) ou BASE (Históricos/Pipeline)
@@ -2264,6 +2419,9 @@ function aggregateOpportunities(values, cols, mode = 'UNKNOWN') {
       "Qualificar": 10, "Avaliação": 20, "Proposta": 60, 
       "Deal Desk": 65, "Negociação": 80, "Verificação": 95, "Fechamento": 100
   };
+  // Mapeamento de tradução: valores originais em espanhol → português
+  const TIPO_OPOR_MAP_ = { 'Nueva': 'Nova', 'Adicional': 'Adicional', 'Renovación': 'Renovação', 'Renovacion': 'Renovação', 'TransferToken': 'TransferToken' };
+  const PROCESO_TIPO_MAP_ = { 'Nueva': 'Nova', 'Posventa': 'Pós-venda' };
   
   let skipped = 0;
   let processed = 0;
@@ -2380,7 +2538,13 @@ function aggregateOpportunities(values, cols, mode = 'UNKNOWN') {
     const productFamily = cols.p_prod_family > -1 ? String(row[cols.p_prod_family] || "") : "";
     const billingState = cols.p_billing_state > -1 ? String(row[cols.p_billing_state] || "").trim() : "";
     const billingCity = cols.p_billing_city > -1 ? String(row[cols.p_billing_city] || "").trim() : "";
-    const billingCalendar = cols.p_billing_calendar > -1 ? String(row[cols.p_billing_calendar] || "").trim() : "";
+    const billingCalendar      = cols.p_billing_calendar   > -1 ? String(row[cols.p_billing_calendar]   || "").trim() : "";
+    const tipoOportunidadRaw    = cols.p_tipo_oportunidad   > -1 ? String(row[cols.p_tipo_oportunidad]   || "").trim() : "";
+    const processoTipoRaw       = cols.p_proceso_tipo       > -1 ? String(row[cols.p_proceso_tipo]       || "").trim() : "";
+    const tipoOportunidade         = TIPO_OPOR_MAP_[tipoOportunidadRaw]  || tipoOportunidadRaw;
+    const processoTipo             = PROCESO_TIPO_MAP_[processoTipoRaw]  || processoTipoRaw;
+    const accountLastActivity      = cols.p_account_last_activity  > -1 ? parseDate(row[cols.p_account_last_activity])  : null;
+    const lastStageChangeDate      = cols.p_last_stage_change_date > -1 ? parseDate(row[cols.p_last_stage_change_date]) : null;
     
     // LOGS DE DEBUG COMENTADOS PARA PERFORMANCE
     // if (processed === 1) {
@@ -2471,7 +2635,11 @@ function aggregateOpportunities(values, cols, mode = 'UNKNOWN') {
         productFamily: productFamily,
         billingState: billingState,
         billingCity: billingCity,
-        billingCalendar: billingCalendar
+        billingCalendar: billingCalendar,
+        tipoOportunidade: tipoOportunidade,
+        processoTipo: processoTipo,
+        accountLastActivity: accountLastActivity,
+        lastStageChangeDate: lastStageChangeDate
       });
     } else {
       const item = map.get(key);

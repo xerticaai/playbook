@@ -1,0 +1,66 @@
+:root {
+  --ui-font-heading: 'Poppins', sans-serif;
+  --ui-font-body: 'Roboto', sans-serif;
+
+  --ui-bg-app: #0a111d;
+  --ui-bg-surface-1: rgba(14, 24, 39, 0.88);
+  --ui-bg-surface-2: rgba(19, 31, 48, 0.92);
+  --ui-bg-surface-hover: rgba(28, 43, 65, 0.94);
+  --ui-bg-elevated: rgba(10, 20, 34, 0.95);
+
+  --ui-border-soft: rgba(128, 156, 182, 0.18);
+  --ui-border-strong: rgba(128, 156, 182, 0.32);
+
+  --ui-text-1: #f2f6fb;
+  --ui-text-2: #a9b9cb;
+  --ui-text-3: #8092a8;
+
+  --ui-cyan: #00beff;
+  --ui-cyan-soft: rgba(0, 190, 255, 0.12);
+  --ui-green: #b7ea78;
+  --ui-green-soft: rgba(183, 234, 120, 0.14);
+  --ui-red: #e35e66;
+  --ui-red-soft: rgba(227, 94, 102, 0.14);
+  --ui-warning: #f0ac54;
+  --ui-warning-soft: rgba(240, 172, 84, 0.15);
+  --ui-violet: #8a74f7;
+  --ui-violet-soft: rgba(138, 116, 247, 0.15);
+
+  --ui-shadow-xs: 0 1px 2px rgba(2, 8, 20, 0.35);
+  --ui-shadow-sm: 0 6px 18px rgba(2, 8, 20, 0.26);
+  --ui-shadow-md: 0 14px 38px rgba(2, 8, 20, 0.32);
+
+  --ui-radius-sm: 10px;
+  --ui-radius-md: 14px;
+  --ui-radius-lg: 18px;
+}
+
+[data-theme="light"] {
+  --ui-bg-app: #f2f5fb;
+  --ui-bg-surface-1: rgba(255, 255, 255, 0.94);
+  --ui-bg-surface-2: rgba(255, 255, 255, 0.98);
+  --ui-bg-surface-hover: #f7faff;
+  --ui-bg-elevated: #ffffff;
+
+  --ui-border-soft: rgba(75, 95, 122, 0.16);
+  --ui-border-strong: rgba(75, 95, 122, 0.28);
+
+  --ui-text-1: #0f1b2d;
+  --ui-text-2: #4a5f78;
+  --ui-text-3: #6b7f97;
+
+  --ui-cyan: #1690bf;
+  --ui-cyan-soft: rgba(22, 144, 191, 0.1);
+  --ui-green: #3f7a22;
+  --ui-green-soft: rgba(63, 122, 34, 0.12);
+  --ui-red: #bf5561;
+  --ui-red-soft: rgba(191, 85, 97, 0.12);
+  --ui-warning: #a97739;
+  --ui-warning-soft: rgba(169, 119, 57, 0.12);
+  --ui-violet: #6b57c8;
+  --ui-violet-soft: rgba(107, 87, 200, 0.14);
+
+  --ui-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --ui-shadow-sm: 0 8px 20px rgba(15, 23, 42, 0.08);
+  --ui-shadow-md: 0 18px 40px rgba(15, 23, 42, 0.1);
+}

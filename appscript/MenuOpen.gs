@@ -51,6 +51,15 @@ function onOpen() {
         .addItem('🔓 Limpar Lock (Manutenção)', 'limparLockAutoSync'))
 
       // ══════════════════════════════════════════════════════════════
+      // SEÇÃO 1b: ANÁLISE MANUAL
+      // ══════════════════════════════════════════════════════════════
+      .addSeparator()
+      .addSubMenu(ui.createMenu('🔍 Análise Manual')
+        .addItem('▶️ Rodar Análise OPEN agora', 'rodarAnaliseOPENManual')
+        .addItem('▶️ Rodar Análise WON agora',  'rodarAnaliseWONManual')
+        .addItem('▶️ Rodar Análise LOST agora', 'rodarAnaliseLOSTManual'))
+
+      // ══════════════════════════════════════════════════════════════
       // SEÇÃO 2: CORRIGIR FISCAL Q (somente normalização de datas)
       // ══════════════════════════════════════════════════════════════
       .addSeparator()
@@ -95,14 +104,10 @@ function onOpen() {
       // ══════════════════════════════════════════════════════════════
       .addSeparator()
       .addSubMenu(ui.createMenu('💰 Faturamento')
-        .addItem('🔄 Migrar Faturamento Consolidado', 'migrarFaturamento')
-        .addItem('🔄 Migrar Q1 2026', 'migrarFaturamentoQ1')
-        .addItem('🔄 Migrar Tudo (Consolidado + Q1)', 'migrarTodoFaturamento')
+        .addItem('🔄 Migrar FATURAMENTO (2025 + 2026)', 'migrarFaturamento')
         .addSeparator()
-        .addItem('⏰ Ativar Sync Consolidado (12h)', 'instalarTriggerFaturamento12h')
-        .addItem('⏰ Ativar Sync Q1 2026 (12h)', 'instalarTriggerFaturamentoQ1_12h')
-        .addItem('🛑 Desativar Sync Consolidado', 'removerTriggerFaturamento')
-        .addItem('🛑 Desativar Sync Q1 2026', 'removerTriggerFaturamentoQ1')
+        .addItem('⏰ Ativar Sync FATURAMENTO (12h)', 'instalarTriggerFaturamento12h')
+        .addItem('🛑 Desativar Sync FATURAMENTO', 'removerTriggerFaturamento')
         .addItem('📊 Status Triggers', 'statusTriggerFaturamento'))
 
       // ══════════════════════════════════════════════════════════════
@@ -341,4 +346,27 @@ function testarConexaoBigQuery() {
       ui.ButtonSet.OK
     );
   }
+}
+
+// ==================== ANÁLISE MANUAL ====================
+
+/**
+ * Inicia análise OPEN via setupTriggerAndStart (inicializa flag + fila + trigger).
+ */
+function rodarAnaliseOPENManual() {
+  setupTriggerAndStart('OPEN');
+}
+
+/**
+ * Inicia análise WON via setupTriggerAndStart (inicializa flag + fila + trigger).
+ */
+function rodarAnaliseWONManual() {
+  setupTriggerAndStart('WON');
+}
+
+/**
+ * Inicia análise LOST via setupTriggerAndStart (inicializa flag + fila + trigger).
+ */
+function rodarAnaliseLOSTManual() {
+  setupTriggerAndStart('LOST');
 }

@@ -1,0 +1,240 @@
+#filters-container,
+#global-filters-panel,
+#global-filters-panel > div > div,
+#global-filters-panel select,
+#global-filters-panel input,
+#global-filters-panel option,
+#global-filters-toggle-btn,
+#executive > div:first-child,
+.exec-tab,
+.exec-tab svg,
+.top-opps-tab,
+.top-opps-tab.active {
+  transition: all 0.2s ease;
+}
+
+#filters-container [style*="background: rgba(255,255,255,0.03)"],
+#filters-container [style*="background: rgba(255,255,255,0.08)"],
+#filters-container [style*="background: rgba(255,255,255,0.05)"] {
+  background: var(--ui-bg-surface-1) !important;
+}
+
+#filters-container [style*="border: 1px solid rgba(255,255,255,0.12)"],
+#filters-container [style*="border: 1px solid rgba(255,255,255,0.15)"],
+#filters-container [style*="border: 1px solid rgba(255,255,255,0.18)"] {
+  border-color: var(--ui-border-soft) !important;
+}
+
+#filters-container [style*="color: #ffffff"],
+#filters-container [style*="color:#ffffff"] {
+  color: var(--ui-text-1) !important;
+}
+
+#filters-container [style*="color: var(--text-muted)"],
+#filters-container [style*="color: var(--text-gray)"] {
+  color: var(--ui-text-2) !important;
+}
+
+.exec-tab-content[style*="display: none"] {
+  opacity: 0;
+}
+
+.exec-tab-content.active {
+  opacity: 1;
+}
+
+#global-filters-panel .multi-select-dropdown {
+  background: var(--ui-bg-elevated) !important;
+  border: 1px solid var(--ui-border-soft) !important;
+  box-shadow: var(--ui-shadow-sm) !important;
+}
+
+#global-filters-panel .multi-select-option:hover {
+  background: var(--ui-cyan-soft) !important;
+}
+
+#filters-container .filters-status-chip {
+  background: var(--ui-bg-surface-1) !important;
+  color: var(--ui-text-2) !important;
+  border-color: var(--ui-border-soft) !important;
+}
+
+[data-theme="light"] .logo img[src*="Logo_XERTICA_white"] {
+  filter: invert(1) hue-rotate(180deg) saturate(0.7);
+}
+
+[data-theme="light"] #filters-container {
+  box-shadow: var(--ui-shadow-sm) !important;
+}
+
+[data-theme="light"] #filters-container .filter-quick-bar:first-of-type {
+  background: #f7fafc !important;
+  border-color: rgba(75, 95, 122, 0.18) !important;
+}
+
+[data-theme="light"] #global-filters-toggle-btn.show-filters-btn {
+  background: #ffffff !important;
+}
+
+[data-theme="light"] .filter-label {
+  color: var(--ui-text-2) !important;
+}
+
+[data-theme="light"] #filters-active-summary.filters-status-chip {
+  background: var(--ui-bg-surface-2) !important;
+  color: var(--ui-text-1) !important;
+  border-color: var(--ui-border-strong) !important;
+}
+
+[data-theme="light"] #filters-container [style*="background: #1a1d29"],
+[data-theme="light"] #filters-container option {
+  background: #ffffff !important;
+  color: var(--ui-text-1) !important;
+}
+
+#filters-container option {
+  background: #1a1d29 !important;
+  color: #ffffff !important;
+}
+
+[data-theme="light"] .nav-item:hover,
+[data-theme="light"] .nav-item.active {
+  color: var(--ui-cyan) !important;
+}
+
+[data-theme="light"] .kpi-card,
+[data-theme="light"] .ai-card,
+[data-theme="light"] .card,
+[data-theme="light"] #filters-container,
+[data-theme="light"] .deal-card,
+[data-theme="light"] table,
+[data-theme="light"] #chart-drilldown-modal {
+  background: var(--ui-bg-surface-2) !important;
+}
+
+[data-theme="light"] .exec-drilldown-backdrop,
+[data-theme="light"] #chart-drilldown-overlay {
+  background: rgba(15, 23, 42, 0.26) !important;
+}
+
+[data-theme="light"] .exec-dd-item.active {
+  background: rgba(22, 144, 191, 0.12) !important;
+}
+
+[data-theme="light"] .exec-dd-kpi {
+  background: #ffffff !important;
+}
+
+[data-theme="light"] .exec-dd-insight {
+  background: rgba(22, 144, 191, 0.1) !important;
+}
+
+[data-theme="light"] .filters-inline-timestamp {
+  background: #ffffff !important;
+  color: var(--ui-text-2) !important;
+  border-color: var(--ui-border-soft) !important;
+}
+
+[data-theme="light"] .exec-dd-risk-block {
+  background: rgba(191, 85, 97, 0.1) !important;
+  border-color: rgba(191, 85, 97, 0.28) !important;
+}
+
+[data-theme="light"] .exec-dd-risk-block.success {
+  background: rgba(111, 159, 63, 0.12) !important;
+  border-color: rgba(111, 159, 63, 0.3) !important;
+}
+
+@media (max-width: 1200px) {
+  #global-filters-panel > div > div > div {
+    gap: 8px !important;
+  }
+}
+
+@media (max-width: 900px) {
+  #executive > div:first-child {
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+    padding-bottom: 4px !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .exec-tab {
+    white-space: nowrap;
+  }
+
+  #filters-container {
+    margin-bottom: 18px !important;
+  }
+
+  .exec-top-opps-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .exec-top-opps-tabs .top-opps-tab {
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 640px) {
+  #chart-drilldown-modal,
+  .exec-drilldown-panel {
+    width: 100vw !important;
+    max-width: 100vw !important;
+  }
+
+  #chart-drilldown-modal .exec-drilldown-header,
+  .exec-drilldown-header {
+    padding: 14px 12px !important;
+  }
+
+  #chart-drilldown-modal .exec-drilldown-body,
+  .exec-drilldown-body {
+    padding: 12px !important;
+  }
+
+  #filters-container .filter-quick-bar::-webkit-scrollbar,
+  #executive > div:first-child::-webkit-scrollbar,
+  .exec-top-opps-tabs::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  #filters-container .filter-quick-bar::-webkit-scrollbar-thumb,
+  #executive > div:first-child::-webkit-scrollbar-thumb,
+  .exec-top-opps-tabs::-webkit-scrollbar-thumb {
+    background: var(--ui-border-strong);
+    border-radius: 999px;
+  }
+}
+
+@media (max-width: 400px) {
+  #executive > div:first-child {
+    gap: 2px !important;
+    padding-bottom: 3px !important;
+  }
+
+  .exec-top-opps-tabs {
+    gap: 6px !important;
+    margin: 8px 0 12px 0 !important;
+  }
+
+  #chart-drilldown-modal .exec-drilldown-header,
+  .exec-drilldown-header {
+    padding: 10px 8px !important;
+  }
+
+  #chart-drilldown-modal .exec-drilldown-body,
+  .exec-drilldown-body {
+    padding: 8px !important;
+  }
+
+  #filters-container .filter-quick-bar::-webkit-scrollbar,
+  #executive > div:first-child::-webkit-scrollbar,
+  .exec-top-opps-tabs::-webkit-scrollbar {
+    height: 4px;
+  }
+}

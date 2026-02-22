@@ -291,40 +291,40 @@ function syncToBigQueryScheduled() {
       console.warn('⚠️ Sales Specialist não processado:', e.message);
     }
 
-    // ETAPA 6: Carregar Faturamento Consolidado → tabela BQ: faturamento
+    // ETAPA 6: Carregar FATURAMENTO_2025 → tabela BQ: faturamento_2025
     let faturamentoResult = { rowsInserted: 0, status: 'SKIPPED' };
     try {
       ensureFaturamentoTableExists_();
       const faturamentoData = prepareFaturamentoData();
       if (faturamentoData.length > 0) {
         faturamentoResult = loadToBigQuery(
-          `${BQ_PROJECT}.${BQ_DATASET}.faturamento`,
+          `${BQ_PROJECT}.${BQ_DATASET}.faturamento_2025`,
           faturamentoData,
           'WRITE_TRUNCATE'
         );
       } else {
-        console.warn('⚠️ Aba Faturamento vazia ou não encontrada — sync ignorado');
+        console.warn('⚠️ Aba FATURAMENTO_2025 vazia ou não encontrada — sync ignorado');
       }
     } catch (e) {
-      console.warn('⚠️ Faturamento Consolidado não sincronizado:', e.message);
+      console.warn('⚠️ FATURAMENTO_2025 não sincronizado:', e.message);
     }
 
-    // ETAPA 7: Carregar Faturamento Q1 2026 → tabela BQ: faturamento_2026
-    let faturamentoQ1Result = { rowsInserted: 0, status: 'SKIPPED' };
+    // ETAPA 7: Carregar FATURAMENTO_2026 → tabela BQ: faturamento_2026
+    let faturamento2026Result = { rowsInserted: 0, status: 'SKIPPED' };
     try {
       ensureFaturamento2026TableExists_();
-      const faturamentoQ1Data = prepareFaturamento2026Data();
-      if (faturamentoQ1Data.length > 0) {
-        faturamentoQ1Result = loadToBigQuery(
+      const faturamento2026Data = prepareFaturamento2026Data();
+      if (faturamento2026Data.length > 0) {
+        faturamento2026Result = loadToBigQuery(
           `${BQ_PROJECT}.${BQ_DATASET}.faturamento_2026`,
-          faturamentoQ1Data,
+          faturamento2026Data,
           'WRITE_TRUNCATE'
         );
       } else {
-        console.warn('⚠️ Aba Faturamento2026 (Q1) vazia ou não encontrada — sync ignorado');
+        console.warn('⚠️ Aba FATURAMENTO_2026 vazia ou não encontrada — sync ignorado');
       }
     } catch (e) {
-      console.warn('⚠️ Faturamento Q1 2026 não sincronizado:', e.message);
+      console.warn('⚠️ FATURAMENTO_2026 não sincronizado:', e.message);
     }
     
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -336,8 +336,8 @@ function syncToBigQueryScheduled() {
     console.log(`   • Atividades: ${atividadesResult.rowsInserted} linhas`);
     console.log(`   • Meta: ${metaResult.rowsInserted} linhas`);
     console.log(`   • Sales Specialist: ${salesSpecResult.rowsInserted} linhas`);
-    console.log(`   • Faturamento Consolidado: ${faturamentoResult.rowsInserted} linhas`);
-    console.log(`   • Faturamento Q1 2026: ${faturamentoQ1Result.rowsInserted} linhas`);
+    console.log(`   • FATURAMENTO_2025: ${faturamentoResult.rowsInserted} linhas`);
+    console.log(`   • FATURAMENTO_2026: ${faturamento2026Result.rowsInserted} linhas`);
     
     // Salvar timestamp da última sync
     PropertiesService.getScriptProperties().setProperty(
@@ -354,7 +354,7 @@ function syncToBigQueryScheduled() {
       metaRows: metaResult.rowsInserted,
       salesSpecRows: salesSpecResult.rowsInserted,
       faturamentoRows: faturamentoResult.rowsInserted,
-      faturamentoQ1Rows: faturamentoQ1Result.rowsInserted,
+      faturamento2026Rows: faturamento2026Result.rowsInserted,
       duration: duration
     };
     
@@ -816,7 +816,9 @@ function ensureEnrichmentColumnsForTable_(projectId, datasetId, tableName) {
       { name: 'Estado_Provincia_de_cobranca', type: 'STRING', mode: 'NULLABLE' },
       { name: 'Subsegmento_de_mercado', type: 'STRING', mode: 'NULLABLE' },
       { name: 'Segmento_consolidado', type: 'STRING', mode: 'NULLABLE' },
-      { name: 'Portfolio_FDM', type: 'STRING', mode: 'NULLABLE' }
+      { name: 'Portfolio_FDM',      type: 'STRING', mode: 'NULLABLE' },
+      { name: 'Tipo_Oportunidade',   type: 'STRING', mode: 'NULLABLE' },
+      { name: 'Processo_IA',         type: 'STRING', mode: 'NULLABLE' }
     ];
 
     const table = BigQuery.Tables.get(projectId, datasetId, tableName);
@@ -901,11 +903,19 @@ function isNumericFieldForBQ_(key) {
     'valor_fatura_usd_comercial',
     'net_revenue',
     'net_ajustado_usd',
+    'incentivos_google',
     'backlog_nomeado',
+    'tipo_cambio_pactado',
     'margem_percentual_final',
     'desconto_xertica',
     'custo_percentual',
     'custo_moeda_local',
+    'receita_usd',
+    'pnl_receita',
+    'custo_usd',
+    'pnl_custo',
+    'revenue_revision',
+    'net_real',
     'backlog_comissao',
     'net_comissoes',
     'percentual_margem_net_comissoes'
@@ -1390,8 +1400,10 @@ function mapToPipelineSchema(row) {
     'Vertical_IA': parse(aliasValue('vertical_ia'), 'STRING'),
     'Sub_vertical_IA': parse(aliasValue('sub_vertical_ia'), 'STRING'),
     'Sub_sub_vertical_IA': parse(aliasValue('sub_sub_vertical_ia'), 'STRING'),
-    'Justificativa_IA': parse(aliasValue('justificativa_ia'), 'STRING'),
-    'Owner_Preventa': parse(aliasValue('owner_preventa'), 'STRING')
+    'Justificativa_IA':   parse(row['Justificativa_IA'] || row['Justificativa IA'], 'STRING'),
+    'Tipo_Oportunidade':  parse(row['Tipo Oportunidade'] || row['Tipo_Oportunidade'] || row['tipoOportunidade'], 'STRING'),
+    'Processo_IA':        parse(row['Processo'] || row['Processo_IA'] || row['processoTipo'], 'STRING'),
+    'Owner_Preventa':     parse(aliasValue('owner_preventa'), 'STRING')
   };
 }
 
@@ -1483,7 +1495,7 @@ function mapToClosedDealsSchema(row, outcome) {
     'Vertical_IA': parse(aliasValue('vertical_ia'), 'STRING'),
     'Sub_vertical_IA': parse(aliasValue('sub_vertical_ia'), 'STRING'),
     'Sub_sub_vertical_IA': parse(aliasValue('sub_sub_vertical_ia'), 'STRING'),
-    'Justificativa_IA': parse(aliasValue('justificativa_ia'), 'STRING'),
+    'Justificativa_IA': parse(row['Justificativa_IA'] || row['Justificativa IA'], 'STRING'),
     'Owner_Preventa': parse(aliasValue('owner_preventa'), 'STRING')
   };
 }
@@ -1753,15 +1765,15 @@ function prepareSalesSpecialistData() {
   return records;
 }
 
-// ==================== FATURAMENTO (CONSOLIDADO) ====================
+// ==================== FATURAMENTO 2025 ====================
 
 /**
- * Garante que a tabela `faturamento` existe no BigQuery.
- * Schema completo (Faturamento Consolidado - Vizualização Brasil).
+ * Garante que a tabela `faturamento_2025` existe no BigQuery.
+ * Schema de FATURAMENTO_2025 (normalizado na planilha destino).
  * Cria com 50 campos se não existir; em caso contrário, adiciona apenas colunas novas.
  */
 function ensureFaturamentoTableExists_() {
-  const tableName = 'faturamento';
+  const tableName = 'faturamento_2025';
 
   // Schema baseado nos aliases de FaturamentoSync.gs + campos BQ padrão
   const schemaFields = [
@@ -1845,7 +1857,7 @@ function ensureFaturamentoTableExists_() {
   if (!tableExists) {
     const tableResource = {
       tableReference: { projectId: BQ_PROJECT, datasetId: BQ_DATASET, tableId: tableName },
-      description: 'Faturamento consolidado 2026 — migrado de Faturamento Consolidado (Vizualização Brasil)',
+      description: 'Faturamento 2025 — migrado da aba FATURAMENTO_2025',
       schema: { fields: schemaFields }
     };
     BigQuery.Tables.insert(tableResource, BQ_PROJECT, BQ_DATASET);
@@ -1866,17 +1878,17 @@ function ensureFaturamentoTableExists_() {
 }
 
 /**
- * Lê a aba "Faturamento" (Faturamento Consolidado — gravada por migrarFaturamento())
- * e retorna array pronto para loadToBigQuery → tabela BQ: faturamento.
+ * Lê a aba "FATURAMENTO_2025" (gravada por migrarFaturamento())
+ * e retorna array pronto para loadToBigQuery → tabela BQ: faturamento_2025.
  * @returns {Array<Object>}
  */
 function prepareFaturamentoData() {
-  const sheetName = 'Faturamento';
+  const sheetName = 'FATURAMENTO_2025';
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(sheetName);
 
   if (!sheet || sheet.getLastRow() <= 1) {
-    console.warn(`⚠️ [Faturamento] Aba "${sheetName}" vazia ou não encontrada.`);
+    console.warn(`⚠️ [Faturamento2025] Aba "${sheetName}" vazia ou não encontrada.`);
     return [];
   }
 
@@ -1907,16 +1919,15 @@ function prepareFaturamentoData() {
       return obj;
     });
 
-  console.log(`📊 [Faturamento] ${result.length} registros lidos de "${sheetName}"`);
+  console.log(`📊 [Faturamento2025] ${result.length} registros lidos de "${sheetName}"`);
   return result;
 }
 
-// ==================== FATURAMENTO 2026 (Q1 2026) ====================
+// ==================== FATURAMENTO 2026 ====================
 
 /**
  * Garante que a tabela `faturamento_2026` existe no BigQuery.
- * Schema baseado no FAT_Q1_ALIAS_MAP de FaturamentoSync.gs (aba Q1 2026).
- * Inclui colunas exclusivas do Q1: id_oportunidade, billing_id, tipo_cambio_pactado, incentivos_google.
+ * Schema baseado no cabeçalho normalizado de FATURAMENTO_2026.
  */
 function ensureFaturamento2026TableExists_() {
   const tableName = 'faturamento_2026';
@@ -1932,6 +1943,7 @@ function ensureFaturamento2026TableExists_() {
     { name: 'cuenta_contable',                  type: 'STRING',   mode: 'NULLABLE' },
     // ── Valores Financeiros ───────────────────────────────────────────
     { name: 'valor_fatura_moeda_local_sem_iva', type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'percentual_margem',                type: 'FLOAT64',  mode: 'NULLABLE' },
     // ── Produto / Oportunidade ────────────────────────────────────────
     { name: 'produto',                          type: 'STRING',   mode: 'NULLABLE' },
     { name: 'oportunidade',                     type: 'STRING',   mode: 'NULLABLE' },
@@ -1966,6 +1978,19 @@ function ensureFaturamento2026TableExists_() {
     { name: 'etapa_oportunidade',               type: 'STRING',   mode: 'NULLABLE' },
     { name: 'desconto_xertica',                 type: 'FLOAT64',  mode: 'NULLABLE' },
     { name: 'cenario_nr',                       type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'q',                                type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'validacao_custo_margem',           type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'processo',                         type: 'STRING',   mode: 'NULLABLE' },
+    // ── Custos e P&L (2026) ───────────────────────────────────────────
+    { name: 'custo_percentual',                 type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'custo_moeda_local',                type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'generales_budget',                 type: 'STRING',   mode: 'NULLABLE' },
+    { name: 'receita_usd',                      type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'pnl_receita',                      type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'custo_usd',                        type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'pnl_custo',                        type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'revenue_revision',                 type: 'FLOAT64',  mode: 'NULLABLE' },
+    { name: 'net_real',                         type: 'FLOAT64',  mode: 'NULLABLE' },
     // ── Metadados BQ ─────────────────────────────────────────────────
     { name: 'Run_ID',                           type: 'STRING',    mode: 'NULLABLE' },
     { name: 'data_carga',                       type: 'TIMESTAMP', mode: 'NULLABLE' }
@@ -1988,7 +2013,7 @@ function ensureFaturamento2026TableExists_() {
   if (!tableExists) {
     const tableResource = {
       tableReference: { projectId: BQ_PROJECT, datasetId: BQ_DATASET, tableId: tableName },
-      description: 'Faturamento Q1 2026 — migrado da aba "Q1 2026"',
+      description: 'Faturamento 2026 — migrado da aba FATURAMENTO_2026',
       schema: { fields: schemaFields }
     };
     BigQuery.Tables.insert(tableResource, BQ_PROJECT, BQ_DATASET);
@@ -2008,12 +2033,12 @@ function ensureFaturamento2026TableExists_() {
 }
 
 /**
- * Lê a aba "Faturamento2026" (Q1 2026 — gravada por migrarFaturamentoQ1())
+ * Lê a aba "FATURAMENTO_2026" (gravada por migrarFaturamento2026())
  * e retorna array pronto para loadToBigQuery → tabela BQ: faturamento_2026.
  * @returns {Array<Object>}
  */
 function prepareFaturamento2026Data() {
-  const sheetName = 'Faturamento2026';
+  const sheetName = 'FATURAMENTO_2026';
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(sheetName);
 

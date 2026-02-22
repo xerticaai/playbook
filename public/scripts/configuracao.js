@@ -30,7 +30,11 @@ const USER_CONTEXT_ENDPOINTS = API_BASE_URL
       'https://sales-intelligence-api-j7loux7yta-uc.a.run.app/api/user-context',
       '/api/user-context'
     ];
-const ADMIN_ALLOWED_EMAIL = 'amalia.silva@xertica.com';
+const ADMIN_ALLOWED_EMAILS = [
+  'amalia.silva@xertica.com',
+  'barbara.pessoa@xertica.com',
+  'gustavo.paula@xertica.com'
+];
 let currentUserEmail = null;
 let isAdminUser = false;
 let adminPreviewEnabled = false;
