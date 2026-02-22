@@ -298,18 +298,26 @@
     ">
       
       <!-- Filtros Rápidos - FY26 Quarters -->
-      <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap;">
-        <span style="font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; min-width: 80px;">FY26 Quick:</span>
-        <button onclick="applyQuickFilter('2026', 'Q1')" style="padding: 8px 16px; border-radius: 12px; border: 1px solid rgba(0,190,255,0.3); background: rgba(0,190,255,0.1); color: var(--primary-cyan); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.3s; white-space: nowrap;" onmouseover="this.style.background='rgba(0,190,255,0.2)'; this.style.borderColor='var(--primary-cyan)'" onmouseout="this.style.background='rgba(0,190,255,0.1)'; this.style.borderColor='rgba(0,190,255,0.3)'">Q1 2026</button>
-        <button onclick="applyQuickFilter('2026', 'Q2')" style="padding: 8px 16px; border-radius: 12px; border: 1px solid rgba(0,190,255,0.3); background: rgba(0,190,255,0.1); color: var(--primary-cyan); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.3s; white-space: nowrap;" onmouseover="this.style.background='rgba(0,190,255,0.2)'; this.style.borderColor='var(--primary-cyan)'" onmouseout="this.style.background='rgba(0,190,255,0.1)'; this.style.borderColor='rgba(0,190,255,0.3)'">Q2 2026</button>
-        <button onclick="applyQuickFilter('2026', 'Q3')" style="padding: 8px 16px; border-radius: 12px; border: 1px solid rgba(0,190,255,0.3); background: rgba(0,190,255,0.1); color: var(--primary-cyan); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.3s; white-space: nowrap;" onmouseover="this.style.background='rgba(0,190,255,0.2)'; this.style.borderColor='var(--primary-cyan)'" onmouseout="this.style.background='rgba(0,190,255,0.1)'; this.style.borderColor='rgba(0,190,255,0.3)'">Q3 2026</button>
-        <button onclick="applyQuickFilter('2026', 'Q4')" style="padding: 8px 16px; border-radius: 12px; border: 1px solid rgba(0,190,255,0.3); background: rgba(0,190,255,0.1); color: var(--primary-cyan); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.3s; white-space: nowrap;" onmouseover="this.style.background='rgba(0,190,255,0.2)'; this.style.borderColor='var(--primary-cyan)'" onmouseout="this.style.background='rgba(0,190,255,0.1)'; this.style.borderColor='rgba(0,190,255,0.3)'">Q4 2026</button>
-        <button onclick="applyQuickFilter('2026', '')" style="padding: 8px 16px; border-radius: 12px; border: 1px solid rgba(192,255,125,0.3); background: rgba(192,255,125,0.1); color: var(--accent-green); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.3s; white-space: nowrap;" onmouseover="this.style.background='rgba(192,255,125,0.2)'; this.style.borderColor='var(--accent-green)'" onmouseout="this.style.background='rgba(192,255,125,0.1)'; this.style.borderColor='rgba(192,255,125,0.3)'">FY26 Full</button>
-        <button onclick="clearAllFilters()" style="padding: 8px 16px; border-radius: 12px; border: 1px solid rgba(225,72,73,0.3); background: rgba(225,72,73,0.1); color: var(--danger); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.3s; white-space: nowrap; margin-left: 8px;" onmouseover="this.style.background='rgba(225,72,73,0.2)'; this.style.borderColor='var(--danger)'" onmouseout="this.style.background='rgba(225,72,73,0.1)'; this.style.borderColor='rgba(225,72,73,0.3)'">✕ Limpar</button>
+      <div class="filter-quick-bar" style="margin-bottom: 12px;">
+        <span class="filter-label">FY26:</span>
+        <button class="filter-pill pill-cyan" onclick="applyQuickFilter('2026', 'Q1')">Q1 2026</button>
+        <button class="filter-pill pill-cyan" onclick="applyQuickFilter('2026', 'Q2')">Q2 2026</button>
+        <button class="filter-pill pill-cyan" onclick="applyQuickFilter('2026', 'Q3')">Q3 2026</button>
+        <button class="filter-pill pill-cyan" onclick="applyQuickFilter('2026', 'Q4')">Q4 2026</button>
+        <button class="filter-pill pill-green" onclick="applyQuickFilter('2026', '')">Full Year</button>
+        <button class="filter-pill pill-red" onclick="clearAllFilters()">&#x2715; Limpar</button>
+      </div>
+
+      <!-- Chaveamento Gross / Net -->
+      <div class="filter-quick-bar" style="margin-bottom: 12px;">
+        <span class="filter-label">Exibir:</span>
+        <button id="btn-highlight-gross" class="highlight-btn highlight-active" onclick="setExecDisplayMode('gross')">GROSS</button>
+        <button id="btn-highlight-net" class="highlight-btn" onclick="setExecDisplayMode('net')">NET</button>
       </div>
 
       <div style="display: flex; justify-content: flex-end; margin-top: 2px;">
-        <button id="global-filters-toggle-btn" onclick="toggleGlobalFiltersPanel()" style="padding: 7px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.05); color: var(--text-main); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.25s;">
+        <button id="global-filters-toggle-btn" onclick="toggleGlobalFiltersPanel()" class="show-filters-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
           Mostrar filtros
         </button>
       </div>

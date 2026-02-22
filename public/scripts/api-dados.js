@@ -249,6 +249,17 @@ async function loadDashboardData() {
 
     log('[DATA] Dados completos:', DATA);
     renderDashboard();
+
+    // Restaura o estado do toggle Gross/Net após re-render
+    if (typeof updateExecutiveHighlightToggleUI === 'function') {
+      updateExecutiveHighlightToggleUI(window.execDisplayMode || 'gross');
+    }
+
+    // Se a aba de gráficos está ativa, atualiza os gráficos com os novos dados filtrados
+    if (typeof window.initDashboardCharts === 'function' &&
+        document.getElementById('view-graficos')?.classList.contains('active')) {
+      setTimeout(window.initDashboardCharts, 150);
+    }
     
     // Atualiza Performance FSR se estiver ativa
     applyFiltersToPerformance();

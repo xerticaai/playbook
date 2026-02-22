@@ -160,3 +160,33 @@ const escapeHtml = (value) => {
     .replace(/'/g, '&#39;');
 };
 
+// ── Gross / Net display mode toggle ──────────────────────────────────────────
+window.execDisplayMode = 'gross'; // default
+
+function updateExecutiveHighlightToggleUI(mode) {
+  var btnGross = document.getElementById('btn-highlight-gross');
+  var btnNet   = document.getElementById('btn-highlight-net');
+  if (!btnGross || !btnNet) return;
+  if (mode === 'net') {
+    btnNet.classList.add('highlight-active');
+    btnGross.classList.remove('highlight-active');
+  } else {
+    btnGross.classList.add('highlight-active');
+    btnNet.classList.remove('highlight-active');
+  }
+  // Remove any leftover inline styles that may fight the class
+  btnGross.style.removeProperty('background');
+  btnGross.style.removeProperty('color');
+  btnNet.style.removeProperty('background');
+  btnNet.style.removeProperty('color');
+}
+
+function setExecDisplayMode(mode) {
+  window.execDisplayMode = mode;
+  updateExecutiveHighlightToggleUI(mode);
+  // Re-render so metrics functions can use the updated mode
+  if (typeof renderDashboard === 'function') {
+    renderDashboard();
+  }
+}
+

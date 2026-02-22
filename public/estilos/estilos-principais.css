@@ -1393,6 +1393,45 @@ table tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
+/* ── Filter quick-bar pills ── */
+.filter-quick-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.filter-pill {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: var(--font-body);
+  white-space: nowrap;
+}
+.filter-pill:hover { color: var(--text-main); }
+.pill-cyan  { border-color: rgba(0,190,255,0.35); color: var(--x-cyan-50); }
+.pill-cyan:hover, .pill-cyan:focus { background: rgba(0,190,255,0.12); border-color: var(--x-cyan-glow); }
+.pill-green { border-color: rgba(74,222,128,0.35); color: #4ade80; }
+.pill-green:hover { background: rgba(74,222,128,0.12); border-color: #4ade80; }
+.pill-red   { border-color: rgba(239,68,68,0.35); color: #ef4444; }
+.pill-red:hover   { background: rgba(239,68,68,0.12); border-color: #ef4444; }
+/* ── Mostrar filtros button ── */
+.show-filters-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.05);
+  color: var(--text-main);
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 12px;
+  transition: all 0.25s;
+  font-family: var(--font-body);
+}
+.show-filters-btn:hover { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.3); }
 .filters-status-chip {
   font-size: 11px;
   color: var(--text-muted);
