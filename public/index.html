@@ -585,9 +585,9 @@
             <circle cx="12" cy="12" r="10"/>
             <polyline points="12 6 12 12 16 14"/>
           </svg>
-          <div class="kpi-title exec-kpi-title--warning">Dias Idle Médio</div>
+          <div class="kpi-title exec-kpi-title--warning">Idle: Dias Sem Contato</div>
           <div class="kpi-value val-warning" id="exec-idle-days-avg">-</div>
-          <div class="kpi-subtitle" id="exec-idle-days-detail">dias sem atividade</div>
+          <div class="kpi-subtitle" id="exec-idle-days-detail">dias desde último contato</div>
           <div class="kpi-subtitle exec-kpi-chip" id="exec-idle-days-risk">-</div>
         </div>
       </div>
@@ -897,29 +897,6 @@
         </div>
       </div>
 
-      <!-- SEÇÃO 2: ANÁLISE ESTRATÉGICA DA IA -->
-      <div class="ai-card" style="margin-top: 30px;">
-        <h2 style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-          </svg>
-          <span style="flex: 1;">Análise Estratégica (IA)</span>
-          <button id="executive-toggle" onclick="toggleExecutiveAnalysis()" style="background: none; border: 1px solid var(--glass-border); color: var(--text-gray); padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 12px; display: inline-flex; align-items: center; gap: 6px;">
-            <span id="executive-toggle-label">Ocultar</span>
-            <span id="executive-toggle-caret" style="display: inline-block; transition: transform 0.2s ease;">v</span>
-          </button>
-        </h2>
-        <div id="executive-content" class="ai-content">
-          <div class="loading">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite;">
-              <polyline points="23 4 23 10 17 10"/>
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-            </svg>
-            Carregando análise executiva...
-          </div>
-        </div>
-      </div>
-
       <!-- SEÇÃO 3: DESTAQUES OPERACIONAIS DO QUARTER -->
       <h3 style="margin-top: 40px;">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1032,6 +1009,65 @@
         </div>
       </div>
 
+      <!-- ======================================================= -->
+      <!-- ALERTA: OPORTUNIDADES ESTAGNADAS                        -->
+      <!-- ======================================================= -->
+      <div id="exec-stagnant-section" style="display:none; margin-top:40px;">
+        <div class="exec-stagnant-header">
+          <div class="exec-stagnant-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:20px;height:20px;">
+              <rect x="6" y="4" width="4" height="16" rx="1"/>
+              <rect x="14" y="4" width="4" height="16" rx="1"/>
+            </svg>
+          </div>
+          <div class="exec-stagnant-text">
+            <div class="exec-stagnant-title">Oportunidades Estagnadas</div>
+            <div class="exec-stagnant-rule">+90 dias no pipeline · sem atividade há +30 dias</div>
+          </div>
+          <div class="exec-stagnant-count">
+            <span id="exec-stagnant-badge" style="font-size:28px;font-weight:800;color:var(--danger);">-</span>
+            <span style="font-size:11px;color:var(--text-gray);margin-left:3px;">deals</span>
+          </div>
+        </div>
+        <div id="exec-stagnant-list" style="display:flex;flex-direction:column;gap:8px;margin:14px 0 12px;"></div>
+        <button onclick="window.openStagnantDrilldown&&window.openStagnantDrilldown()" class="exec-stagnant-btn">
+          Ver todos os deals estagnados &rarr;
+        </button>
+      </div>
+
+      <!-- ======================================================= -->
+      <!-- ANÁLISE ESTRATÉGICA (IA) — FIM DA VISÃO EXECUTIVA       -->
+      <!-- ======================================================= -->
+      <div class="exec-ai-section" style="margin-top:50px;">
+        <div class="exec-ai-bar">
+          <div class="exec-ai-icon-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;color:#0a0a1a;">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+            </svg>
+          </div>
+          <div class="exec-ai-title-wrap">
+            <div class="exec-ai-title-main">
+              Análise Estratégica
+              <span class="exec-ai-badge-ia">IA</span>
+            </div>
+            <div class="exec-ai-subtitle">Gerada automaticamente com base nos dados do quarter</div>
+          </div>
+          <button id="executive-toggle" onclick="toggleExecutiveAnalysis()" class="exec-ai-toggle-btn">
+            <span id="executive-toggle-label">Ocultar</span>
+            <span id="executive-toggle-caret" style="display:inline-block;transition:transform 0.25s ease;">&#9660;</span>
+          </button>
+        </div>
+        <div id="executive-content" class="ai-content" style="margin-top:20px;">
+          <div class="loading">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite;">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+            Carregando análise estratégica...
+          </div>
+        </div>
+      </div>
+
         </div><!-- /view-kpi-cards -->
 
         <!-- VISÃO GRÁFICOS (Chart.js) -->
@@ -1062,10 +1098,6 @@
             <div class="card col-4 glow-cyan chart-group-fase">
               <div class="card-label">Forecast SF — Composição Pipeline</div>
               <div class="chart-wrapper" style="height:260px;"><canvas id="chart-forecast-sf"></canvas></div>
-            </div>
-            <div class="card col-12 chart-group-fase">
-              <div class="card-label">Win Rate por Vendedor — Taxa de Conversão</div>
-              <div class="chart-wrapper" style="height:300px;"><canvas id="chart-winrate-vendedor"></canvas></div>
             </div>
             <div class="card col-12 chart-category-card chart-category-seg">
               <div class="chart-category-head">

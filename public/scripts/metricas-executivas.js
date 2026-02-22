@@ -83,7 +83,7 @@ function updateExecutiveMetricsFromAPI(metrics) {
     
     if (avgIdleDays !== null && avgIdleDays !== undefined) {
       setTextSafe('exec-idle-days-avg', Math.round(avgIdleDays));
-      setTextSafe('exec-idle-days-detail', `${Math.round(avgIdleDays)} dias sem atividade`);
+      setTextSafe('exec-idle-days-detail', `dias desde o último contato`);
       
       // Montar label de risco
       let riskLabel = '';
@@ -589,5 +589,77 @@ function updateHighConfidenceDeals(period) {
   setTextSafe('exec-above50-count', highConfCount + ' deals');
   setTextSafe('exec-above50-net', 'Net: ' + formatMoney(highConfNet));
 }
+
+// ─── OPORTUNIDADES ESTAGNADAS ────────────────────────────────────────────────
+// Regra: Ciclo_dias >= 90 (no pipeline há 90+ dias) E Idle_Dias >= 30 (sem atividade há 30+ dias)
+function buildStagnantCard() {
+  var pipe = window.pipelineDataRaw || [];
+  var stagnant = pipe.filter(function(d) {
+    var idle  = parseFloat(d.Idle_Dias  || d.Dias_Idle || 0);
+    var cycle = parseFloat(d.Ciclo_dias || 0);
+    return cycle >= 90 && idle >= 30;
+  });
+
+  var section = document.getElementById('exec-stagnant-section');
+  if (!section) return;
+
+  if (!stagnant.length) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+
+  var badge = document.getElementById('exec-stagnant-badge');
+  if (badge) badge.textContent = stagnant.length;
+
+  // Sort by idle days DESC
+  stagnant.sort(function(a, b) {
+    return (parseFloat(b.Idle_Dias || b.Dias_Idle) || 0) - (parseFloat(a.Idle_Dias || a.Dias_Idle) || 0);
+  });
+
+  // Store for drilldown
+  window._stagnantDeals = stagnant;
+
+  var top = stagnant.slice(0, 5);
+  var listEl = document.getElementById('exec-stagnant-list');
+  if (!listEl) return;
+
+  listEl.innerHTML = top.map(function(d) {
+    var idle  = Math.round(parseFloat(d.Idle_Dias  || d.Dias_Idle) || 0);
+    var cycle = Math.round(parseFloat(d.Ciclo_dias) || 0);
+    var gross = parseFloat(d.Gross || d.gross) || 0;
+    var name  = (d.Oportunidade || d.name || 'Deal sem nome').replace(/</g,'&lt;');
+    var seller = (d.Vendedor || d.seller || '-').replace(/</g,'&lt;');
+    var stage  = (d.Fase_Atual || d.stage || '-').replace(/</g,'&lt;');
+    var idleClass = idle > 60 ? 'stagnant-badge--critical' : 'stagnant-badge--warn';
+
+    return '<div class="stagnant-deal-row" onclick="window._openStagnantItem(' + JSON.stringify({i: stagnant.indexOf(d)}) + ')">'
+      + '<div style="min-width:0;flex:1;">'
+      + '<div class="stagnant-deal-name">' + name + '</div>'
+      + '<div class="stagnant-deal-meta">' + stage + ' &middot; ' + seller + '</div>'
+      + '</div>'
+      + '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">'
+      + '<span class="stagnant-idle-badge ' + idleClass + '">' + idle + 'd idle</span>'
+      + '<span class="stagnant-cycle-badge">' + cycle + 'd pipeline</span>'
+      + '</div>'
+      + '<div class="stagnant-deal-value">' + (typeof formatMoney === 'function' ? formatMoney(gross) : gross) + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+window._openStagnantItem = function(ref) {
+  if (!window._stagnantDeals) return;
+  var d = window._stagnantDeals[ref.i];
+  if (d && typeof openDrilldown === 'function') {
+    openDrilldown((d.Oportunidade || 'Deal Estagnado') + ' — Detalhes', [d]);
+  }
+};
+
+window.openStagnantDrilldown = function() {
+  if (window._stagnantDeals && window._stagnantDeals.length && typeof openDrilldown === 'function') {
+    openDrilldown('Oportunidades Estagnadas (+90d pipeline · +30d idle)', window._stagnantDeals);
+  }
+};
 
 // Função para filtrar pipeline por período

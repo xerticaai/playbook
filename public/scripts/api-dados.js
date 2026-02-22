@@ -249,6 +249,7 @@ async function loadDashboardData() {
 
     log('[DATA] Dados completos:', DATA);
     renderDashboard();
+    if (typeof buildStagnantCard === 'function') setTimeout(buildStagnantCard, 200);
 
     // Restaura o estado do toggle Gross/Net após re-render
     // Render always writes Gross-first; re-apply Net mode if active

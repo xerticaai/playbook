@@ -328,3 +328,193 @@
 #view-graficos .card:hover .chart-expand-btn {
   opacity: 1 !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   ANÁLISE ESTRATÉGICA (IA) — redesign compacto
+══════════════════════════════════════════════════════════════════ */
+.exec-ai-section {
+  margin-top: 50px;
+  padding-top: 32px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  position: relative;
+}
+.exec-ai-section::before {
+  content: '';
+  position: absolute;
+  top: -1px; left: 0;
+  width: 90px; height: 2px;
+  background: linear-gradient(90deg, var(--primary-cyan, #00BEFF), transparent);
+  border-radius: 2px;
+}
+.exec-ai-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(0,190,255,0.04);
+  border: 1px solid rgba(0,190,255,0.14);
+  border-radius: 14px;
+  padding: 14px 18px;
+  backdrop-filter: blur(12px);
+  transition: border-color 0.2s;
+}
+.exec-ai-bar:hover { border-color: rgba(0,190,255,0.28); }
+
+.exec-ai-icon-wrap {
+  width: 40px; height: 40px;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #00BEFF 0%, #8b5cf6 100%);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(0,190,255,0.30);
+}
+.exec-ai-title-wrap { flex: 1; min-width: 0; }
+.exec-ai-title-main {
+  font-size: 15px; font-weight: 700;
+  color: var(--text-white, #fff);
+  display: flex; align-items: center; gap: 8px;
+}
+.exec-ai-badge-ia {
+  background: linear-gradient(135deg, #00BEFF, #8b5cf6);
+  color: #060614;
+  font-size: 9px; font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 20px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.exec-ai-subtitle {
+  font-size: 11px;
+  color: var(--text-gray, #94a3b8);
+  margin-top: 2px;
+}
+.exec-ai-toggle-btn {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text-gray, #94a3b8);
+  padding: 5px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 11px;
+  display: flex; align-items: center; gap: 5px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.exec-ai-toggle-btn:hover {
+  background: rgba(0,190,255,0.08);
+  color: var(--primary-cyan, #00BEFF);
+  border-color: rgba(0,190,255,0.3);
+}
+
+[data-theme="light"] .exec-ai-bar {
+  background: rgba(0,130,200,0.06);
+  border-color: rgba(0,130,200,0.18);
+}
+[data-theme="light"] .exec-ai-title-main { color: #0f172a; }
+[data-theme="light"] .exec-ai-badge-ia { color: #fff; }
+
+/* ═══════════════════════════════════════════════════════════════
+   OPORTUNIDADES ESTAGNADAS — card de alerta
+══════════════════════════════════════════════════════════════════ */
+.exec-stagnant-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(239,68,68,0.06);
+  border: 1px solid rgba(239,68,68,0.22);
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  backdrop-filter: blur(8px);
+}
+.exec-stagnant-icon {
+  width: 42px; height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(239,68,68,0.30);
+  color: #fff;
+}
+.exec-stagnant-text { flex: 1; min-width: 0; }
+.exec-stagnant-title {
+  font-size: 15px; font-weight: 700;
+  color: var(--danger, #ef4444);
+}
+.exec-stagnant-rule {
+  font-size: 11px;
+  color: var(--text-gray, #94a3b8);
+  margin-top: 2px;
+}
+.exec-stagnant-count { display: flex; align-items: baseline; flex-shrink: 0; }
+.exec-stagnant-btn {
+  width: 100%;
+  background: rgba(239,68,68,0.07);
+  border: 1px solid rgba(239,68,68,0.22);
+  border-radius: 10px;
+  color: var(--danger, #ef4444);
+  font-size: 12px; font-weight: 600;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  margin-top: 4px;
+}
+.exec-stagnant-btn:hover {
+  background: rgba(239,68,68,0.14);
+  border-color: rgba(239,68,68,0.40);
+}
+
+/* Deal rows */
+.stagnant-deal-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(239,68,68,0.04);
+  border: 1px solid rgba(239,68,68,0.12);
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.stagnant-deal-row:hover {
+  background: rgba(239,68,68,0.10);
+  border-color: rgba(239,68,68,0.28);
+}
+.stagnant-deal-name {
+  font-size: 13px; font-weight: 600;
+  color: var(--text-white, #f1f5f9);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 280px;
+}
+.stagnant-deal-meta {
+  font-size: 11px; color: var(--text-gray, #94a3b8);
+  margin-top: 2px;
+}
+.stagnant-deal-value {
+  font-size: 13px; font-weight: 700;
+  color: var(--danger, #ef4444);
+  flex-shrink: 0; margin-left: 8px;
+}
+.stagnant-idle-badge, .stagnant-cycle-badge {
+  font-size: 10px; font-weight: 700;
+  padding: 2px 8px; border-radius: 20px;
+  white-space: nowrap;
+}
+.stagnant-idle-badge {
+  background: rgba(239,68,68,0.18);
+  color: #fca5a5;
+}
+.stagnant-idle-badge.stagnant-badge--critical {
+  background: rgba(239,68,68,0.28);
+  color: #f87171;
+}
+.stagnant-cycle-badge {
+  background: rgba(148,163,184,0.12);
+  color: var(--text-gray, #94a3b8);
+}
+
+[data-theme="light"] .stagnant-deal-name { color: #0f172a; }
+[data-theme="light"] .exec-stagnant-header {
+  background: rgba(220,38,38,0.05);
+  border-color: rgba(220,38,38,0.20);
+}
