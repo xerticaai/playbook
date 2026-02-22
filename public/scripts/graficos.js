@@ -399,7 +399,7 @@
     });
   }
 
-  // ── 5b. Portfolio Versão (1.0/2.0/3.0) ─────────────────────────────
+  // ── 5b. Portfolio (categorias reais do schema) ──────────────────────
   function buildPortfolioVersao() {
     var canvas = document.getElementById('chart-portfolio-versao'); if (!canvas) return;
     kill('portfolio-versao');
@@ -407,26 +407,28 @@
     var won  = window.wonAgg  || [];
     var lost = window.lostAgg || [];
 
-    function versionLabel(d) {
+    function portfolioLabel(d) {
       var raw = d.Portfolio_FDM || d.portfolio || d.Portfolio || '';
       var txt = String(raw || '').trim();
-      if (!txt) return 'Outros';
-      if (/(^|[^0-9])1(?:\.0)?([^0-9]|$)/.test(txt)) return '1.0';
-      if (/(^|[^0-9])2(?:\.0)?([^0-9]|$)/.test(txt)) return '2.0';
-      if (/(^|[^0-9])3(?:\.0)?([^0-9]|$)/.test(txt)) return '3.0';
-      return 'Outros';
+      if (!txt) return 'Sem portfólio';
+      var low = txt.toLowerCase();
+
+      if (low.indexOf('fdm') !== -1 && low.indexOf('gis') !== -1) return 'FDM + GIS';
+      if (low === 'fdm') return 'FDM';
+      if (low.indexOf('plataforma') !== -1) return 'Plataforma';
+      if (low.indexOf('service') !== -1) return 'Services';
+      if (low.indexOf('acelerador') !== -1) return 'Outros Aceleradores';
+      if (low.indexOf('outro') !== -1) return 'Outros Portfólios';
+      return txt;
     }
 
-    var mP = groupBy(pipe, versionLabel);
-    var mW = groupBy(won,  versionLabel);
-    var mL = groupBy(lost, versionLabel);
-    var labels = ['1.0', '2.0', '3.0', 'Outros'].filter(function(k){
-      var g = (mP[k] ? mP[k].gross : 0) + (mW[k] ? mW[k].gross : 0) + (mL[k] ? mL[k].gross : 0);
-      return g > 0;
-    });
+    var mP = groupBy(pipe, portfolioLabel);
+    var mW = groupBy(won,  portfolioLabel);
+    var mL = groupBy(lost, portfolioLabel);
+    var labels = mergeKeys([mP, mW, mL], 8);
 
     if (!labels.length) {
-      showEmpty(canvas, 'Versão de portfólio não disponível');
+      showEmpty(canvas, 'Portfólio não disponível');
       return;
     }
 
@@ -445,7 +447,7 @@
         responsive:true, maintainAspectRatio:false,
         plugins: { legend: leg(), tooltip: richTip([mP,mW,mL],[totP,totW,totL]) },
         scales: scalesV(),
-        onClick: makeDimClick(pipe, won, lost, versionLabel)
+        onClick: makeDimClick(pipe, won, lost, portfolioLabel)
       }
     });
   }

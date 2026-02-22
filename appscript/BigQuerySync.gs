@@ -413,10 +413,18 @@ function preparePipelineDataForBigQuery_(rows) {
       row.SegmentoConsolidado ||
       null;
 
+    const portfolio =
+      row.Portfolio ||
+      row.Portafolio ||
+      row.Portfolio_FDM ||
+      row.PortfolioFDM ||
+      null;
+
     const portfolioFdm =
       row.Portfolio_FDM ||
       row.PortfolioFDM ||
       row.Portfolio ||
+      row.Portafolio ||
       null;
 
     return {
@@ -426,6 +434,7 @@ function preparePipelineDataForBigQuery_(rows) {
       Estado_Provincia_de_cobranca: estadoProvinciaCobranca,
       Subsegmento_de_mercado: subsegmentoMercado,
       Segmento_consolidado: segmentoConsolidado,
+      Portfolio: portfolio,
       Portfolio_FDM: portfolioFdm
     };
   });
@@ -816,6 +825,7 @@ function ensureEnrichmentColumnsForTable_(projectId, datasetId, tableName) {
       { name: 'Estado_Provincia_de_cobranca', type: 'STRING', mode: 'NULLABLE' },
       { name: 'Subsegmento_de_mercado', type: 'STRING', mode: 'NULLABLE' },
       { name: 'Segmento_consolidado', type: 'STRING', mode: 'NULLABLE' },
+      { name: 'Portfolio',          type: 'STRING', mode: 'NULLABLE' },
       { name: 'Portfolio_FDM',      type: 'STRING', mode: 'NULLABLE' },
       { name: 'Tipo_Oportunidade',   type: 'STRING', mode: 'NULLABLE' },
       { name: 'Processo_IA',         type: 'STRING', mode: 'NULLABLE' }
@@ -1348,6 +1358,9 @@ function mapToPipelineSchema(row) {
         return String(val).trim() || null;
     }
   };
+
+  const portfolioValue = aliasValue('portfolio', ['Categoria_SDR', 'CategoriaSDR']) || aliasValue('portfolio_fdm');
+  const portfolioFdmValue = aliasValue('portfolio_fdm') || aliasValue('portfolio', ['Categoria_SDR', 'CategoriaSDR']);
   
   return {
     // Identificação
@@ -1377,8 +1390,8 @@ function mapToPipelineSchema(row) {
     'Dias_Funil': parse(row['Dias_Funil'] || row['Days in Funnel'], 'INTEGER'),
     'Subsegmento_de_mercado': parse(aliasValue('subsegmento_mercado'), 'STRING'),
     'Segmento_Consolidado': parse(aliasValue('segmento_consolidado'), 'STRING'),
-    'Portfolio': parse(aliasValue('portfolio', ['Categoria_SDR', 'CategoriaSDR']), 'STRING'),
-    'Portfolio_FDM': parse(aliasValue('portfolio_fdm'), 'STRING'),
+    'Portfolio': parse(portfolioValue, 'STRING'),
+    'Portfolio_FDM': parse(portfolioFdmValue, 'STRING'),
     
     // Atividades (podem vir do Sheet ou da Cloud Function)
     'Atividades': parse(row['Atividades'], 'INTEGER'),
@@ -1440,6 +1453,9 @@ function mapToClosedDealsSchema(row, outcome) {
         return String(val).trim() || null;
     }
   };
+
+  const portfolioValue = aliasValue('portfolio', ['Categoria_SDR', 'CategoriaSDR']) || aliasValue('portfolio_fdm');
+  const portfolioFdmValue = aliasValue('portfolio_fdm') || aliasValue('portfolio', ['Categoria_SDR', 'CategoriaSDR']);
   
   return {
     'Oportunidade': parse(row['Oportunidade'] || row['Deal'], 'STRING') || 'N/A',
@@ -1449,11 +1465,11 @@ function mapToClosedDealsSchema(row, outcome) {
     
     'Gross': parse(row['Gross'] || row['Valor Bruto'], 'FLOAT'),
     'Net': parse(row['Net'] || row['Valor Líquido'], 'FLOAT'),
-    'Portfolio': parse(aliasValue('portfolio', ['Categoria_SDR', 'CategoriaSDR']), 'STRING'),
+    'Portfolio': parse(portfolioValue, 'STRING'),
     'Segmento': parse(row['Segmento'], 'STRING'),
     'Subsegmento_de_mercado': parse(aliasValue('subsegmento_mercado'), 'STRING'),
     'Segmento_Consolidado': parse(aliasValue('segmento_consolidado'), 'STRING'),
-    'Portfolio_FDM': parse(aliasValue('portfolio_fdm'), 'STRING'),
+    'Portfolio_FDM': parse(portfolioFdmValue, 'STRING'),
     'Familia_Produto': parse(row['Família Produto'] || row['Familia Produto'] || row['Familia_Produto'], 'STRING'),
     'Status': parse(row['Status'], 'STRING'),
     
