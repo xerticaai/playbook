@@ -1,0 +1,400 @@
+/* =====================================================================
+   Xertica Visual Refactor v4
+   Camada de override total (sem remover estrutura/informações existentes)
+   ===================================================================== */
+
+:root {
+  --vr-bg-deep: #080d17;
+  --vr-bg-surface: rgba(17, 24, 39, 0.64);
+  --vr-bg-surface-hover: rgba(30, 41, 59, 0.82);
+  --vr-border: rgba(255, 255, 255, 0.08);
+
+  --vr-text-main: #f8fafc;
+  --vr-text-muted: #94a3b8;
+
+  --vr-cyan: #00beff;
+  --vr-cyan-glow: rgba(0, 190, 255, 0.2);
+  --vr-cyan-bg: rgba(0, 190, 255, 0.1);
+
+  --vr-green: #c0ff7d;
+  --vr-green-bg: rgba(192, 255, 125, 0.1);
+
+  --vr-pink: #ff89ff;
+  --vr-pink-bg: rgba(255, 137, 255, 0.1);
+
+  --vr-red: #e14849;
+  --vr-red-bg: rgba(225, 72, 73, 0.1);
+
+  --vr-warning: #f59e0b;
+  --vr-warning-bg: rgba(245, 158, 11, 0.1);
+
+  --vr-shadow: 0 8px 30px -10px rgba(0, 0, 0, 0.45);
+}
+
+[data-theme="light"] {
+  --vr-bg-deep: #f8fafc;
+  --vr-bg-surface: #ffffff;
+  --vr-bg-surface-hover: #f1f5f9;
+  --vr-border: rgba(0, 0, 0, 0.07);
+
+  --vr-text-main: #0f172a;
+  --vr-text-muted: #64748b;
+
+  --vr-cyan: #0099cc;
+  --vr-cyan-glow: rgba(0, 153, 204, 0.15);
+  --vr-cyan-bg: rgba(0, 153, 204, 0.08);
+
+  --vr-green: #6b9b3a;
+  --vr-green-bg: rgba(107, 155, 58, 0.08);
+
+  --vr-red: #dc2626;
+  --vr-red-bg: rgba(220, 38, 38, 0.08);
+
+  --vr-warning: #d97706;
+  --vr-warning-bg: rgba(217, 119, 6, 0.08);
+
+  --vr-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+}
+
+/* Mapear variáveis antigas para o novo DS sem quebrar JS/CSS legado */
+:root,
+[data-theme="light"] {
+  --bg-deep: var(--vr-bg-deep);
+  --bg-surface: var(--vr-bg-surface);
+  --bg-surface-hover: var(--vr-bg-surface-hover);
+  --glass-border: var(--vr-border);
+  --text-main: var(--vr-text-main);
+  --text-muted: var(--vr-text-muted);
+  --text-white: var(--vr-text-main);
+  --text-gray: var(--vr-text-muted);
+  --primary-cyan: var(--vr-cyan);
+  --x-cyan-50: var(--vr-cyan);
+  --x-cyan-bg: var(--vr-cyan-bg);
+  --x-cyan-glow: var(--vr-cyan-glow);
+  --x-green-50: var(--vr-green);
+  --x-green-bg: var(--vr-green-bg);
+  --x-red: var(--vr-red);
+  --x-red-bg: var(--vr-red-bg);
+  --x-warning: var(--vr-warning);
+  --x-warning-bg: var(--vr-warning-bg);
+  --success: var(--vr-green);
+  --danger: var(--vr-red);
+  --warning: var(--vr-warning);
+  --text-primary: var(--vr-text-main);
+  --text-secondary: var(--vr-text-muted);
+  --glass: color-mix(in srgb, var(--vr-bg-surface) 82%, transparent);
+}
+
+/* Base global */
+body {
+  background-color: var(--vr-bg-deep) !important;
+  background-image:
+    radial-gradient(circle at 10% 20%, var(--vr-cyan-bg) 0%, transparent 40%),
+    radial-gradient(circle at 90% 80%, var(--vr-pink-bg) 0%, transparent 40%) !important;
+  color: var(--vr-text-main) !important;
+  transition: background-color 0.35s ease, color 0.35s ease;
+}
+
+/* Sidebar */
+.sidebar {
+  background: var(--vr-bg-surface) !important;
+  border-right: 1px solid var(--vr-border) !important;
+  box-shadow: var(--vr-shadow) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+[data-theme="light"] .sidebar {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.nav-item {
+  border-left: 3px solid transparent;
+  color: var(--vr-text-muted) !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.nav-item:hover {
+  background: var(--vr-bg-surface-hover) !important;
+  color: var(--vr-text-main) !important;
+}
+
+.nav-item.active {
+  background: var(--vr-cyan-bg) !important;
+  border-left-color: var(--vr-cyan) !important;
+  color: var(--vr-text-main) !important;
+}
+
+.nav-item::before {
+  display: none !important;
+}
+
+.sidebar-toggle,
+.theme-toggle-btn,
+.refresh-btn,
+.icon-btn {
+  box-shadow: none !important;
+}
+
+.sidebar-toggle,
+.theme-toggle-btn,
+.icon-btn,
+.show-filters-btn,
+.filters-status-chip,
+.view-toggle,
+.filter-pill,
+.highlight-btn,
+.multi-select-trigger,
+.multi-select-dropdown,
+.exec-dd-input,
+.exec-dd-select,
+select,
+button,
+input,
+textarea {
+  border-color: var(--vr-border) !important;
+}
+
+/* Header e filtros */
+.top-header-bar {
+  gap: 12px !important;
+}
+
+#filters-container {
+  background: var(--vr-bg-surface) !important;
+  border: 1px solid var(--vr-border) !important;
+  border-radius: 14px !important;
+  box-shadow: var(--vr-shadow) !important;
+}
+
+.filter-pill,
+.highlight-btn,
+.view-btn {
+  color: var(--vr-text-muted) !important;
+  background: transparent !important;
+}
+
+.filter-pill:hover,
+.highlight-btn:hover,
+.view-btn:hover {
+  color: var(--vr-text-main) !important;
+  background: var(--vr-bg-surface-hover) !important;
+}
+
+.view-btn.active,
+.highlight-btn.highlight-active,
+.filter-pill.active,
+.exec-dd-chip.active {
+  background: var(--vr-cyan-bg) !important;
+  color: var(--vr-cyan) !important;
+  border-color: var(--vr-cyan-glow) !important;
+}
+
+/* Cards: unificar linguagem */
+.card,
+.kpi-card,
+.ai-card,
+.deal-card,
+.margin-card,
+.exec-dd-item,
+.exec-dd-detail,
+.exec-dd-meta,
+.exec-dd-sql,
+.metric-section-header,
+h4 {
+  background: var(--vr-bg-surface) !important;
+  border: 1px solid var(--vr-border) !important;
+  box-shadow: var(--vr-shadow) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+[data-theme="light"] .card,
+[data-theme="light"] .kpi-card,
+[data-theme="light"] .ai-card,
+[data-theme="light"] .deal-card,
+[data-theme="light"] .margin-card,
+[data-theme="light"] .exec-dd-item,
+[data-theme="light"] .exec-dd-detail,
+[data-theme="light"] .exec-dd-meta,
+[data-theme="light"] .exec-dd-sql,
+[data-theme="light"] .metric-section-header,
+[data-theme="light"] h4 {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.card:hover,
+.kpi-card:hover,
+.ai-card:hover,
+.deal-card:hover,
+.margin-card:hover,
+.exec-dd-item:hover {
+  transform: translateY(-2px) !important;
+  background: var(--vr-bg-surface-hover) !important;
+  border-color: color-mix(in srgb, var(--vr-border) 72%, var(--vr-cyan) 28%) !important;
+}
+
+.kpi-title,
+.card-label,
+.chart-card-title,
+.section-header,
+.chart-stat-label,
+th,
+.filter-label {
+  color: var(--vr-text-muted) !important;
+}
+
+.kpi-value,
+.card-value,
+.deal-name,
+.exec-drilldown-title,
+h1,
+h2,
+h3,
+h4,
+td,
+.deal-fin-val,
+.deal-exp-title,
+.deal-ai-note strong {
+  color: var(--vr-text-main) !important;
+}
+
+.card::before,
+.kpi-card::before {
+  opacity: 0.55;
+}
+
+/* Seções com cor sem exagero */
+.metric-section-header.pipeline { border-left: 4px solid var(--vr-cyan) !important; color: var(--vr-cyan) !important; }
+.metric-section-header.sales-specialist,
+.metric-section-header.won { border-left: 4px solid var(--vr-green) !important; color: var(--vr-green) !important; }
+.metric-section-header.lost { border-left: 4px solid var(--vr-red) !important; color: var(--vr-red) !important; }
+.metric-section-header.mvp,
+.metric-section-header.sellers { border-left: 4px solid #a78bfa !important; color: #a78bfa !important; }
+
+/* Tabelas */
+table,
+.dd-table,
+.data-table {
+  background: transparent !important;
+  border: 1px solid var(--vr-border) !important;
+  border-radius: 12px !important;
+}
+
+th,
+td,
+#chart-drilldown-modal table th,
+#chart-drilldown-modal table td {
+  border-bottom-color: var(--vr-border) !important;
+}
+
+table tbody tr:hover,
+#chart-drilldown-modal table tbody tr:hover td,
+.data-table tr:hover td,
+.deal-row:hover td {
+  background: var(--vr-bg-surface-hover) !important;
+}
+
+/* Drilldown lateral */
+#chart-drilldown-overlay,
+.exec-drilldown-backdrop {
+  background: rgba(0, 0, 0, 0.42) !important;
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+#chart-drilldown-modal,
+.exec-drilldown-panel {
+  background: var(--vr-bg-surface) !important;
+  border-left: 1px solid var(--vr-border) !important;
+  box-shadow: -20px 0 50px rgba(0, 0, 0, 0.35) !important;
+}
+
+.exec-drilldown-header,
+#chart-drilldown-modal .exec-drilldown-header {
+  background: color-mix(in srgb, var(--vr-bg-surface) 88%, transparent) !important;
+  border-bottom: 1px solid var(--vr-border) !important;
+}
+
+.dd-badge.won,
+.dd-badge-won { background: var(--vr-green-bg) !important; color: var(--vr-green) !important; }
+.dd-badge.lost,
+.dd-badge-lost { background: var(--vr-red-bg) !important; color: var(--vr-red) !important; }
+.dd-badge.pipe,
+.dd-badge-pipe { background: var(--vr-cyan-bg) !important; color: var(--vr-cyan) !important; }
+
+.deal-expanded,
+.deal-exp-cell,
+.deal-score-item,
+.deal-fin-item,
+.deal-dim-chip,
+.deal-ai-note {
+  background: var(--vr-bg-surface) !important;
+  border-color: var(--vr-border) !important;
+}
+
+.deal-score-val,
+.text-cyan,
+.val-cyan { color: var(--vr-cyan) !important; }
+.text-green,
+.val-green { color: var(--vr-green) !important; }
+.text-red,
+.val-red { color: var(--vr-red) !important; }
+.text-warning,
+.val-warning { color: var(--vr-warning) !important; }
+
+/* Tabs */
+.exec-tabs-bar {
+  border-bottom-color: var(--vr-border) !important;
+}
+
+.exec-tab,
+.ml-tab,
+.exec-tab-btn {
+  color: var(--vr-text-muted) !important;
+}
+
+.exec-tab.active,
+.ml-tab.active,
+.exec-tab-btn.active {
+  color: var(--vr-cyan) !important;
+  border-bottom-color: var(--vr-cyan) !important;
+  background: var(--vr-cyan-bg) !important;
+}
+
+/* Auth */
+#auth-overlay {
+  background-color: var(--vr-bg-deep) !important;
+  background-image: radial-gradient(circle at 50% 0%, var(--vr-cyan-bg) 0%, transparent 60%) !important;
+}
+
+.auth-card {
+  background: var(--vr-bg-surface) !important;
+  border: 1px solid var(--vr-border) !important;
+  box-shadow: var(--vr-shadow) !important;
+}
+
+[data-theme="light"] .auth-card {
+  background: #ffffff !important;
+}
+
+.auth-title { color: var(--vr-text-main) !important; }
+.auth-subtitle,
+.auth-loading { color: var(--vr-text-muted) !important; }
+
+/* Ajuste para múltiplos backgrounds inline antigos */
+[style*="rgba(0,190,255"],
+[style*="rgba(255,255,255,0.05)"],
+[style*="rgba(255,255,255,0.06)"] {
+  border-color: var(--vr-border) !important;
+}
+
+/* Responsivo */
+@media (max-width: 1100px) {
+  .main { padding: 22px 20px !important; }
+  .bento-grid { gap: 14px !important; }
+  .top-header-bar { flex-direction: column; align-items: stretch !important; }
+}
