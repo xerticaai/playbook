@@ -1395,11 +1395,19 @@ function renderDashboard() {
     const getFilteredDealsByPeriod = (deals) => {
       const period = window.currentTopOppsPeriod || 'all';
       const fy = window.currentFY || 'FY26';
+      const repF = window.currentRepFilter && window.currentRepFilter !== 'all'
+        ? window.currentRepFilter.trim() : null;
+      let filtered = deals;
       if (period === 'q1' || period === 'q2' || period === 'q3' || period === 'q4') {
         const targetQuarter = `${fy}-${period.toUpperCase()}`;
-        return deals.filter(d => (d.fiscalQ || d.quarter) === targetQuarter);
+        filtered = filtered.filter(d => (d.fiscalQ || d.quarter) === targetQuarter);
       }
-      return deals;
+      // Cross-cut with client-side rep filter
+      if (repF) {
+        filtered = filtered.filter(d =>
+          (d.Vendedor || d.seller || d.owner || '').trim() === repF);
+      }
+      return filtered;
     };
 
     const renderTopOppsTab = (tab) => {
@@ -1424,17 +1432,22 @@ function renderDashboard() {
       let normalized = [];
       let baseLabel = 'pipeline';
 
+      const _topRepF = window.currentRepFilter && window.currentRepFilter !== 'all'
+        ? window.currentRepFilter.trim() : null;
+      const _topByRep = (arr) =>
+        _topRepF ? arr.filter(d => (d.Vendedor || d.owner || d.seller || '').trim() === _topRepF) : arr;
+
       if (tab === 'open') {
         baseLabel = 'pipeline';
-        baseDeals = getFilteredDealsByPeriod(allDeals || []);
+        baseDeals = getFilteredDealsByPeriod(allDeals || []); // rep filter inside
         normalized = baseDeals.map(normalizeOpenDeal);
       } else if (tab === 'won') {
         baseLabel = 'ganhos';
-        baseDeals = filterClosedByQuarter(Array.isArray(DATA.wonAgg) ? DATA.wonAgg : []);
+        baseDeals = _topByRep(filterClosedByQuarter(Array.isArray(DATA.wonAgg) ? DATA.wonAgg : []));
         normalized = baseDeals.map(deal => normalizeClosedDeal(deal, 'won'));
       } else {
         baseLabel = 'perdas';
-        baseDeals = filterClosedByQuarter(Array.isArray(DATA.lostAgg) ? DATA.lostAgg : []);
+        baseDeals = _topByRep(filterClosedByQuarter(Array.isArray(DATA.lostAgg) ? DATA.lostAgg : []));
         normalized = baseDeals.map(deal => normalizeClosedDeal(deal, 'lost'));
       }
 
@@ -1627,49 +1640,70 @@ function renderDashboard() {
     };
 
     const buildDrilldownRowsFromMetric = (metricId) => {
-      const openRows = (allDeals || []).map(normalizeOpenDeal).map(d => ({ ...d, source: 'pipeline' }));
-      const wonRows = (Array.isArray(DATA.wonAgg) ? DATA.wonAgg : []).map(d => ({ ...normalizeClosedDeal(d, 'won'), source: 'won' }));
-      const lostRows = (Array.isArray(DATA.lostAgg) ? DATA.lostAgg : []).map(d => ({ ...normalizeClosedDeal(d, 'lost'), source: 'lost' }));
-      const ssRows = (Array.isArray(DATA?.salesSpecialist?.deals) ? DATA.salesSpecialist.deals : []).map(normalizeSalesSpecialistDeal);
+      // ── Global filter cross-reference ──────────────────────────────────────
+      // Respect window.currentRepFilter (client-side single-rep dropdown) AND
+      // the multi-select selectedSellers filter (already baked into API data).
+      const repF = window.currentRepFilter && window.currentRepFilter !== 'all'
+        ? window.currentRepFilter.trim()
+        : null;
+      const byRepF = (rows) => {
+        if (!repF) return rows;
+        return rows.filter(r => {
+          const o = (r.owner || r.seller || r.Vendedor || '').trim();
+          return o === repF;
+        });
+      };
+      // ── Active filter label (for subtitle) ─────────────────────────────────
+      const filterHint = repF
+        ? ` · Vendedor: ${repF}`
+        : (Array.isArray(selectedSellers) && selectedSellers.length > 0
+            ? ` · ${selectedSellers.length} vendedor${selectedSellers.length > 1 ? 'es' : ''}`
+            : '');
+
+      const openRows = byRepF((allDeals || []).map(normalizeOpenDeal).map(d => ({ ...d, source: 'pipeline' })));
+      const wonRows  = byRepF((Array.isArray(DATA.wonAgg)  ? DATA.wonAgg  : []).map(d => ({ ...normalizeClosedDeal(d, 'won'),  source: 'won'  })));
+      const lostRows = byRepF((Array.isArray(DATA.lostAgg) ? DATA.lostAgg : []).map(d => ({ ...normalizeClosedDeal(d, 'lost'), source: 'lost' })));
+      const ssRows   = byRepF((Array.isArray(DATA?.salesSpecialist?.deals) ? DATA.salesSpecialist.deals : []).map(normalizeSalesSpecialistDeal));
 
       const exactMetricRules = {
-        'exec-above50-value': { rows: openRows.filter(r => (r.confidence || 0) >= 50), title: 'Deals ≥50% Confiança IA', rule: 'Pipeline com confiança IA >= 50%' },
-        'exec-idle-days-avg': { rows: openRows.filter(r => r.idleDays != null && Number(r.idleDays) > 0), title: 'Dias Idle Médio', rule: 'Pipeline com idle > 0 dias' },
-        'exec-won-cycle-days': { rows: wonRows.filter(r => r.cycle != null), title: 'Ciclo Médio (Ganhos)', rule: 'Deals ganhos com ciclo preenchido' },
-        'exec-won-activities': { rows: wonRows.filter(r => r.activities != null), title: 'Atividades Médias (Ganhos)', rule: 'Deals ganhos com atividades preenchidas' },
-        'exec-won-meddic': { rows: wonRows.filter(r => r.meddic != null), title: 'MEDDIC Médio', rule: 'Deals ganhos com score MEDDIC preenchido' },
-        'exec-lost-cycle-days': { rows: lostRows.filter(r => r.cycle != null), title: 'Ciclo Médio (Perdas)', rule: 'Deals perdidos com ciclo preenchido' },
-        'exec-lost-evitavel-pct': { rows: lostRows.filter(r => r.avoidable), title: 'Perdas Evitáveis', rule: 'Somente perdas marcadas como evitáveis' },
-        'exec-cycle-efficiency': { rows: [...wonRows.filter(r => r.cycle != null), ...lostRows.filter(r => r.cycle != null)], title: 'Eficiência de Ciclo', rule: 'Ganhos e perdas com ciclo preenchido' },
-        'exec-conversion-rate': { rows: [...wonRows, ...lostRows], title: 'Taxa de Win', rule: 'Base de ganhos + perdas (conversão)' },
-        'exec-loss-rate': { rows: [...wonRows, ...lostRows], title: 'Taxa de Perda', rule: 'Base de ganhos + perdas (perda)' },
-        'exec-ss-total': { rows: ssRows, title: 'Sales Specialist · Total Curado', rule: 'Deals de curadoria manual (Sales Specialist)' },
-        'exec-ss-coverage': { rows: ssRows, title: 'Sales Specialist · Taxa de Curadoria', rule: 'Deals de curadoria manual (Sales Specialist)' },
-        'exec-ss-ticket': { rows: ssRows, title: 'Sales Specialist · Ticket Médio', rule: 'Deals de curadoria manual (Sales Specialist)' },
-        'exec-ss-top-seller': { rows: ssRows, title: 'Sales Specialist · Top Vendedor', rule: 'Deals de curadoria manual (Sales Specialist)' }
+        'exec-above50-value':     { rows: openRows.filter(r => (r.confidence || 0) >= 50),       title: 'Deals ≥50% Confiança IA',       rule: 'Pipeline com confiança IA >= 50%' },
+        'exec-idle-days-avg':     { rows: openRows.filter(r => r.idleDays != null && Number(r.idleDays) > 0), title: 'Dias Idle Médio', rule: 'Pipeline com idle > 0 dias' },
+        'exec-won-cycle-days':    { rows: wonRows.filter(r => r.cycle != null),                   title: 'Ciclo Médio (Ganhos)',           rule: 'Deals ganhos com ciclo preenchido' },
+        'exec-won-activities':    { rows: wonRows.filter(r => r.activities != null),              title: 'Atividades Médias (Ganhos)',     rule: 'Deals ganhos com atividades preenchidas' },
+        'exec-won-meddic':        { rows: wonRows.filter(r => r.meddic != null),                  title: 'MEDDIC Médio',                  rule: 'Deals ganhos com score MEDDIC preenchido' },
+        'exec-lost-cycle-days':   { rows: lostRows.filter(r => r.cycle != null),                  title: 'Ciclo Médio (Perdas)',           rule: 'Deals perdidos com ciclo preenchido' },
+        'exec-lost-evitavel-pct': { rows: lostRows.filter(r => r.avoidable),                      title: 'Perdas Evitáveis',              rule: 'Somente perdas marcadas como evitáveis' },
+        'exec-cycle-efficiency':  { rows: [...wonRows.filter(r => r.cycle != null), ...lostRows.filter(r => r.cycle != null)], title: 'Eficiência de Ciclo', rule: 'Ganhos e perdas com ciclo preenchido' },
+        'exec-conversion-rate':   { rows: [...wonRows, ...lostRows],                              title: 'Taxa de Win',                   rule: 'Base de ganhos + perdas (conversão)' },
+        'exec-loss-rate':         { rows: [...wonRows, ...lostRows],                              title: 'Taxa de Perda',                 rule: 'Base de ganhos + perdas (perda)' },
+        'exec-ss-total':          { rows: ssRows, title: 'Sales Specialist · Total Curado',      rule: 'Deals de curadoria manual (Sales Specialist)' },
+        'exec-ss-coverage':       { rows: ssRows, title: 'Sales Specialist · Taxa de Curadoria', rule: 'Deals de curadoria manual (Sales Specialist)' },
+        'exec-ss-ticket':         { rows: ssRows, title: 'Sales Specialist · Ticket Médio',      rule: 'Deals de curadoria manual (Sales Specialist)' },
+        'exec-ss-top-seller':     { rows: ssRows, title: 'Sales Specialist · Top Vendedor',      rule: 'Deals de curadoria manual (Sales Specialist)' }
       };
 
       if (metricId && exactMetricRules[metricId]) {
-        return exactMetricRules[metricId];
+        const r = exactMetricRules[metricId];
+        return { ...r, filterHint };
       }
 
-      if (!metricId) return { rows: [...openRows, ...wonRows, ...lostRows], title: 'Drill-down Executivo', rule: 'Base consolidada de oportunidades' };
+      if (!metricId) return { rows: [...openRows, ...wonRows, ...lostRows], title: 'Drill-down Executivo', rule: 'Base consolidada de oportunidades', filterHint };
       if (metricId.startsWith('exec-pipeline') || metricId.startsWith('exec-forecast') || metricId.startsWith('exec-above50') || metricId.startsWith('exec-idle')) {
-        return { rows: openRows, title: 'Pipeline Aberto', rule: 'Base de pipeline aberto com filtros herdados' };
+        return { rows: openRows, title: 'Pipeline Aberto', rule: 'Base de pipeline aberto com filtros herdados', filterHint };
       }
       if (metricId.startsWith('exec-ss')) {
-        return { rows: ssRows, title: 'Sales Specialist', rule: 'Base de curadoria manual (Sales Specialist)' };
+        return { rows: ssRows, title: 'Sales Specialist', rule: 'Base de curadoria manual (Sales Specialist)', filterHint };
       }
       if (metricId.startsWith('exec-closed') || metricId.startsWith('exec-conversion') || metricId.startsWith('exec-won')) {
-        return { rows: wonRows, title: 'Deals Ganhos', rule: 'Base de ganhos com filtros herdados' };
+        return { rows: wonRows, title: 'Deals Ganhos', rule: 'Base de ganhos com filtros herdados', filterHint };
       }
       if (metricId.startsWith('exec-lost') || metricId.startsWith('exec-loss') || metricId.startsWith('exec-cycle-efficiency')) {
-        return { rows: lostRows, title: 'Deals Perdidos', rule: 'Base de perdas com filtros herdados' };
+        return { rows: lostRows, title: 'Deals Perdidos', rule: 'Base de perdas com filtros herdados', filterHint };
       }
       if (metricId.startsWith('exec-sellers') || metricId.startsWith('exec-ticket') || metricId.startsWith('exec-cycle-')) {
-        return { rows: [...wonRows, ...lostRows], title: 'Performance de Vendedores', rule: 'Base de ganhos + perdas para performance' };
+        return { rows: [...wonRows, ...lostRows], title: 'Performance de Vendedores', rule: 'Base de ganhos + perdas para performance', filterHint };
       }
-      return { rows: [...openRows, ...wonRows, ...lostRows], title: 'Drill-down Executivo', rule: 'Base consolidada de oportunidades' };
+      return { rows: [...openRows, ...wonRows, ...lostRows], title: 'Drill-down Executivo', rule: 'Base consolidada de oportunidades', filterHint };
     };
 
     const bindExecutiveKpiDrilldown = () => {
@@ -1683,9 +1717,10 @@ function renderDashboard() {
           const metricNode = card.querySelector('[id^="exec-"]');
           const metricId = metricNode ? metricNode.id : '';
           const cfg = buildDrilldownRowsFromMetric(metricId);
+          const subtitle = `Resumo → Lista → Detalhe${cfg.filterHint || ''}`;
           window.openExecutiveDrilldown({
             title: `Drill-down · ${cfg.title}`,
-            subtitle: 'Resumo → Lista → Detalhe',
+            subtitle,
             rows: cfg.rows,
             selected: cfg.rows[0] || null,
             rule: cfg.rule,

@@ -47,6 +47,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadDashboardData();
   enhanceAllKpiCards(document);
   initKpiCardInfoObserver();
+
+  // Retry admin visibility after a short delay so Firebase Auth has time
+  // to resolve (it's async and may not be ready at DOMContentLoaded).
+  setTimeout(async () => {
+    if (typeof resolveAdminAccess === 'function') await resolveAdminAccess();
+  }, 1500);
 });
 
 // Função para recarregar dashboard quando filtros mudam (COM DEBOUNCE)

@@ -272,6 +272,32 @@
     o.classList.add('open');
   }
 
+  // ── Global filter helper for drilldowns ─────────────────────────────
+  // Returns `items` cross-filtered by the active client-side rep filter
+  // (window.currentRepFilter) so that drilldown data always matches the
+  // same scope shown in KPI cards. Seller field may be on raw or normalized deal.
+  function _applyDrillFilter(items) {
+    var repF = window.currentRepFilter && window.currentRepFilter !== 'all'
+      ? String(window.currentRepFilter).trim()
+      : null;
+    if (!repF) return items;
+    return (items || []).filter(function(d) {
+      var s = String(d.Vendedor || d.seller || d.Owner || d.owner || '').trim();
+      return s === repF;
+    });
+  }
+
+  // Active filter label suffix for drilldown titles
+  function _drillFilterLabel() {
+    var repF = window.currentRepFilter && window.currentRepFilter !== 'all'
+      ? String(window.currentRepFilter).trim()
+      : null;
+    if (repF) return ' · ' + repF;
+    var ss = Array.isArray(window.selectedSellers) ? window.selectedSellers : [];
+    if (ss.length > 0) return ' · ' + (ss.length === 1 ? ss[0] : ss.length + ' vendedores');
+    return '';
+  }
+
   // Make a click handler for grouped (Pipeline+Won+Lost) dimension charts
   function makeDimClick(pipeArr, wonArr, lostArr, getter) {
     return function (evt, elements, chart) {
@@ -283,7 +309,7 @@
       (pipeArr || []).forEach(function(d){ if ((getter(d)||'').trim() === norm) items.push(Object.assign({_src:'pipe'}, d)); });
       (wonArr  || []).forEach(function(d){ if ((getter(d)||'').trim() === norm) items.push(Object.assign({_src:'won'},  d)); });
       (lostArr || []).forEach(function(d){ if ((getter(d)||'').trim() === norm) items.push(Object.assign({_src:'lost'}, d)); });
-      openDrilldown('Drill-down: ' + norm, items);
+      openDrilldown('Drill-down: ' + norm + _drillFilterLabel(), _applyDrillFilter(items));
     };
   }
 
@@ -333,8 +359,8 @@
           var isWon = elements[0].index === 0;
           var src = isWon ? won : lost;
           var tag = isWon ? 'won' : 'lost';
-          var items = src.map(function(d){ return Object.assign({_src:tag},d); });
-          openDrilldown(isWon ? 'Deals Ganhos' : 'Deals Perdidos', items);
+          var items = _applyDrillFilter(src.map(function(d){ return Object.assign({_src:tag},d); }));
+          openDrilldown((isWon ? 'Deals Ganhos' : 'Deals Perdidos') + _drillFilterLabel(), items);
         }
       }
     });
@@ -412,9 +438,8 @@
           if (!elements||!elements.length) return;
           var label = chart.data.labels[elements[0].index]; if (!label) return;
           var norm = label.trim();
-          // Considera Portfolio_FDM e Portfolio (ambas as colunas)
-          var items = all.filter(function(d){ return (d.Portfolio_FDM||d.Portfolio||d.portfolio||'').trim()===norm; });
-          openDrilldown('Portfolio FDM: ' + norm, items);
+          var items = _applyDrillFilter(all.filter(function(d){ return (d.Portfolio_FDM||d.Portfolio||d.portfolio||'').trim()===norm; }));
+          openDrilldown('Portfolio FDM: ' + norm + _drillFilterLabel(), items);
         }
       }
     });
@@ -529,10 +554,10 @@
           if (!elements||!elements.length) return;
           var label = chart.data.labels[elements[0].index]; if (!label) return;
           var norm = label.trim();
-          var items = all.filter(function(d) {
+          var items = _applyDrillFilter(all.filter(function(d) {
             return (d.Forecast_SF||d.forecast_sf||'Não Definido').trim() === norm;
-          });
-          openDrilldown('Forecast SF: ' + norm, items);
+          }));
+          openDrilldown('Forecast SF: ' + norm + _drillFilterLabel(), items);
         }
       }
     });
@@ -617,7 +642,7 @@
           var items = [];
           won.forEach(function(d){ if ((d.Vendedor||d.seller||'N/A')===seller) items.push(Object.assign({_src:'won'},d)); });
           lost.forEach(function(d){ if ((d.Vendedor||d.seller||'N/A')===seller) items.push(Object.assign({_src:'lost'},d)); });
-          openDrilldown('Conversão: ' + seller, items);
+          openDrilldown('Conversão: ' + seller, _applyDrillFilter(items));
         }
       }
     });
@@ -769,7 +794,7 @@
             var dt=new Date(d.Data_Fechamento||d.closeDate||'');
             if(!isNaN(dt.getTime())&&dt.getMonth()===mIdx) items.push(Object.assign({_src:'lost'},d));
           });
-          openDrilldown(label + (filterLabel()), items);
+          openDrilldown(label + filterLabel() + _drillFilterLabel(), _applyDrillFilter(items));
         }
       }
     });

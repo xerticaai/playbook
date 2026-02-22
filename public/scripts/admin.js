@@ -16,6 +16,13 @@ function updateAdminValidateButton() {
 }
 
 function applyAdminVisibility() {
+  // If Firebase email is confirmed as admin, never hide admin items during
+  // the same session even if resolveAdminAccess is called mid-cycle.
+  const confirmedEmail = normalizeUserEmail(window._firebaseAuthEmail);
+  if (confirmedEmail && ADMIN_ALLOWED_EMAILS.includes(confirmedEmail)) {
+    isAdminUser = true;
+  }
+
   const navDashboardItem = document.getElementById('nav-dashboard-item');
   const navMlItem = document.getElementById('nav-ml-item');
   const navAdminItem = document.getElementById('nav-admin-item');
