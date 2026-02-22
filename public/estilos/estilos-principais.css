@@ -981,13 +981,13 @@ table tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
 
 /* ── Light Theme ── */
 [data-theme="light"] {
-  --bg-deep: #F0F4F8;
-  --bg-surface: rgba(255, 255, 255, 0.92);
-  --bg-surface-hover: rgba(255, 255, 255, 1);
+  --bg-deep: #F8FAFC;
+  --bg-surface: #FFFFFF;
+  --bg-surface-hover: #F8FAFC;
   --bg-card: #FFFFFF;
-  --bg-card-hover: #F8FAFC;
-  --glass-surface: rgba(255, 255, 255, 0.90);
-  --glass-border: rgba(0, 0, 0, 0.09);
+  --bg-card-hover: #F1F5F9;
+  --glass-surface: #FFFFFF;
+  --glass-border: rgba(0, 0, 0, 0.06);
   --text-main: #0F172A;
   --text-muted: #64748B;
   --text-white: #0F172A;
@@ -1011,8 +1011,8 @@ table tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
   --warning: #D97706;
   --x-warning: #D97706;
   --x-warning-bg: rgba(217, 119, 6, 0.08);
-  --shadow-md-card: 0 4px 15px rgba(0,0,0,0.06);
-  --shadow-lg-card: 0 10px 25px rgba(0,0,0,0.08);
+  --shadow-md-card: 0 4px 15px rgba(0,0,0,0.03);
+  --shadow-lg-card: 0 10px 30px rgba(0,0,0,0.04);
 }
 
 /* Light mode body & layout overrides */
@@ -1348,7 +1348,7 @@ table tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
 #chart-drilldown-modal {
   position: fixed;
   right: 0; top: 0; bottom: 0;
-  width: min(720px, 92vw);
+  width: min(650px, 92vw);
   transform: translateX(100%);
   transition: transform 0.28s ease;
   z-index: 1403;
@@ -1400,4 +1400,86 @@ table tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
   border-radius: 999px;
   border: 1px solid var(--glass-border);
   background: var(--bg-surface);
+}
+
+/* ── Premium Chart Drilldown Overrides ── */
+#chart-drilldown-modal .exec-drilldown-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 24px 32px;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-bottom: 1px solid var(--glass-border);
+  background: var(--bg-surface);
+}
+[data-theme="light"] #chart-drilldown-modal .exec-drilldown-header {
+  background: rgba(255,255,255,0.98);
+}
+#chart-drilldown-modal .exec-drilldown-body {
+  padding: 24px 32px;
+  overflow-y: auto;
+  display: block;
+}
+#chart-drilldown-modal table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-body), sans-serif;
+}
+#chart-drilldown-modal table th {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--glass-border);
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  background: transparent;
+  white-space: nowrap;
+}
+#chart-drilldown-modal table td {
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--text-main);
+  border-bottom: 1px solid var(--glass-border);
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  background: transparent;
+  vertical-align: middle;
+}
+#chart-drilldown-modal table tr:last-child td { border-bottom: none; }
+#chart-drilldown-modal table tbody tr:hover td {
+  background: var(--x-cyan-bg);
+}
+/* Deal badge in drilldown */
+.dd-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--x-cyan-bg);
+  color: var(--x-cyan-50);
+}
+.dd-badge.won  { background: var(--x-green-bg); color: var(--x-green-50); }
+.dd-badge.lost { background: var(--x-red-bg);   color: var(--x-red); }
+.dd-badge.pipe { background: var(--x-cyan-bg);   color: var(--x-cyan-50); }
+
+/* ── Chart empty placeholder ── */
+.chart-empty-msg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 120px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-body), sans-serif;
+  letter-spacing: 0.03em;
 }

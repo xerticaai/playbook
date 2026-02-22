@@ -4,16 +4,16 @@
   'use strict';
 
   var C = {
-    cyan:    { s: '#00BEFF', bg: 'rgba(0,190,255,0.72)',   b: '#00BEFF' },
-    green:   { s: '#22c55e', bg: 'rgba(34,197,94,0.72)',   b: '#22c55e' },
-    red:     { s: '#ef4444', bg: 'rgba(239,68,68,0.72)',   b: '#ef4444' },
-    orange:  { s: '#f97316', bg: 'rgba(249,115,22,0.72)',  b: '#f97316' },
-    warning: { s: '#eab308', bg: 'rgba(234,179,8,0.72)',   b: '#eab308' },
-    purple:  { s: '#a855f7', bg: 'rgba(168,85,247,0.72)',  b: '#a855f7' },
-    pink:    { s: '#ec4899', bg: 'rgba(236,72,153,0.72)',  b: '#ec4899' },
-    teal:    { s: '#14b8a6', bg: 'rgba(20,184,166,0.72)',  b: '#14b8a6' },
-    indigo:  { s: '#6366f1', bg: 'rgba(99,102,241,0.72)',  b: '#6366f1' },
-    muted:   { s: '#64748b', bg: 'rgba(100,116,139,0.55)', b: '#64748b' },
+    cyan:    { s: '#00BEFF', bg: 'rgba(0,190,255,0.85)',   b: '#00BEFF' },
+    green:   { s: '#22c55e', bg: 'rgba(34,197,94,0.85)',   b: '#22c55e' },
+    red:     { s: '#ef4444', bg: 'rgba(239,68,68,0.85)',   b: '#ef4444' },
+    orange:  { s: '#f97316', bg: 'rgba(249,115,22,0.85)',  b: '#f97316' },
+    warning: { s: '#eab308', bg: 'rgba(234,179,8,0.85)',   b: '#eab308' },
+    purple:  { s: '#a855f7', bg: 'rgba(168,85,247,0.85)',  b: '#a855f7' },
+    pink:    { s: '#ec4899', bg: 'rgba(236,72,153,0.85)',  b: '#ec4899' },
+    teal:    { s: '#14b8a6', bg: 'rgba(20,184,166,0.85)',  b: '#14b8a6' },
+    indigo:  { s: '#6366f1', bg: 'rgba(99,102,241,0.85)',  b: '#6366f1' },
+    muted:   { s: '#64748b', bg: 'rgba(100,116,139,0.60)', b: '#64748b' },
   };
 
   var PALETTE = [C.cyan, C.green, C.orange, C.purple, C.red, C.warning, C.teal, C.pink, C.indigo, C.muted];
@@ -203,8 +203,8 @@
     instances['por-fase'] = new Chart(canvas, {
       type: 'bar',
       data: { labels: labels, datasets: [
-        { label: 'Gross', data: labels.map(function(l){return mG[l].gross;}), backgroundColor: C.cyan.bg, borderColor: C.cyan.b, borderWidth: 1.5, borderRadius: 4 },
-        { label: 'Net',   data: labels.map(function(l){return mG[l].net;}),   backgroundColor: C.green.bg, borderColor: C.green.b, borderWidth: 1.5, borderRadius: 4 }
+        { label: 'Gross', data: labels.map(function(l){return mG[l].gross;}), backgroundColor: C.cyan.bg, borderColor: C.cyan.b, borderWidth: 2, borderRadius: 4 },
+        { label: 'Net',   data: labels.map(function(l){return mG[l].net;}),   backgroundColor: C.green.bg, borderColor: C.green.b, borderWidth: 2, borderRadius: 4 }
       ]},
       options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
         plugins: { legend: leg(), tooltip: richTip([mG,mG],[totG,totN]) },
@@ -234,8 +234,8 @@
     instances['winloss'] = new Chart(canvas, {
       type: 'bar',
       data: { labels: ['Ganhos (' + won.length + ')', 'Perdidos (' + lost.length + ')'], datasets: [
-        { label: 'Gross', data: [wG,lG], backgroundColor:[C.green.bg,C.red.bg], borderColor:[C.green.b,C.red.b], borderWidth:1.5, borderRadius:6 },
-        { label: 'Net',   data: [wN,lN], backgroundColor:[C.cyan.bg,C.orange.bg], borderColor:[C.cyan.b,C.orange.b], borderWidth:1.5, borderRadius:6 }
+        { label: 'Gross', data: [wG,lG], backgroundColor:[C.green.bg,C.red.bg], borderColor:[C.green.b,C.red.b], borderWidth:2, borderRadius:6 },
+        { label: 'Net',   data: [wN,lN], backgroundColor:[C.cyan.bg,C.orange.bg], borderColor:[C.cyan.b,C.orange.b], borderWidth:2, borderRadius:6 }
       ]},
       options: {
         responsive:true, maintainAspectRatio:false,
@@ -275,9 +275,9 @@
     instances[instKey] = new Chart(canvas, {
       type: 'bar',
       data: { labels: labels, datasets: [
-        { label:'Pipeline ('+pipe.length+')', data:labels.map(function(l){return (mP[l]||{gross:0}).gross;}), backgroundColor:cs[0].bg, borderColor:cs[0].b, borderWidth:1.5, borderRadius:3 },
-        { label:'Won ('    +won.length  +')', data:labels.map(function(l){return (mW[l]||{gross:0}).gross;}), backgroundColor:cs[1].bg, borderColor:cs[1].b, borderWidth:1.5, borderRadius:3 },
-        { label:'Lost ('   +lost.length +')', data:labels.map(function(l){return (mL[l]||{gross:0}).gross;}), backgroundColor:cs[2].bg, borderColor:cs[2].b, borderWidth:1.5, borderRadius:3 }
+        { label:'Pipeline ('+pipe.length+')', data:labels.map(function(l){return (mP[l]||{gross:0}).gross;}), backgroundColor:cs[0].bg, borderColor:cs[0].b, borderWidth:2, borderRadius:3 },
+        { label:'Won ('    +won.length  +')', data:labels.map(function(l){return (mW[l]||{gross:0}).gross;}), backgroundColor:cs[1].bg, borderColor:cs[1].b, borderWidth:2, borderRadius:3 },
+        { label:'Lost ('   +lost.length +')', data:labels.map(function(l){return (mL[l]||{gross:0}).gross;}), backgroundColor:cs[2].bg, borderColor:cs[2].b, borderWidth:2, borderRadius:3 }
       ]},
       options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
         plugins: { legend: leg(), tooltip: richTip([mP,mW,mL],[totP,totW,totL]) },
@@ -404,9 +404,9 @@
     instances['monthly'] = new Chart(canvas, {
       type: 'bar',
       data: { labels: labels, datasets: [
-        { type:'bar',  label:'Won Gross',  data:wG, backgroundColor:C.cyan.bg,  borderColor:C.cyan.b,  borderWidth:1.5, borderRadius:4, order:2 },
-        { type:'bar',  label:'Won Net',    data:wN, backgroundColor:C.green.bg, borderColor:C.green.b, borderWidth:1.5, borderRadius:4, order:2 },
-        { type:'bar',  label:'Lost Gross', data:lG, backgroundColor:C.red.bg,   borderColor:C.red.b,   borderWidth:1.5, borderRadius:4, order:2 },
+        { type:'bar',  label:'Won Gross',  data:wG, backgroundColor:C.cyan.bg,  borderColor:C.cyan.b,  borderWidth:2, borderRadius:4, order:2 },
+        { type:'bar',  label:'Won Net',    data:wN, backgroundColor:C.green.bg, borderColor:C.green.b, borderWidth:2, borderRadius:4, order:2 },
+        { type:'bar',  label:'Lost Gross', data:lG, backgroundColor:C.red.bg,   borderColor:C.red.b,   borderWidth:2, borderRadius:4, order:2 },
         { type:'line', label:'Tendência Won', data:trendWG, borderColor:C.warning.s, backgroundColor:'transparent',
           borderWidth:2.5, pointRadius:4, pointBackgroundColor:C.warning.s, tension:0.5, order:1,
           borderDash:[], fill:false }
@@ -462,6 +462,10 @@
 
   // ── Public API ───────────────────────────────────────────────────────
   window.initDashboardCharts = function () {
+    if (window.Chart && window.Chart.defaults) {
+      Chart.defaults.font.family = "'Roboto', sans-serif";
+      Chart.defaults.font.size   = 12;
+    }
     buildPorFase();
     buildWinLoss();
     buildVertical();

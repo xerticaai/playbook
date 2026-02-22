@@ -561,8 +561,8 @@
 
         <!-- View Toggle -->
         <div class="view-toggle">
-          <button class="view-btn active" id="view-btn-metricas" onclick="switchMetricView('view-kpi-cards', this)">&#x1F4CA; Métricas</button>
-          <button class="view-btn" id="view-btn-graficos" onclick="switchMetricView('view-graficos', this)">&#x1F4C8; Análise Gráfica</button>
+          <button class="view-btn active" id="view-btn-metricas" onclick="switchMetricView('view-kpi-cards', this)">Métricas</button>
+          <button class="view-btn" id="view-btn-graficos" onclick="switchMetricView('view-graficos', this)">Análise Gráfica</button>
         </div>
 
         <div id="view-kpi-cards" class="view-content active">
@@ -1084,23 +1084,23 @@
         <div id="view-graficos" class="view-content">
           <div class="bento-grid">
             <div class="card col-8">
-              <div class="card-label">&#x1F4CB; Pipeline por Fase — Gross &amp; Net</div>
+              <div class="card-label">Pipeline por Fase — Gross &amp; Net</div>
               <div class="chart-wrapper" style="height:260px;"><canvas id="chart-por-fase"></canvas></div>
             </div>
             <div class="card col-4 glow-green">
-              <div class="card-label">&#x2696; Ganhos vs Perdidos</div>
+              <div class="card-label">Ganhos vs Perdidos</div>
               <div class="chart-wrapper" style="height:260px;"><canvas id="chart-winloss"></canvas></div>
             </div>
             <div class="card col-12 glow-cyan">
-              <div class="card-label">&#x1F916; Vertical IA — Comparativo (Pipeline / Ganhos / Perdidos)</div>
+              <div class="card-label">Vertical IA — Comparativo</div>
               <div class="chart-wrapper" style="height:300px;"><canvas id="chart-vertical"></canvas></div>
             </div>
             <div class="card col-8">
-              <div class="card-label">&#x1F4C8; Receita Mensal (Ganhos Gross &amp; Net vs Perdidos)</div>
+              <div class="card-label">Receita Mensal — Ganhos &amp; Perdidos</div>
               <div class="chart-wrapper" style="height:260px;"><canvas id="chart-receita-mensal"></canvas></div>
             </div>
             <div class="card col-4">
-              <div class="card-label">&#x1F4CA; Resumo Quantitativo</div>
+              <div class="card-label">Resumo Quantitativo</div>
               <div id="chart-summary-stats" style="display:flex;flex-direction:column;gap:14px;padding-top:12px;">
                 <div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--glass-border);padding-bottom:10px;">
                   <span class="chart-stat-label">Pipeline Ativo</span>
@@ -1115,6 +1115,24 @@
                   <span class="card-value sm text-red" id="cs-lost">—</span>
                 </div>
               </div>
+            </div>
+            <!-- Row 2: Sub-Vertical + Portfolio FDM -->
+            <div class="card col-8">
+              <div class="card-label">Sub-Vertical IA — Comparativo</div>
+              <div class="chart-wrapper" style="height:300px;"><canvas id="chart-sub-vertical"></canvas></div>
+            </div>
+            <div class="card col-4 glow-pink">
+              <div class="card-label">Portfólio FDM</div>
+              <div class="chart-wrapper" style="height:300px;"><canvas id="chart-portfolio-fdm"></canvas></div>
+            </div>
+            <!-- Row 3: Estado + Segmento -->
+            <div class="card col-6">
+              <div class="card-label">Por Estado</div>
+              <div class="chart-wrapper" style="height:280px;"><canvas id="chart-estado"></canvas></div>
+            </div>
+            <div class="card col-6">
+              <div class="card-label">Por Segmento</div>
+              <div class="chart-wrapper" style="height:280px;"><canvas id="chart-segmento"></canvas></div>
             </div>
           </div>
         </div><!-- /view-graficos -->
@@ -2110,7 +2128,7 @@
           border-bottom: 3px solid transparent;
           transition: all 0.3s;
         ">
-          ⏱️ Previsão de Ciclo
+          Previsão de Ciclo
         </button>
         <button class="ml-tab" data-tab="previsibilidade" onclick="switchMLTab('previsibilidade')" style="
           background: none; 
