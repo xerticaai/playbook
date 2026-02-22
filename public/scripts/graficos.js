@@ -392,7 +392,8 @@
           if (!elements||!elements.length) return;
           var label = chart.data.labels[elements[0].index]; if (!label) return;
           var norm = label.trim();
-          var items = all.filter(function(d){ return (d.Portfolio_FDM||d.portfolio||'').trim()===norm; });
+          // Considera Portfolio_FDM e Portfolio (ambas as colunas)
+          var items = all.filter(function(d){ return (d.Portfolio_FDM||d.Portfolio||d.portfolio||'').trim()===norm; });
           openDrilldown('Portfolio FDM: ' + norm, items);
         }
       }
@@ -408,7 +409,8 @@
     var lost = window.lostAgg || [];
 
     function portfolioLabel(d) {
-      var raw = d.Portfolio_FDM || d.portfolio || d.Portfolio || '';
+      // Lê Portfolio_FDM primeiro; fallback para Portfolio (coluna original)
+      var raw = d.Portfolio_FDM || d.Portfolio || d.portfolio || '';
       var txt = String(raw || '').trim();
       if (!txt) return 'Sem portfólio';
       var low = txt.toLowerCase();
@@ -418,6 +420,7 @@
       if (low.indexOf('plataforma') !== -1) return 'Plataforma';
       if (low.indexOf('service') !== -1) return 'Services';
       if (low.indexOf('acelerador') !== -1) return 'Outros Aceleradores';
+      if (low.indexOf('carreira') !== -1) return 'Carreira';
       if (low.indexOf('outro') !== -1) return 'Outros Portfólios';
       return txt;
     }
@@ -439,15 +442,150 @@
     instances['portfolio-versao'] = new Chart(canvas, {
       type: 'bar',
       data: { labels: labels, datasets: [
-        { label:'Pipeline', data:labels.map(function(l){return (mP[l]||{gross:0}).gross;}), backgroundColor:C.warning.bg, borderColor:C.warning.b, borderWidth:2, borderRadius:6 },
-        { label:'Won',      data:labels.map(function(l){return (mW[l]||{gross:0}).gross;}), backgroundColor:C.green.bg,   borderColor:C.green.b,   borderWidth:2, borderRadius:6 },
-        { label:'Lost',     data:labels.map(function(l){return (mL[l]||{gross:0}).gross;}), backgroundColor:C.red.bg,     borderColor:C.red.b,     borderWidth:2, borderRadius:6 }
+        { label:'Pipeline', data:labels.map(function(l){return (mP[l]||{gross:0}).gross;}), backgroundColor:C.warning.bg, borderColor:C.warning.b, borderWidth:2, borderRadius:4 },
+        { label:'Won',      data:labels.map(function(l){return (mW[l]||{gross:0}).gross;}), backgroundColor:C.green.bg,   borderColor:C.green.b,   borderWidth:2, borderRadius:4 },
+        { label:'Lost',     data:labels.map(function(l){return (mL[l]||{gross:0}).gross;}), backgroundColor:C.red.bg,     borderColor:C.red.b,     borderWidth:2, borderRadius:4 }
       ]},
       options: {
+        // Horizontal: labels longos ficam legíveis no eixo Y
+        indexAxis: 'y',
         responsive:true, maintainAspectRatio:false,
         plugins: { legend: leg(), tooltip: richTip([mP,mW,mL],[totP,totW,totL]) },
-        scales: scalesV(),
+        scales: scalesH(),
         onClick: makeDimClick(pipe, won, lost, portfolioLabel)
+      }
+    });
+  }
+
+  // ── 5c. Forecast SF — doughnut ──────────────────────────────────────
+  function buildForecastSF() {
+    var canvas = document.getElementById('chart-forecast-sf'); if (!canvas) return;
+    kill('forecast-sf');
+    var pipe = window.pipelineDataRaw || [];
+    if (!pipe.length) { showEmpty(canvas, 'Sem dados de pipeline'); return; }
+
+    var ORDER = ['Commit','Upside','Best Case','Pipeline','Não Definido'];
+    var COLORS = { 'Commit': C.green, 'Upside': C.cyan, 'Best Case': C.teal, 'Pipeline': C.purple, 'Não Definido': C.muted };
+
+    var m = groupBy(pipe, function(d) { return d.Forecast_SF || d.forecast_sf || 'Não Definido'; });
+    var inOrder = ORDER.filter(function(k) { return m[k] && m[k].count > 0; });
+    var extra   = topKeys(m,10).filter(function(k) { return ORDER.indexOf(k) === -1; });
+    var labels  = inOrder.concat(extra);
+    if (!labels.length) { showEmpty(canvas, 'Forecast SF não disponível'); return; }
+
+    var t = th();
+    var tot = labels.reduce(function(s,l){ return s+(m[l]?m[l].gross:0); },0);
+
+    instances['forecast-sf'] = new Chart(canvas, {
+      type: 'doughnut',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: labels.map(function(l){ return m[l] ? m[l].gross : 0; }),
+          backgroundColor: labels.map(function(l){ return (COLORS[l]||C.orange).bg; }),
+          borderColor:     labels.map(function(l){ return (COLORS[l]||C.orange).s; }),
+          borderWidth: 2, hoverOffset: 10
+        }]
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false, cutout:'56%',
+        plugins: {
+          legend: { position:'bottom', labels:{ color:t.txt, font:{family:t.font,size:10}, boxWidth:10, padding:5 } },
+          tooltip: { callbacks: { label: function(ctx) {
+            var cnt = m[ctx.label] ? m[ctx.label].count : 0;
+            return [' '+ctx.label+': '+fmt(ctx.raw), ' '+fmtPct(ctx.raw,tot)+' do total', ' '+cnt+' deals'];
+          }}}
+        },
+        onClick: function(evt, elements, chart) {
+          if (!elements||!elements.length) return;
+          var label = chart.data.labels[elements[0].index]; if (!label) return;
+          var norm = label.trim();
+          var items = (window.pipelineDataRaw||[]).filter(function(d) {
+            return (d.Forecast_SF||d.forecast_sf||'Não Definido').trim() === norm;
+          }).map(function(d){ return Object.assign({_src:'pipe'}, d); });
+          openDrilldown('Forecast SF: ' + norm, items);
+        }
+      }
+    });
+  }
+
+  // ── 5d. Win Rate por Vendedor ─────────────────────────────────────────
+  function buildWinRateVendedor() {
+    var canvas = document.getElementById('chart-winrate-vendedor'); if (!canvas) return;
+    kill('winrate-vendedor');
+    var won  = window.wonAgg  || [];
+    var lost = window.lostAgg || [];
+
+    // Agrega wins/losses por vendedor
+    var sellers = {};
+    won.forEach(function(d) {
+      var s = d.Vendedor || d.seller || 'N/A';
+      if (!sellers[s]) sellers[s] = { wins:0, losses:0, wG:0, lG:0 };
+      sellers[s].wins++;
+      sellers[s].wG += +(d.Gross||d.gross||0);
+    });
+    lost.forEach(function(d) {
+      var s = d.Vendedor || d.seller || 'N/A';
+      if (!sellers[s]) sellers[s] = { wins:0, losses:0, wG:0, lG:0 };
+      sellers[s].losses++;
+      sellers[s].lG += +(d.Gross||d.gross||0);
+    });
+
+    // Mínimo 2 deals totais; ordena por win rate desc
+    var keys = Object.keys(sellers).filter(function(s){ return sellers[s].wins + sellers[s].losses >= 2; });
+    keys.sort(function(a,b) {
+      var rA = sellers[a].wins / (sellers[a].wins + sellers[a].losses);
+      var rB = sellers[b].wins / (sellers[b].wins + sellers[b].losses);
+      return rB - rA;
+    });
+    keys = keys.slice(0, 15);
+
+    if (!keys.length) { showEmpty(canvas, 'Sem dados de conversão por vendedor'); return; }
+
+    var rates = keys.map(function(s) {
+      return +((sellers[s].wins / (sellers[s].wins + sellers[s].losses)) * 100).toFixed(1);
+    });
+    var t = th();
+
+    instances['winrate-vendedor'] = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: keys,
+        datasets: [{
+          label: 'Win Rate (%)',
+          data: rates,
+          backgroundColor: rates.map(function(r){ return r>=60 ? C.green.bg : r>=40 ? C.warning.bg : C.red.bg; }),
+          borderColor:     rates.map(function(r){ return r>=60 ? C.green.b  : r>=40 ? C.warning.b  : C.red.b;  }),
+          borderWidth: 2, borderRadius: 4
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: function(ctx) {
+            var s  = sellers[keys[ctx.dataIndex]];
+            var tot = s.wins + s.losses;
+            return [
+              ' Win Rate: ' + ctx.raw + '%',
+              ' Ganhos: '  + s.wins + ' / ' + tot + ' deals',
+              ' Gross Won: ' + fmt(s.wG)
+            ];
+          }}}
+        },
+        scales: {
+          x: { min:0, max:100, ticks:{ color:t.txt, font:{family:t.font,size:11}, callback:function(v){return v+'%';} }, grid:{color:t.grid} },
+          y: { ticks:{ color:t.txt, font:{family:t.font,size:11}, maxTicksLimit:15 }, grid:{color:'transparent'} }
+        },
+        onClick: function(evt, elements, chart) {
+          if (!elements||!elements.length) return;
+          var seller = chart.data.labels[elements[0].index]; if (!seller) return;
+          var items = [];
+          won.forEach(function(d){ if ((d.Vendedor||d.seller||'N/A')===seller) items.push(Object.assign({_src:'won'},d)); });
+          lost.forEach(function(d){ if ((d.Vendedor||d.seller||'N/A')===seller) items.push(Object.assign({_src:'lost'},d)); });
+          openDrilldown('Conversão: ' + seller, items);
+        }
       }
     });
   }
@@ -702,6 +840,8 @@
     buildSubVertical();
     buildPortfolioFDM();
     buildPortfolioVersao();
+    buildForecastSF();
+    buildWinRateVendedor();
     buildSegmento();
     buildEstado();
     buildCidade();
