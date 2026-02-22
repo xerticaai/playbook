@@ -16,7 +16,7 @@
 
 const FAT_SOURCE_SPREADSHEET_ID = '18PDjdprqBZCQsJxA8Jc7xQNX7iLsfpPWQ-AuBDF4OgQ';
 const FAT_SOURCE_SHEET_NAME     = 'Faturamento Consolidado (Vizualização Brasil)';
-const FAT_DEST_SHEET_NAME       = 'Faturamento_2026';
+const FAT_DEST_SHEET_NAME       = 'Faturamento';   // ← BQ: faturamento
 const FAT_TRIGGER_HANDLER       = 'migrarFaturamento';
 
 // ==================== ALIAS MAP ====================
@@ -78,7 +78,7 @@ const FAT_ALIAS_MAP = {
 
 /**
  * Migra TODAS as colunas de "Faturamento Consolidado (Vizualização Brasil)"
- * → "Faturamento_2026", com cabeçalho padronizado para BigQuery.
+ * → "Faturamento", com cabeçalho padronizado para BigQuery (tabela BQ: faturamento).
  *
  * Pode ser executado manualmente no AppScript Editor ou via trigger de 12h.
  */
@@ -257,6 +257,220 @@ function statusTriggerFaturamento() {
   }
 }
 
+// ==================== Q1 2026 ====================
+
+const FAT_Q1_SOURCE_SHEET_NAME = 'Q1 2026';
+const FAT_Q1_DEST_SHEET_NAME   = 'Faturamento2026'; // ← BQ: faturamento_2026
+const FAT_Q1_TRIGGER_HANDLER   = 'migrarFaturamentoQ1';
+
+/**
+ * Alias map para a aba "Q1 2026".
+ * Colunas em comum com FAT_ALIAS_MAP usam o MESMO nome BQ para compatibilidade.
+ * Colunas exclusivas do Q1 recebem nomes novos.
+ */
+const FAT_Q1_ALIAS_MAP = {
+  // ── Em comum com Faturamento Consolidado ──────────────────────────
+  'mes':                                         'mes',
+  'pais':                                        'pais',
+  'cuenta financiera':                           'cuenta_financeira',
+  'tipo de documento':                           'tipo_documento',
+  'fecha de factura':                            'fecha_factura',
+  'poliza (pais)':                               'poliza_pais',
+  'cueta contable':                              'cuenta_contable',
+  '(moneda local) valor de factura (sin iva)':   'valor_fatura_moeda_local_sem_iva',
+  'producto':                                    'produto',
+  'oportunidad':                                 'oportunidade',
+  'cliente':                                     'cliente',
+  '% desc. xertica (ns)':                        'percentual_desconto_xertica_ns',
+  'tipo de producto':                            'tipo_produto',
+  'portafolio':                                  'portafolio',
+  'timbradas':                                   'timbradas',
+  'estado de pago':                              'estado_pagamento',
+  'fecha doc. timbrado':                         'fecha_doc_timbrado',
+  'familia':                                     'familia',
+  'tipo de cambio diario':                       'tipo_cambio_diario',
+  'valor de factura en usd (comercial)':         'valor_fatura_usd_comercial',
+  'net revenue':                                 'net_revenue',
+  'backlog nombrado':                            'backlog_nomeado',
+  'pais del comercial':                          'pais_comercial',
+  'comercial':                                   'comercial',
+  'ano oportunidad':                             'ano_oportunidade',
+  'tipo de oportunidad (line)':                  'tipo_oportunidade_line',
+  'dominio':                                     'dominio',
+  'segmento':                                    'segmento',
+  'concatenar':                                  'concatenar',
+  'margen % final':                              'margem_percentual_final',
+  'revision margen':                             'revisao_margem',
+  'etapa de la oportunidad':                     'etapa_oportunidade',
+  'descuento xertica':                           'desconto_xertica',
+  'escenario nr':                                'cenario_nr',
+  // ── Exclusivos do Q1 ──────────────────────────────────────────────
+  'id oportunidad':                              'id_oportunidade',
+  'billing id':                                  'billing_id',
+  'tipo cambio pactado':                         'tipo_cambio_pactado',
+  'incentivos google':                           'incentivos_google',
+};
+
+/**
+ * Migra TODAS as colunas da aba "Q1 2026" → "Faturamento2026".
+ * (tabela BQ: faturamento_2026)
+ * Reutiliza a infra de migrarFaturamento() com alias map específico para Q1.
+ */
+function migrarFaturamentoQ1() {
+  const inicio = new Date();
+  console.log(`🚀 [FaturamentoQ1] Iniciando migração em ${inicio.toLocaleString('pt-BR')}`);
+
+  try {
+    const ssOrigem  = SpreadsheetApp.openById(FAT_SOURCE_SPREADSHEET_ID);
+    const abaOrigem = ssOrigem.getSheetByName(FAT_Q1_SOURCE_SHEET_NAME);
+
+    if (!abaOrigem) {
+      throw new Error(
+        `Aba "${FAT_Q1_SOURCE_SHEET_NAME}" não encontrada na planilha de origem ` +
+        `(ID: ${FAT_SOURCE_SPREADSHEET_ID})`
+      );
+    }
+
+    const ultimaLinha       = abaOrigem.getLastRow();
+    const ultimaColunaBruta = abaOrigem.getLastColumn();
+
+    if (ultimaLinha <= 1) {
+      console.log('⚠️ [FaturamentoQ1] Aba de origem vazia ou só cabeçalho. Migração cancelada.');
+      return;
+    }
+
+    const dadosBrutos  = abaOrigem.getRange(1, 1, ultimaLinha, ultimaColunaBruta).getValues();
+    const headerRaw    = dadosBrutos[0];
+    const linhasBrutas = dadosBrutos.slice(1);
+
+    // Trim de colunas vazias no final
+    let ultimaColuna = ultimaColunaBruta;
+    while (ultimaColuna > 0) {
+      const idx = ultimaColuna - 1;
+      const temHeader = String(headerRaw[idx] || '').trim() !== '';
+      const temDado   = linhasBrutas.some(r => r[idx] !== '' && r[idx] !== null && r[idx] !== undefined);
+      if (temHeader || temDado) break;
+      ultimaColuna--;
+    }
+
+    const headerOrigem = headerRaw.slice(0, ultimaColuna);
+    const linhasDados  = linhasBrutas.map(r => r.slice(0, ultimaColuna));
+
+    console.log(
+      `📋 [FaturamentoQ1] Origem: ${linhasDados.length} linhas | ` +
+      `${ultimaColunaBruta} colunas brutas → ${ultimaColuna} colunas úteis após trim`
+    );
+
+    const headerBQ = construirHeaderBQ_(headerOrigem, FAT_Q1_ALIAS_MAP);
+
+    const aliasados = headerBQ.filter((_, i) => {
+      const chave = normalizar_(String(headerOrigem[i]));
+      return FAT_Q1_ALIAS_MAP[chave] !== undefined;
+    }).length;
+    console.log(
+      `🔍 [FaturamentoQ1] ${ultimaColuna} colunas | ` +
+      `${aliasados} com alias explícito | ` +
+      `${ultimaColuna - aliasados} auto-normalizadas`
+    );
+    console.log(`📝 Headers destino: ${headerBQ.join(', ')}`);
+
+    const linhasMapeadas = linhasDados
+      .filter(linha => linha.some(v => v !== '' && v !== null && v !== undefined))
+      .map(linha => linha.map(val => formatarValor_(val)));
+
+    if (linhasMapeadas.length === 0) {
+      console.log('⚠️ [FaturamentoQ1] Nenhuma linha com dados encontrada após filtro.');
+      return;
+    }
+
+    const ssDestino = SpreadsheetApp.getActiveSpreadsheet();
+    let abaDestino  = ssDestino.getSheetByName(FAT_Q1_DEST_SHEET_NAME);
+    if (!abaDestino) {
+      abaDestino = ssDestino.insertSheet(FAT_Q1_DEST_SHEET_NAME);
+      console.log(`📝 [FaturamentoQ1] Aba "${FAT_Q1_DEST_SHEET_NAME}" criada no destino.`);
+    }
+
+    abaDestino.clearContents();
+    const totalColunas = headerBQ.length;
+    const todosOsDados = [headerBQ, ...linhasMapeadas];
+    abaDestino.getRange(1, 1, todosOsDados.length, totalColunas).setValues(todosOsDados);
+
+    const rangeHeader = abaDestino.getRange(1, 1, 1, totalColunas);
+    rangeHeader.setFontWeight('bold');
+    rangeHeader.setBackground('#0f9d58'); // verde para diferenciar visualmente
+    rangeHeader.setFontColor('#ffffff');
+    abaDestino.setFrozenRows(1);
+
+    const celTimestamp = abaDestino.getRange(1, totalColunas + 2);
+    celTimestamp.setValue(`Atualizado: ${new Date().toLocaleString('pt-BR')}`);
+    celTimestamp.setFontColor('#888888');
+    celTimestamp.setFontStyle('italic');
+
+    const duracao = ((new Date() - inicio) / 1000).toFixed(1);
+    console.log(
+      `✅ [FaturamentoQ1] Concluído: ${linhasMapeadas.length} linhas × ${totalColunas} colunas ` +
+      `gravadas em "${FAT_Q1_DEST_SHEET_NAME}" (${duracao}s)`
+    );
+
+  } catch (e) {
+    console.error(`❌ [FaturamentoQ1] Erro: ${e.message}\n${e.stack}`);
+    throw e;
+  }
+}
+
+/**
+ * Migra AMBAS as abas: Faturamento Consolidado + Q1 2026.
+ * Use este como único trigger se quiser consolidar tudo numa execução.
+ */
+function migrarTodoFaturamento() {
+  migrarFaturamento();
+  migrarFaturamentoQ1();
+}
+
+function instalarTriggerFaturamentoQ1_12h() {
+  removerTriggerFaturamentoQ1();
+  ScriptApp.newTrigger(FAT_Q1_TRIGGER_HANDLER)
+    .timeBased()
+    .everyHours(12)
+    .create();
+  console.log(`✅ [FaturamentoQ1] Trigger de 12h instalado para "${FAT_Q1_TRIGGER_HANDLER}"`);
+  try {
+    SpreadsheetApp.getUi().alert(
+      '⏰ Trigger Q1 instalado!\n\n' +
+      'A migração da aba Q1 2026 será executada a cada 12 horas.\n\n' +
+      'Para remover: removerTriggerFaturamentoQ1()'
+    );
+  } catch (_) {}
+}
+
+function removerTriggerFaturamentoQ1() {
+  const triggers = ScriptApp.getProjectTriggers();
+  let removidos = 0;
+  triggers.forEach(t => {
+    if (t.getHandlerFunction() === FAT_Q1_TRIGGER_HANDLER) {
+      ScriptApp.deleteTrigger(t);
+      removidos++;
+    }
+  });
+  console.log(
+    removidos > 0
+      ? `🗑️ [FaturamentoQ1] ${removidos} trigger(s) removido(s).`
+      : `ℹ️ [FaturamentoQ1] Nenhum trigger ativo encontrado.`
+  );
+}
+
+function statusTriggerFaturamentoQ1() {
+  const triggers = ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === FAT_Q1_TRIGGER_HANDLER);
+  if (triggers.length === 0) {
+    console.log(`ℹ️ [FaturamentoQ1] Trigger NÃO instalado.`);
+  } else {
+    triggers.forEach(t =>
+      console.log(`✅ [FaturamentoQ1] Trigger ativo | ID: ${t.getUniqueId()} | Tipo: ${t.getEventType()}`)
+    );
+  }
+}
+
 // ==================== UTILITÁRIOS INTERNOS ====================
 
 /**
@@ -271,7 +485,13 @@ function statusTriggerFaturamento() {
  * @param {Array} headers - Linha 0 da planilha de origem (já trimada ao último dado).
  * @returns {string[]} Nomes padronizados, um por coluna.
  */
-function construirHeaderBQ_(headers) {
+/**
+ * @param {Array}  headers  - Linha 0 da planilha de origem (já trimada ao último dado).
+ * @param {Object} [aliasMap] - Mapa de aliases; usa FAT_ALIAS_MAP se omitido.
+ * @returns {string[]} Nomes padronizados BQ-safe, um por coluna.
+ */
+function construirHeaderBQ_(headers, aliasMap) {
+  const mapa = aliasMap || FAT_ALIAS_MAP;
   // Primeira passagem: gerar nome base para cada coluna
   let extraCount = 0;
   const nomes = headers.map((h) => {
@@ -282,7 +502,7 @@ function construirHeaderBQ_(headers) {
       return extraCount === 1 ? 'coluna_extra' : `coluna_extra_${extraCount}`;
     }
     const chave = normalizar_(raw);
-    if (FAT_ALIAS_MAP[chave]) return FAT_ALIAS_MAP[chave];
+    if (mapa[chave]) return mapa[chave];
     return autoBqName_(raw);
   });
 

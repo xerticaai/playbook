@@ -664,6 +664,41 @@ def get_metrics(
         FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
         {pipeline_where} AND SAFE_CAST(Confianca AS FLOAT64) >= 50
         """
+
+        meta_filters = []
+        parsed_meta_month_expr = (
+            "COALESCE("
+            "SAFE.PARSE_DATE('%Y-%m', REGEXP_EXTRACT(REPLACE(COALESCE(Mes_Ano, ''), '/', '-'), r'(20\\d{2}-\\d{1,2})')),"
+            "SAFE.PARSE_DATE('%m-%Y', REGEXP_EXTRACT(REPLACE(COALESCE(Mes_Ano, ''), '/', '-'), r'([0-9]{1,2}-20\\d{2})'))"
+            ")"
+        )
+
+        if year:
+            meta_filters.append(
+                f"(" 
+                f"(SAFE_CAST(REGEXP_EXTRACT(COALESCE(Periodo_Fiscal, ''), r'FY([0-9]{{2}})') AS INT64) + 2000 = {year}) "
+                f"OR SAFE_CAST(REGEXP_EXTRACT(COALESCE(Mes_Ano, ''), r'(20[0-9]{{2}})') AS INT64) = {year}"
+                f")"
+            )
+
+        if quarter:
+            meta_filters.append(
+                f"(" 
+                f"REGEXP_CONTAINS(COALESCE(Periodo_Fiscal, ''), r'-Q{quarter}$') "
+                f"OR EXTRACT(QUARTER FROM {parsed_meta_month_expr}) = {quarter}"
+                f")"
+            )
+        elif month:
+            meta_filters.append(f"EXTRACT(MONTH FROM {parsed_meta_month_expr}) = {month}")
+
+        meta_where = "WHERE " + " AND ".join(meta_filters) if meta_filters else ""
+        meta_query = f"""
+        SELECT
+            ROUND(SUM(Gross), 2) as gross,
+            ROUND(SUM(Net), 2) as net
+        FROM `{PROJECT_ID}.{DATASET_ID}.meta`
+        {meta_where}
+        """
         
         # Pipeline TOTAL (sem filtros - sempre retorna todos os deals)
         pipeline_total_query = f"""
@@ -681,6 +716,7 @@ def get_metrics(
         won_result = query_to_dict(won_query)[0]
         lost_result = query_to_dict(lost_query)[0]
         high_conf_result = query_to_dict(high_confidence_query)[0]
+        meta_result = query_to_dict(meta_query)[0]
         
         # Calculate win rate and cycle efficiency
         total_closed = (won_result['deals_count'] or 0) + (lost_result['deals_count'] or 0)
@@ -689,6 +725,18 @@ def get_metrics(
         won_cycle = won_result['avg_cycle_days'] or 0
         lost_cycle = lost_result['avg_cycle_days'] or 0
         cycle_efficiency = round((1 - (won_cycle / lost_cycle)) * 100, 1) if lost_cycle > 0 else 0
+
+        pipeline_plus_closed_gross = (pipeline_result['gross'] or 0) + (won_result['gross'] or 0)
+        pipeline_plus_closed_net = (pipeline_result['net'] or 0) + (won_result['net'] or 0)
+        meta_gross = meta_result['gross'] or 0
+        meta_net = meta_result['net'] or 0
+        closed_gross = won_result['gross'] or 0
+        closed_net = won_result['net'] or 0
+
+        pipeline_closed_attainment_gross = round((pipeline_plus_closed_gross / meta_gross) * 100, 1) if meta_gross > 0 else 0
+        pipeline_closed_attainment_net = round((pipeline_plus_closed_net / meta_net) * 100, 1) if meta_net > 0 else 0
+        closed_attainment_gross = round((closed_gross / meta_gross) * 100, 1) if meta_gross > 0 else 0
+        closed_attainment_net = round((closed_net / meta_net) * 100, 1) if meta_net > 0 else 0
         
         result = {
             "pipeline_total": {
@@ -730,6 +778,28 @@ def get_metrics(
                 "gross": high_conf_result['gross'] or 0,
                 "net": high_conf_result['net'] or 0,
                 "avg_confidence": high_conf_result['avg_confidence'] or 0
+            },
+            "meta_analysis": {
+                "meta": {
+                    "gross": meta_gross,
+                    "net": meta_net
+                },
+                "pipeline_plus_closed": {
+                    "gross": pipeline_plus_closed_gross,
+                    "net": pipeline_plus_closed_net,
+                    "attainment_gross_pct": pipeline_closed_attainment_gross,
+                    "attainment_net_pct": pipeline_closed_attainment_net,
+                    "gap_gross": round(meta_gross - pipeline_plus_closed_gross, 2),
+                    "gap_net": round(meta_net - pipeline_plus_closed_net, 2)
+                },
+                "closed_vs_meta": {
+                    "gross": closed_gross,
+                    "net": closed_net,
+                    "attainment_gross_pct": closed_attainment_gross,
+                    "attainment_net_pct": closed_attainment_net,
+                    "gap_gross": round(meta_gross - closed_gross, 2),
+                    "gap_net": round(meta_net - closed_net, 2)
+                }
             }
         }
         set_cached_response(cache_key, result)
@@ -834,7 +904,12 @@ def get_pipeline(
             Gross, Net, Forecast_SF, Forecast_IA,
             Perfil, Produtos,
             Owner_Preventa, Vertical_IA, Sub_vertical_IA, Sub_sub_vertical_IA,
-            Estado_Cidade_Detectado
+            Estado_Cidade_Detectado,
+            COALESCE(CAST(Portfolio_FDM AS STRING), '') as Portfolio_FDM,
+            COALESCE(CAST(Segmento_consolidado AS STRING), '') as Segmento_consolidado,
+            COALESCE(CAST(Subsegmento_de_mercado AS STRING), '') as Subsegmento_de_mercado,
+            COALESCE(CAST(Cidade_de_cobranca AS STRING), '') as Cidade_de_cobranca,
+            COALESCE(CAST(Estado_Provincia_de_cobranca AS STRING), '') as Estado_Provincia_de_cobranca
         FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
         {where_clause}
         ORDER BY Gross DESC
@@ -1023,19 +1098,42 @@ def get_closed_won(
                 closed_filters.append(seller_filter)
         
         where_clause = f"WHERE {' AND '.join(closed_filters)}" if closed_filters else ""
-        
-        query = f"""
-        SELECT 
-            Oportunidade, Vendedor, Status, Conta,
-            Fiscal_Q,
-            Data_Fechamento, SAFE_CAST(Ciclo_dias AS FLOAT64) as Ciclo_dias,
-            Gross, Net, Tipo_Resultado, Fatores_Sucesso, Atividades
-        FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`
-        {where_clause}
-        ORDER BY Gross DESC
-        LIMIT {limit}
-        """
-        result = query_to_dict(query)
+
+        # Try extended query with dimensional fields; fall back to simple query if columns missing
+        try:
+            query = f"""
+            SELECT
+                Oportunidade, Vendedor, Status, Conta,
+                Fiscal_Q,
+                Data_Fechamento, SAFE_CAST(Ciclo_dias AS FLOAT64) as Ciclo_dias,
+                Gross, Net, Tipo_Resultado, Fatores_Sucesso, Atividades,
+                COALESCE(CAST(Vertical_IA AS STRING), '') as Vertical_IA,
+                COALESCE(CAST(Sub_vertical_IA AS STRING), '') as Sub_vertical_IA,
+                COALESCE(CAST(Sub_sub_vertical_IA AS STRING), '') as Sub_sub_vertical_IA,
+                COALESCE(CAST(Portfolio_FDM AS STRING), '') as Portfolio_FDM,
+                COALESCE(CAST(Segmento_consolidado AS STRING), '') as Segmento_consolidado,
+                COALESCE(CAST(Subsegmento_de_mercado AS STRING), '') as Subsegmento_de_mercado,
+                COALESCE(CAST(Cidade_de_cobranca AS STRING), '') as Cidade_de_cobranca,
+                COALESCE(CAST(Estado_Provincia_de_cobranca AS STRING), '') as Estado_Provincia_de_cobranca
+            FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`
+            {where_clause}
+            ORDER BY Gross DESC
+            LIMIT {limit}
+            """
+            result = query_to_dict(query)
+        except Exception:
+            query = f"""
+            SELECT
+                Oportunidade, Vendedor, Status, Conta,
+                Fiscal_Q,
+                Data_Fechamento, SAFE_CAST(Ciclo_dias AS FLOAT64) as Ciclo_dias,
+                Gross, Net, Tipo_Resultado, Fatores_Sucesso, Atividades
+            FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`
+            {where_clause}
+            ORDER BY Gross DESC
+            LIMIT {limit}
+            """
+            result = query_to_dict(query)
         set_cached_response(cache_key, result)
         return result
     except Exception as e:
@@ -1096,19 +1194,42 @@ def get_closed_lost(
                 closed_filters.append(seller_filter)
         
         where_clause = f"WHERE {' AND '.join(closed_filters)}" if closed_filters else ""
-        
-        query = f"""
-        SELECT 
-            Oportunidade, Vendedor, Status, Conta,
-            Fiscal_Q,
-            Data_Fechamento, SAFE_CAST(Ciclo_dias AS FLOAT64) as Ciclo_dias,
-            Gross, Net, Tipo_Resultado, Causa_Raiz, Atividades
-        FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`
-        {where_clause}
-        ORDER BY Gross DESC
-        LIMIT {limit}
-        """
-        result = query_to_dict(query)
+
+        # Try extended query with dimensional fields; fall back to simple query if columns missing
+        try:
+            query = f"""
+            SELECT
+                Oportunidade, Vendedor, Status, Conta,
+                Fiscal_Q,
+                Data_Fechamento, SAFE_CAST(Ciclo_dias AS FLOAT64) as Ciclo_dias,
+                Gross, Net, Tipo_Resultado, Causa_Raiz, Atividades,
+                COALESCE(CAST(Vertical_IA AS STRING), '') as Vertical_IA,
+                COALESCE(CAST(Sub_vertical_IA AS STRING), '') as Sub_vertical_IA,
+                COALESCE(CAST(Sub_sub_vertical_IA AS STRING), '') as Sub_sub_vertical_IA,
+                COALESCE(CAST(Portfolio_FDM AS STRING), '') as Portfolio_FDM,
+                COALESCE(CAST(Segmento_consolidado AS STRING), '') as Segmento_consolidado,
+                COALESCE(CAST(Subsegmento_de_mercado AS STRING), '') as Subsegmento_de_mercado,
+                COALESCE(CAST(Cidade_de_cobranca AS STRING), '') as Cidade_de_cobranca,
+                COALESCE(CAST(Estado_Provincia_de_cobranca AS STRING), '') as Estado_Provincia_de_cobranca
+            FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`
+            {where_clause}
+            ORDER BY Gross DESC
+            LIMIT {limit}
+            """
+            result = query_to_dict(query)
+        except Exception:
+            query = f"""
+            SELECT
+                Oportunidade, Vendedor, Status, Conta,
+                Fiscal_Q,
+                Data_Fechamento, SAFE_CAST(Ciclo_dias AS FLOAT64) as Ciclo_dias,
+                Gross, Net, Tipo_Resultado, Causa_Raiz, Atividades
+            FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`
+            {where_clause}
+            ORDER BY Gross DESC
+            LIMIT {limit}
+            """
+            result = query_to_dict(query)
         set_cached_response(cache_key, result)
         return result
     except Exception as e:

@@ -91,15 +91,19 @@ function onOpen() {
         .addItem('🧪 Testar Conexão', 'testarConexaoBigQuery'))
       
       // ══════════════════════════════════════════════════════════════
-      // SEÇÃO 6: FATURAMENTO 2026 (Migração da planilha origem)
+      // SEÇÃO 6: FATURAMENTO (Migração da planilha origem)
       // ══════════════════════════════════════════════════════════════
       .addSeparator()
-      .addSubMenu(ui.createMenu('💰 Faturamento 2026')
-        .addItem('🔄 Migrar Faturamento Agora', 'migrarFaturamento')
+      .addSubMenu(ui.createMenu('💰 Faturamento')
+        .addItem('🔄 Migrar Faturamento Consolidado', 'migrarFaturamento')
+        .addItem('🔄 Migrar Q1 2026', 'migrarFaturamentoQ1')
+        .addItem('🔄 Migrar Tudo (Consolidado + Q1)', 'migrarTodoFaturamento')
         .addSeparator()
-        .addItem('⏰ Ativar Sync Automático (12h)', 'instalarTriggerFaturamento12h')
-        .addItem('🛑 Desativar Sync Automático', 'removerTriggerFaturamento')
-        .addItem('📊 Ver Status do Trigger', 'statusTriggerFaturamento'))
+        .addItem('⏰ Ativar Sync Consolidado (12h)', 'instalarTriggerFaturamento12h')
+        .addItem('⏰ Ativar Sync Q1 2026 (12h)', 'instalarTriggerFaturamentoQ1_12h')
+        .addItem('🛑 Desativar Sync Consolidado', 'removerTriggerFaturamento')
+        .addItem('🛑 Desativar Sync Q1 2026', 'removerTriggerFaturamentoQ1')
+        .addItem('📊 Status Triggers', 'statusTriggerFaturamento'))
 
       // ══════════════════════════════════════════════════════════════
       // SEÇÃO 7: RESET COMPLETO (Isolado para segurança)
