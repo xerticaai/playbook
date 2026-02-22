@@ -533,12 +533,20 @@
       <!-- ========================================================================== -->
       <!-- SEÇÃO 1: PIPELINE ABERTO (Oportunidades em Andamento) -->
       <!-- ========================================================================== -->
-      <h4 class="metric-section-header pipeline">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
-          <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
-          <polyline points="17 6 23 6 23 12"/>
-        </svg>
-        PIPELINE ABERTO
+      <h4 class="metric-section-header pipeline" style="display:flex;align-items:center;justify-content:space-between;">
+        <span style="display:flex;align-items:center;gap:8px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px;">
+            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
+            <polyline points="17 6 23 6 23 12"/>
+          </svg>
+          PIPELINE ABERTO
+        </span>
+        <button onclick="openAIPanel()" class="ai-strategy-trigger-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+          </svg>
+          Análise IA
+        </button>
       </h4>
       <div class="kpi-grid exec-kpi-grid">
         <div class="kpi-card exec-kpi-card--cyan">
@@ -1036,39 +1044,49 @@
       </div>
 
       <!-- ======================================================= -->
-      <!-- ANÁLISE ESTRATÉGICA (IA) — FIM DA VISÃO EXECUTIVA       -->
+      <!-- ANÁLISE ESTRATÉGICA (IA) — slide panel trigger slot     -->
       <!-- ======================================================= -->
-      <div class="exec-ai-section" style="margin-top:50px;">
-        <div class="exec-ai-bar">
-          <div class="exec-ai-icon-wrap">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:18px;height:18px;color:#0a0a1a;">
+
+        </div><!-- /view-kpi-cards -->
+
+      <!-- AI STRATEGY SLIDE PANEL -->
+      <div id="ai-strategy-overlay" onclick="closeAIPanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:8999;backdrop-filter:blur(3px);"></div>
+      <div id="ai-strategy-panel" class="ai-strategy-panel">
+        <!-- HEADER -->
+        <div class="ai-strategy-header">
+          <div class="ai-strategy-icon-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:20px;height:20px;color:#fff;">
               <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
             </svg>
           </div>
-          <div class="exec-ai-title-wrap">
-            <div class="exec-ai-title-main">
+          <div style="flex:1;min-width:0;">
+            <div class="ai-strategy-title-main">
               Análise Estratégica
-              <span class="exec-ai-badge-ia">IA</span>
+              <span class="ai-badge-title">
+                <svg viewBox="0 0 24 24" fill="currentColor" style="width:9px;height:9px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                Gerado por IA
+              </span>
             </div>
-            <div class="exec-ai-subtitle">Gerada automaticamente com base nos dados do quarter</div>
+            <div class="ai-strategy-subtitle">Gerada automaticamente com base nos dados do quarter</div>
           </div>
-          <button id="executive-toggle" onclick="toggleExecutiveAnalysis()" class="exec-ai-toggle-btn">
-            <span id="executive-toggle-label">Ocultar</span>
-            <span id="executive-toggle-caret" style="display:inline-block;transition:transform 0.25s ease;">&#9660;</span>
-          </button>
+          <!-- kept for dashboard.js compat — hidden -->
+          <span id="executive-toggle-label" style="display:none">Ocultar</span>
+          <span id="executive-toggle-caret" style="display:none">&#9660;</span>
+          <button onclick="closeAIPanel()" class="ai-strategy-close" title="Fechar">&#10005;</button>
         </div>
-        <div id="executive-content" class="ai-content" style="margin-top:20px;">
-          <div class="loading">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite;">
-              <polyline points="23 4 23 10 17 10"/>
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-            </svg>
-            Carregando análise estratégica...
+        <!-- BODY -->
+        <div class="ai-strategy-body">
+          <div id="executive-content" class="ai-content">
+            <div class="loading">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite;">
+                <polyline points="23 4 23 10 17 10"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+              Carregando análise estratégica...
+            </div>
           </div>
         </div>
       </div>
-
-        </div><!-- /view-kpi-cards -->
 
         <!-- VISÃO GRÁFICOS (Chart.js) -->
         <div id="view-graficos" class="view-content">
@@ -1129,7 +1147,7 @@
             </div>
             <div class="card col-6 chart-group-geo">
               <div class="card-label">Distribuição por Estado</div>
-              <div class="chart-wrapper" style="height:420px;"><canvas id="chart-estado"></canvas></div>
+              <div class="chart-wrapper" style="height:600px;"><canvas id="chart-estado"></canvas></div>
             </div>
             <div class="card col-6 chart-group-geo">
               <div class="card-label">Distribuição por Cidade</div>

@@ -37,14 +37,16 @@ docker push ${IMAGE_NAME}:latest
 
 echo -e "${YELLOW}🌐 Deploying to Cloud Run...${NC}"
 ENV_VARS="GCP_PROJECT=${PROJECT_ID}"
-if [[ -n "${GEMINI_MODEL}" ]]; then
-    ENV_VARS+="\,GEMINI_MODEL=${GEMINI_MODEL}"
-fi
+ENV_VARS+=",USE_VERTEX_AI=true"
+ENV_VARS+=",VERTEX_AI_LOCATION=${REGION}"
+GEMINI_MODEL_VALUE="${GEMINI_MODEL:-gemini-2.5-pro}"
+ENV_VARS+=",GEMINI_MODEL=${GEMINI_MODEL_VALUE}"
+ENV_VARS+=",VERTEX_GEMINI_MODEL=${GEMINI_MODEL_VALUE}"
 
 if [[ -z "${GEMINI_API_KEY}" ]]; then
-    echo -e "${YELLOW}⚠️ GEMINI_API_KEY não definido no ambiente de deploy. Insights de IA ficarão em modo rule_based.${NC}"
+    echo -e "${YELLOW}⚠️ GEMINI_API_KEY não definido no ambiente de deploy. Será usado Vertex AI (sem fallback rule_based).${NC}"
 else
-    ENV_VARS+="\,GEMINI_API_KEY=${GEMINI_API_KEY}"
+    ENV_VARS+=",GEMINI_API_KEY=${GEMINI_API_KEY}"
 fi
 
 gcloud run deploy ${SERVICE_NAME} \

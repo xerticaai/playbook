@@ -11,7 +11,7 @@ import io
 
 router = APIRouter()
 
-PROJECT_ID = os.getenv("GCP_PROJECT", "operaciones-br")
+PROJECT_ID = os.getenv("GCP_PROJECT", "operaciones-br").strip().rstrip("\\/")
 DATASET_ID = os.getenv("BQ_DATASET", "sales_intelligence")
 
 

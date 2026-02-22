@@ -47,18 +47,24 @@ function toggleAIAnalysis() {
   }
 }
 
-// Função para expandir/colapsar Analise Estrategica (IA)
-function toggleExecutiveAnalysis() {
-  const content = document.getElementById('executive-content');
-  const label = document.getElementById('executive-toggle-label');
-  const caret = document.getElementById('executive-toggle-caret');
-
-  if (!content || !label || !caret) return;
-
-  const isHidden = content.style.display === 'none';
-  content.style.display = isHidden ? 'block' : 'none';
-  label.textContent = isHidden ? 'Ocultar' : 'Expandir';
-  caret.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(-90deg)';
+// AI Strategy Slide Panel — open / close
+function openAIPanel() {
+  var panel = document.getElementById('ai-strategy-panel');
+  var overlay = document.getElementById('ai-strategy-overlay');
+  if (panel) panel.classList.add('open');
+  if (overlay) overlay.style.display = 'block';
+  document.body.style.overflow = 'hidden';
 }
+
+function closeAIPanel() {
+  var panel = document.getElementById('ai-strategy-panel');
+  var overlay = document.getElementById('ai-strategy-overlay');
+  if (panel) panel.classList.remove('open');
+  if (overlay) overlay.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+// Backward-compat alias (called by any legacy references)
+function toggleExecutiveAnalysis() { openAIPanel(); }
 
 // Função para atualizar métricas do Dashboard Executivo usando dados da API /api/metrics

@@ -340,6 +340,9 @@ function stopSpecificTrigger(mode) {
   
   const props = PropertiesService.getScriptProperties();
   props.setProperty('IS_RUNNING_' + mode, 'FALSE');
+  props.deleteProperty('MANUAL_RUN_' + mode);
+  props.deleteProperty('MANUAL_BATCH_SIZE_' + mode);
+  props.deleteProperty('MANUAL_NO_CLEANUP_' + mode);
   
   // Força flush das propriedades
   props.getProperties();
@@ -552,6 +555,60 @@ function scheduleNextTick_(mode, delayMs) {
   ScriptApp.newTrigger(functionName).timeBased().after(delayMs || NEXT_TICK_MS).create();
 }
 
+/**
+ * Inicia processamento manual SOMENTE OPEN sem cleanup de análise.
+ * - Não limpa logs
+ * - Não limpa aba de saída
+ * - Não recria queue/snapshot (força modo DIRETO)
+ */
+function iniciarSyncOpenManualSemCleanup_() {
+  const mode = 'OPEN';
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const config = getModeConfig(mode);
+  const inputSheet = ss.getSheetByName(config.input);
+
+  if (!inputSheet || inputSheet.getLastRow() <= 1) {
+    safeAlert_(`❌ Erro: aba "${config.input}" ausente ou vazia.`);
+    return;
+  }
+
+  const ui = SpreadsheetApp.getUi();
+  const response = ui.alert(
+    '🔄 Sync Manual OPEN (sem cleanup)',
+    'Este modo vai preencher/atualizar apenas OPEN sem limpar análise e sem recriar filas auxiliares.\n\nDeseja continuar?',
+    ui.ButtonSet.YES_NO
+  );
+  if (response !== ui.Button.YES) return;
+
+  const props = PropertiesService.getScriptProperties();
+  const runningKey = 'IS_RUNNING_OPEN';
+  const indexKey = 'CURRENT_INDEX_OPEN';
+  const runId = new Date().toISOString();
+
+  clearTriggersByHandler_('processQueueOPEN');
+
+  props.setProperty(runningKey, 'TRUE');
+  props.setProperty('RUN_ID_OPEN', runId);
+  props.setProperty(indexKey, '0');
+  props.setProperty('MANUAL_RUN_OPEN', 'TRUE');
+  props.setProperty('MANUAL_BATCH_SIZE_OPEN', '5');
+  props.setProperty('MANUAL_NO_CLEANUP_OPEN', 'TRUE');
+
+  // CRÍTICO: força modo DIRETO (sem _QUEUE/_AGG para evitar timeout de insertSheet)
+  props.deleteProperty('QUEUE_SHEET_OPEN');
+  props.deleteProperty('AGG_SNAPSHOT_OPEN');
+
+  Utilities.sleep(1500);
+  const confirmRunning = props.getProperty(runningKey);
+  if (confirmRunning !== 'TRUE') {
+    throw new Error(`Falha ao persistir ${runningKey}: ${confirmRunning}`);
+  }
+
+  logToSheet('INFO', 'ManualOPEN', `OPEN manual sem cleanup iniciado. runId=${runId}`);
+  scheduleNextTick_(mode, 5000);
+  safeAlert_(`✅ OPEN manual iniciado (sem cleanup).\n\nPrimeiro lote em ~5s.\nAba: ${config.output}`);
+}
+
 function setupTriggerAndStart(mode) {
   try {
     // === LIMPAR LOG DE EXECUÇÃO (RESET MANUAL) ===
@@ -585,6 +642,11 @@ function setupTriggerAndStart(mode) {
     
     const ui = SpreadsheetApp.getUi();
     const props = PropertiesService.getScriptProperties();
+
+    // Isolamento: execução padrão nunca herda parâmetros manuais residuais
+    props.deleteProperty('MANUAL_RUN_' + mode);
+    props.deleteProperty('MANUAL_BATCH_SIZE_' + mode);
+    props.deleteProperty('MANUAL_NO_CLEANUP_' + mode);
     
     const indexKey = 'CURRENT_INDEX_' + mode;
     const runningKey = 'IS_RUNNING_' + mode;
@@ -711,10 +773,85 @@ function processQueueWON()  { processQueueGeneric('WON'); }
 function processQueueLOST() { processQueueGeneric('LOST'); }
 
 /**
+ * Preenche Vertical IA/Sub/Sub quando estiverem ausentes no item.
+ * Prioriza regra determinística e usa IA como fallback (quando disponível).
+ */
+function preencherClassificacaoVerticalIASeNecessario_(item, cacheMap, options) {
+  if (!item) return false;
+  const forceIA = !!(options && options.forceIA);
+
+  const filled = (v) => {
+    const txt = String(v || '').trim();
+    if (!txt) return false;
+    const norm = normText_(txt);
+    return norm !== '-' && norm !== 'N/A' && norm !== 'NAO IDENTIFICADO';
+  };
+
+  if (!forceIA && filled(item.verticalIA) && filled(item.subVerticalIA) && filled(item.subSubVerticalIA)) {
+    return false;
+  }
+
+  const conta = String(item.accName || item.account || '').trim();
+  if (!conta) return false;
+
+  const accountKey = normText_(conta);
+  if (cacheMap && cacheMap.has(accountKey)) {
+    const cached = cacheMap.get(accountKey);
+    if (!cached) return false;
+    item.verticalIA = cached.vertical || item.verticalIA || '-';
+    item.subVerticalIA = cached.subVertical || item.subVerticalIA || '-';
+    item.subSubVerticalIA = cached.subSubVertical || item.subSubVerticalIA || '-';
+    return true;
+  }
+
+  const produtos = Array.isArray(item.products)
+    ? item.products.join(' | ')
+    : String(item.products || item.productsBase || '').trim();
+  const cidade = String(item.billingCity || '').trim();
+  const estado = String(item.billingState || '').trim();
+
+  let classification = null;
+  if (typeof classificarContaComIAFallback_ === 'function') {
+    classification = classificarContaComIAFallback_(conta, produtos, cidade, estado);
+  }
+
+  if (!classification) {
+    if (cacheMap) cacheMap.set(accountKey, null);
+    return false;
+  }
+
+  const normalized = {
+    vertical: String(classification.vertical || '').trim(),
+    subVertical: String(classification.subVertical || '').trim(),
+    subSubVertical: String(classification.subSubVertical || '').trim()
+  };
+
+  if (!normalized.vertical || !normalized.subVertical || !normalized.subSubVertical) {
+    if (cacheMap) cacheMap.set(accountKey, null);
+    return false;
+  }
+
+  item.verticalIA = normalized.vertical;
+  item.subVerticalIA = normalized.subVertical;
+  item.subSubVerticalIA = normalized.subSubVertical;
+
+  if (cacheMap) cacheMap.set(accountKey, normalized);
+  return true;
+}
+
+/**
  * Gestor de fila genérico com LockService e Tick System.
  */
 function processQueueGeneric(mode) {
   try {
+    const safeFlush = () => {
+      try {
+        flushLogs_();
+      } catch (flushErr) {
+        console.error(`⚠️ flushLogs_ falhou em processQueueGeneric(${mode}): ${flushErr.message}`);
+      }
+    };
+
     const executionId = Utilities.getUuid().substring(0, 8);
     logToSheet("DEBUG", "ProcessQueue", `[${executionId}] processQueueGeneric(${mode}) chamado`);
     
@@ -736,40 +873,47 @@ function processQueueGeneric(mode) {
       const runId = props.getProperty('RUN_ID_' + mode);
       const currentIndex = props.getProperty('CURRENT_INDEX_' + mode);
       logToSheet("ERROR", "ProcessQueue", `[${executionId}] FILA NÃO INICIALIZADA: IS_RUNNING_${mode}=${runningStatus}. Abortando processamento.`);
-      flushLogs_();
+      safeFlush();
       return false; // Retorna false ao invés de undefined
     }
     
     logToSheet("DEBUG", "ProcessQueue", `Tentando adquirir lock para ${mode}`);
-    flushLogs_();
+    safeFlush();
 
     const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) {
     logToSheet("WARN", "Fila", `Ignorando ${mode}: Bloqueio ativo (Concorrência).`);
-    flushLogs_();
+    safeFlush();
     scheduleNextTick_(mode, 1000 * 60); 
     return; 
   }
 
   try {
     logToSheet("DEBUG", "ProcessQueue", `Lock adquirido para ${mode}, iniciando processamento`);
-    flushLogs_();
+    safeFlush();
     
     const startTime = new Date().getTime();
     const indexKey = 'CURRENT_INDEX_' + mode; 
     let startIndex = parseInt(props.getProperty(indexKey) || '2');
+    const isManualRun = props.getProperty('MANUAL_RUN_' + mode) === 'TRUE';
+    const manualBatchRaw = props.getProperty('MANUAL_BATCH_SIZE_' + mode);
+    const manualBatch = parseInt(manualBatchRaw || '', 10);
+    const batchSizeToUse = (isManualRun && Number.isFinite(manualBatch) && manualBatch > 0) ? manualBatch : BATCH_SIZE;
+    const noCleanup = isManualRun && props.getProperty('MANUAL_NO_CLEANUP_' + mode) === 'TRUE';
 
-    logToSheet("DEBUG", "Motor", `Iniciando Lote ${mode} -> Linha: ${startIndex}`);
-    flushLogs_();
+    logToSheet("DEBUG", "Motor", `Iniciando Lote ${mode} -> Linha: ${startIndex} | manual=${isManualRun} | batch=${batchSizeToUse} | noCleanup=${noCleanup}`);
+    safeFlush();
     
-    const result = runEngineBatch(mode, startIndex, BATCH_SIZE, startTime);
+    const result = runEngineBatch(mode, startIndex, batchSizeToUse, startTime);
     
     logToSheet("DEBUG", "ProcessQueue", `runEngineBatch retornou status: ${result.status}`);
-    flushLogs_();
+    safeFlush();
 
     if (result.status === 'COMPLETED') {
       stopSpecificTrigger(mode);
-      cleanupOldQueueSheets_(mode);
+      if (!noCleanup) {
+        cleanupOldQueueSheets_(mode);
+      }
       logToSheet("SUCESSO", "Fila", `Pipeline ${mode} finalizado em ${result.totalProcessed} registros.`);
       safeToast_(`✅ Processamento ${mode} concluído`, "Sales AI");
     } else if (result.status === 'ERROR') {
@@ -785,11 +929,13 @@ function processQueueGeneric(mode) {
     stopSpecificTrigger(mode);
   } finally {
     lock.releaseLock();
-    flushLogs_(); // Garante que todos os logs sejam salvos
+    safeFlush(); // Garante que todos os logs sejam salvos sem derrubar execução
   }
   } catch (outerErr) {
     logToSheet("FATAL", "ProcessQueue", `Erro fatal não capturado: ${outerErr.message} | Stack: ${outerErr.stack}`);
-    flushLogs_();
+    try {
+      flushLogs_();
+    } catch (_) {}
   }
 }
 
@@ -863,6 +1009,7 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
   const baseClients = getBaseClientsCache();
   const winRateMap = getWinRateByOwner_();
   const runId = getRunId_(mode);
+  const verticalClassCache = new Map();
 
   const outputRows = [];
   let currentIndex = startIndex;
@@ -920,6 +1067,10 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
     
     // OTIMIZAÇÃO: Usa headers cacheados em vez de acessar rawActivities.headers repetidamente
     const activityData = processActivityStatsSmart(relatedActivities, activitiesHeaders, hoje);
+
+    if (mode === 'OPEN') {
+      preencherClassificacaoVerticalIASeNecessario_(item, verticalClassCache);
+    }
     
     // ========================================================================
     // LÓGICA ESPECÍFICA: ANÁLISE DE PIPELINE (OPEN)
@@ -1580,6 +1731,7 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
   const baseClients = getBaseClientsCache();
   const winRateMap = getWinRateByOwner_();
   const runId = getRunId_(mode);
+  const verticalClassCache = new Map();
 
   const outputRows = [];
   const queueUpdates = [];
@@ -1643,6 +1795,10 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
 
     // OTIMIZAÇÃO: Usa headers cacheados
     const activityData = processActivityStatsSmart(relatedActivities, activitiesHeaders, hoje);
+
+    if (mode === 'OPEN') {
+      preencherClassificacaoVerticalIASeNecessario_(item, verticalClassCache);
+    }
 
     let idleDays = calculateIdleDays(activityData.lastDate, hoje);
     if (mode === 'OPEN' && item.inactiveDays > 0 && idleDays === "SEM REGISTRO") {
@@ -2249,75 +2405,94 @@ function applyConditionalFormatting_(sheet, mode, startRow, numRows) {
       
       idleRange.setBackgrounds(idleBgs);
       
-      // Coluna 45: Território Correto?
-      const territoryRange = sheet.getRange(startRow, 45, numRows, 1);
-      const territoryValues = territoryRange.getValues();
-      const territoryBgs = [];
-      const territoryFonts = [];
+      const headerValues = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0] || [];
+      const findCol_ = (label) => {
+        const idx = headerValues.findIndex(h => normText_(String(h)) === normText_(label));
+        return idx > -1 ? idx + 1 : -1;
+      };
+
+      const colTerritory = findCol_('Território Correto?');
+      const colDesignated = findCol_('Vendedor Designado');
+      const colOwner = findCol_('Vendedor');
+      const colSource = findCol_('Fonte Detecção');
+      const colTipoOportunidade = findCol_('Tipo Oportunidade');
+
+      // Território Correto?
+      if (colTerritory > -1) {
+        const territoryRange = sheet.getRange(startRow, colTerritory, numRows, 1);
+        const territoryValues = territoryRange.getValues();
+        const territoryBgs = [];
+        const territoryFonts = [];
       
-      territoryValues.forEach(row => {
-        const val = String(row[0]).toUpperCase();
-        if (val === 'SIM') {
-          territoryBgs.push(['#d4edda']);
-          territoryFonts.push(['#155724']);
-        } else {
-          territoryBgs.push(['#f8d7da']);
-          territoryFonts.push(['#721c24']);
-        }
-      });
+        territoryValues.forEach(row => {
+          const val = String(row[0]).toUpperCase();
+          if (val === 'SIM') {
+            territoryBgs.push(['#d4edda']);
+            territoryFonts.push(['#155724']);
+          } else {
+            territoryBgs.push(['#f8d7da']);
+            territoryFonts.push(['#721c24']);
+          }
+        });
       
-      territoryRange.setBackgrounds(territoryBgs);
-      territoryRange.setFontColors(territoryFonts);
-      territoryRange.setFontWeight('bold');
-      
-      // Coluna 46: Vendedor Designado (destaque quando diferente do owner)
-      const designatedRange = sheet.getRange(startRow, 46, numRows, 1);
-      const ownerRange = sheet.getRange(startRow, 6, numRows, 1); // Coluna 6 é Vendedor
-      const designatedValues = designatedRange.getValues();
-      const ownerValues = ownerRange.getValues();
-      const designatedBgs = [];
-      
-      for (let i = 0; i < designatedValues.length; i++) {
-        const designated = String(designatedValues[i][0]).toUpperCase();
-        const owner = String(ownerValues[i][0]).toUpperCase();
-        
-        if (designated === 'INDEFINIDO') {
-          designatedBgs.push(['#e0e0e0']); // Cinza
-        } else if (designated !== normText_(owner)) {
-          designatedBgs.push(['#fff3cd']); // Amarelo - precisa remanejamento
-        } else {
-          designatedBgs.push(['#d4edda']); // Verde - correto
-        }
+        territoryRange.setBackgrounds(territoryBgs);
+        territoryRange.setFontColors(territoryFonts);
+        territoryRange.setFontWeight('bold');
       }
       
-      designatedRange.setBackgrounds(designatedBgs);
+      // Vendedor Designado (destaque quando diferente do owner)
+      if (colDesignated > -1 && colOwner > -1) {
+        const designatedRange = sheet.getRange(startRow, colDesignated, numRows, 1);
+        const ownerRange = sheet.getRange(startRow, colOwner, numRows, 1);
+        const designatedValues = designatedRange.getValues();
+        const ownerValues = ownerRange.getValues();
+        const designatedBgs = [];
       
-      // Coluna 48: Fonte Detecção (CRM vs FALLBACK)
-      const sourceRange = sheet.getRange(startRow, 48, numRows, 1);
-      const sourceValues = sourceRange.getValues();
-      const sourceBgs = [];
-      const sourceFonts = [];
-      
-      sourceValues.forEach(row => {
-        const val = String(row[0]).toUpperCase();
-        if (val === 'FALLBACK') {
-          sourceBgs.push(['#fff3cd']); // Amarelo - dados inferidos
-          sourceFonts.push(['#856404']);
-        } else if (val === 'CRM') {
-          sourceBgs.push(['#d4edda']); // Verde - dados diretos
-          sourceFonts.push(['#155724']);
-        } else {
-          sourceBgs.push(['#ffffff']);
-          sourceFonts.push(['#000000']);
+        for (let i = 0; i < designatedValues.length; i++) {
+          const designated = String(designatedValues[i][0]).toUpperCase();
+          const owner = String(ownerValues[i][0]).toUpperCase();
+        
+          if (designated === 'INDEFINIDO') {
+            designatedBgs.push(['#e0e0e0']); // Cinza
+          } else if (designated !== normText_(owner)) {
+            designatedBgs.push(['#fff3cd']); // Amarelo - precisa remanejamento
+          } else {
+            designatedBgs.push(['#d4edda']); // Verde - correto
+          }
         }
-      });
       
-      sourceRange.setBackgrounds(sourceBgs);
-      sourceRange.setFontColors(sourceFonts);
+        designatedRange.setBackgrounds(designatedBgs);
+      }
+      
+      // Fonte Detecção (CRM vs FALLBACK)
+      if (colSource > -1) {
+        const sourceRange = sheet.getRange(startRow, colSource, numRows, 1);
+        const sourceValues = sourceRange.getValues();
+        const sourceBgs = [];
+        const sourceFonts = [];
+      
+        sourceValues.forEach(row => {
+          const val = String(row[0]).toUpperCase();
+          if (val === 'FALLBACK') {
+            sourceBgs.push(['#fff3cd']); // Amarelo - dados inferidos
+            sourceFonts.push(['#856404']);
+          } else if (val === 'CRM') {
+            sourceBgs.push(['#d4edda']); // Verde - dados diretos
+            sourceFonts.push(['#155724']);
+          } else {
+            sourceBgs.push(['#ffffff']);
+            sourceFonts.push(['#000000']);
+          }
+        });
+      
+        sourceRange.setBackgrounds(sourceBgs);
+        sourceRange.setFontColors(sourceFonts);
+      }
 
-      // Coluna 69: Tipo Oportunidade — 🟢 verde=retenção, 🔵 azul=upsell/adicional, 🟡 amarelo=nova
+      // Tipo Oportunidade — 🟢 verde=retenção, 🔵 azul=upsell/adicional, 🟡 amarelo=nova
       try {
-        const _tipoRange  = sheet.getRange(startRow, 69, numRows, 1);
+        if (colTipoOportunidade === -1) throw new Error('Coluna Tipo Oportunidade não encontrada');
+        const _tipoRange  = sheet.getRange(startRow, colTipoOportunidade, numRows, 1);
         const _tipoVals   = _tipoRange.getValues();
         const _tipoBgs    = [];
         const _tipoFonts  = [];
@@ -2356,7 +2531,7 @@ function setupAnalysisSheet(mode, preserve) {
   if (!preserve) s.clear();
   
   const h = mode === 'OPEN' ? [
-    ["Run ID", "Oportunidade", "Conta", "Perfil", "Produtos", "Vendedor", "Gross", "Net", "Fase Atual", "Forecast SF", "Fiscal Q", "Data Prevista", "Ciclo (dias)", "Dias Funil", "Atividades", "Atividades (Peso)", "Mix Atividades", "Idle (Dias)", "Qualidade Engajamento", "Forecast IA", "Confiança (%)", "Motivo Confiança", "MEDDIC Score", "MEDDIC Gaps", "MEDDIC Evidências", "BANT Score", "BANT Gaps", "BANT Evidências", "Justificativa IA", "Regras Aplicadas", "Incoerência Detectada", "Perguntas de Auditoria IA", "Flags de Risco", "Gaps Identificados", "Cód Ação", "Ação Sugerida", "Risco Principal", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "🚨 Anomalias Detectadas", "Velocity Predição", "Velocity Detalhes", "Território Correto?", "Vendedor Designado", "Estado/Cidade Detectado", "Fonte Detecção", "Calendário Faturação", "Valor Reconhecido Q1", "Valor Reconhecido Q2", "Valor Reconhecido Q3", "Valor Reconhecido Q4", "Data de criação", "Subsegmento de mercado", "Segmento Consolidado", "Portfólio", "Portfolio FDM", "Owner Preventa", "Produtos (Base)", "Cidade de cobrança", "Estado/Província de cobrança", "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "Evidência Citada IA", "Avaliação Personas IA", "Tipo Oportunidade", "Processo", "🕐 Última Atualização"]
+    ["Run ID", "Oportunidade", "Conta", "Perfil", "Produtos", "Vendedor", "Gross", "Net", "Fase Atual", "Forecast SF", "Fiscal Q", "Data Prevista", "Data de criação", "Ciclo (dias)", "Dias Funil", "Atividades", "Atividades (Peso)", "Mix Atividades", "Idle (Dias)", "Qualidade Engajamento", "Forecast IA", "Confiança (%)", "Motivo Confiança", "MEDDIC Score", "MEDDIC Gaps", "MEDDIC Evidências", "BANT Score", "BANT Gaps", "BANT Evidências", "Justificativa IA", "Regras Aplicadas", "Incoerência Detectada", "Perguntas de Auditoria IA", "Flags de Risco", "Gaps Identificados", "Cód Ação", "Ação Sugerida", "Risco Principal", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "🚨 Anomalias Detectadas", "Velocity Predição", "Velocity Detalhes", "Território Correto?", "Vendedor Designado", "Estado/Cidade Detectado", "Fonte Detecção", "Calendário Faturação", "Valor Reconhecido Q1", "Valor Reconhecido Q2", "Valor Reconhecido Q3", "Valor Reconhecido Q4", "Subsegmento de mercado", "Segmento Consolidado", "Portfólio", "Portfolio FDM", "Owner Preventa", "Cidade de cobrança", "Estado/Província de cobrança", "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "Evidência Citada IA", "Avaliação Personas IA", "Tipo Oportunidade", "Processo", "🕐 Última Atualização"]
   ] : mode === 'WON' ? [
     ["Run ID", "Oportunidade", "Conta", "Perfil Cliente", "Vendedor", "Gross", "Net", "Portfólio", "Segmento", "Família Produto", "Status", "Fiscal Q", "Data Fechamento", "Ciclo (dias)", "Produtos", "📝 Resumo Análise", "🎯 Causa Raiz", "✨ Fatores Sucesso", "Tipo Resultado", "Qualidade Engajamento", "Gestão Oportunidade", "-", "💡 Lições Aprendidas", "# Atividades", "Ativ. 7d", "Ativ. 30d", "Distribuição Tipos", "Período Pico", "Cadência Média (dias)", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "Campos + Alterados", "Padrão Mudanças", "Freq. Mudanças", "# Editores", "🏷️ Labels", "Owner Preventa", "Cidade de cobrança", "Estado/Província de cobrança", "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "🕐 Última Atualização"]
   ] : [
@@ -4828,6 +5003,26 @@ function simularAlteracaoOportunidade() {
 function autoSyncPipelineExecution() {
   const startTime = new Date();
   const executionId = `EXEC-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+
+  // Se OPEN manual estiver ativo, não concorrer com o lock do processamento manual.
+  const propsPreCheck = PropertiesService.getScriptProperties();
+  if (propsPreCheck.getProperty('MANUAL_RUN_OPEN') === 'TRUE' && propsPreCheck.getProperty('IS_RUNNING_OPEN') === 'TRUE') {
+    const msg = `⏸️ [${executionId}] AutoSync adiado: OPEN manual em execução`;
+    console.log(msg);
+    logToSheet("WARN", "AutoSync", msg);
+    try { flushLogs_(); } catch (_) {}
+    return {
+      skipped: true,
+      reason: 'manual_open_running',
+      executionId: executionId,
+      open: { created: 0, updated: 0 },
+      won: { created: 0, updated: 0 },
+      lost: { created: 0, updated: 0 },
+      totalCreated: 0,
+      totalUpdated: 0,
+      duration: 0
+    };
+  }
   
   // === 1. ADQUIRIR LOCK ATÔMICO IMEDIATAMENTE (Anti-concorrência) ===
   // CRÍTICO: Lock DEVE ser a primeira operação antes de qualquer outra ação
@@ -5447,7 +5642,10 @@ function syncBaseToAnalysis_(mode) {
         const product = String(baseData[i][cols.p_prod] || '').trim();
         const portfolioFromCategoriaSDR = cols.p_categoria_sdr > -1 ? String(baseData[i][cols.p_categoria_sdr] || '').trim() : '';
         const portfolioFromBase = cols.p_portfolio > -1 ? String(baseData[i][cols.p_portfolio] || '').trim() : '';
-        const portfolioResolved = (mode === 'OPEN' || mode === 'WON') ? portfolioFromCategoriaSDR : portfolioFromBase;
+        const portfolioResolved = (mode === 'OPEN') ? (portfolioFromCategoriaSDR || portfolioFromBase) : portfolioFromBase;
+        const verticalIA = cols.p_vertical_ia > -1 ? String(baseData[i][cols.p_vertical_ia] || '').trim() : '';
+        const subVerticalIA = cols.p_sub_vertical_ia > -1 ? String(baseData[i][cols.p_sub_vertical_ia] || '').trim() : '';
+        const subSubVerticalIA = cols.p_sub_sub_vertical_ia > -1 ? String(baseData[i][cols.p_sub_sub_vertical_ia] || '').trim() : '';
         
         if (!baseAggregated.has(normName)) {
           // === PADRONIZAÇÃO FORÇADA DE DATAS PARA DD/MM/AAAA ===
@@ -5490,6 +5688,9 @@ function syncBaseToAnalysis_(mode) {
             segment: String(baseData[i][cols.p_segment] || '').trim(),
             subsegmentoMercado: cols.p_subsegmento_mercado > -1 ? String(baseData[i][cols.p_subsegmento_mercado] || '').trim() : '',
             segmentoConsolidado: cols.p_segmento_consolidado > -1 ? String(baseData[i][cols.p_segmento_consolidado] || '').trim() : '',
+            verticalIA: verticalIA,
+            subVerticalIA: subVerticalIA,
+            subSubVerticalIA: subSubVerticalIA,
             productFamily: cols.p_prod_family > -1 ? String(baseData[i][cols.p_prod_family] || '').trim() : '',
             billingCity: cols.p_billing_city > -1 ? String(baseData[i][cols.p_billing_city] || '').trim() : '',
             billingState: cols.p_billing_state > -1 ? String(baseData[i][cols.p_billing_state] || '').trim() : '',
@@ -5513,6 +5714,15 @@ function syncBaseToAnalysis_(mode) {
         if (!agg.productFamily && cols.p_prod_family > -1) {
           agg.productFamily = String(baseData[i][cols.p_prod_family] || '').trim();
         }
+        if (!agg.verticalIA && verticalIA) {
+          agg.verticalIA = verticalIA;
+        }
+        if (!agg.subVerticalIA && subVerticalIA) {
+          agg.subVerticalIA = subVerticalIA;
+        }
+        if (!agg.subSubVerticalIA && subSubVerticalIA) {
+          agg.subSubVerticalIA = subSubVerticalIA;
+        }
         if (product && !agg.products.includes(product)) {
           agg.products.push(product);
         }
@@ -5523,6 +5733,7 @@ function syncBaseToAnalysis_(mode) {
       // Atualizar campos na ANÁLISE
       let quickUpdates = 0;
       const updatesToWrite = [];
+      const classificationCacheQuick = (mode === 'OPEN') ? new Map() : null;
       
       for (let i = 1; i < analysisData.length; i++) {
         const analysisOppName = String(analysisData[i][colMap.opp] || '').trim();
@@ -5532,6 +5743,25 @@ function syncBaseToAnalysis_(mode) {
         const baseData_opp = baseAggregated.get(normName);
         
         if (!baseData_opp) continue; // Oportunidade não existe mais na base (órfã - já foi removida)
+
+        if (mode === 'OPEN' && classificationCacheQuick) {
+          const hasBaseVertical = !!String(baseData_opp.verticalIA || '').trim();
+          const hasBaseSubVertical = !!String(baseData_opp.subVerticalIA || '').trim();
+          const hasBaseSubSubVertical = !!String(baseData_opp.subSubVerticalIA || '').trim();
+
+          const currentVerticalIA = (colMap.verticalIA > -1) ? String(analysisData[i][colMap.verticalIA] || '').trim() : '';
+          const currentSubVerticalIA = (colMap.subVerticalIA > -1) ? String(analysisData[i][colMap.subVerticalIA] || '').trim() : '';
+          const currentSubSubVerticalIA = (colMap.subSubVerticalIA > -1) ? String(analysisData[i][colMap.subSubVerticalIA] || '').trim() : '';
+
+          const hasCurrentVertical = !!currentVerticalIA && currentVerticalIA !== '-';
+          const hasCurrentSubVertical = !!currentSubVerticalIA && currentSubVerticalIA !== '-';
+          const hasCurrentSubSubVertical = !!currentSubSubVerticalIA && currentSubSubVerticalIA !== '-';
+
+          if (!(hasBaseVertical && hasBaseSubVertical && hasBaseSubSubVertical) &&
+              !(hasCurrentVertical && hasCurrentSubVertical && hasCurrentSubSubVertical)) {
+            preencherClassificacaoVerticalIASeNecessario_(baseData_opp, classificationCacheQuick, { forceIA: true });
+          }
+        }
         
         let hasChanges = false;
         const changes = [];
@@ -5662,6 +5892,36 @@ function syncBaseToAnalysis_(mode) {
           }
         }
 
+        // Atualizar VERTICAL IA
+        if (colMap.verticalIA > -1 && baseData_opp.verticalIA) {
+          const currentVerticalIA = String(analysisData[i][colMap.verticalIA] || '').trim();
+          if (currentVerticalIA !== baseData_opp.verticalIA) {
+            analysisData[i][colMap.verticalIA] = baseData_opp.verticalIA;
+            changes.push(`Vertical IA: "${currentVerticalIA}" → "${baseData_opp.verticalIA}"`);
+            hasChanges = true;
+          }
+        }
+
+        // Atualizar SUB-VERTICAL IA
+        if (colMap.subVerticalIA > -1 && baseData_opp.subVerticalIA) {
+          const currentSubVerticalIA = String(analysisData[i][colMap.subVerticalIA] || '').trim();
+          if (currentSubVerticalIA !== baseData_opp.subVerticalIA) {
+            analysisData[i][colMap.subVerticalIA] = baseData_opp.subVerticalIA;
+            changes.push(`Sub-vertical IA: "${currentSubVerticalIA}" → "${baseData_opp.subVerticalIA}"`);
+            hasChanges = true;
+          }
+        }
+
+        // Atualizar SUB-SUB-VERTICAL IA
+        if (colMap.subSubVerticalIA > -1 && baseData_opp.subSubVerticalIA) {
+          const currentSubSubVerticalIA = String(analysisData[i][colMap.subSubVerticalIA] || '').trim();
+          if (currentSubSubVerticalIA !== baseData_opp.subSubVerticalIA) {
+            analysisData[i][colMap.subSubVerticalIA] = baseData_opp.subSubVerticalIA;
+            changes.push(`Sub-sub-vertical IA: "${currentSubSubVerticalIA}" → "${baseData_opp.subSubVerticalIA}"`);
+            hasChanges = true;
+          }
+        }
+
         // Atualizar PORTFOLIO FDM (derivado)
         if (colMap.portfolioFDM > -1) {
           const produtosConcat = (baseData_opp.products && baseData_opp.products.length > 0)
@@ -5697,6 +5957,17 @@ function syncBaseToAnalysis_(mode) {
           if (nextPredictedDate && currentPredictedDate !== nextPredictedDate) {
             analysisData[i][colMap.predictedDate] = nextPredictedDate;
             changes.push(`Data Prevista: "${currentPredictedDate || '-'}" → "${nextPredictedDate}"`);
+            hasChanges = true;
+          }
+        }
+
+        // Atualizar DATA DE CRIAÇÃO (fonte: Pipeline_Aberto)
+        if (colMap.createdDate > -1 && baseData_opp.createdDate) {
+          const currentCreatedDate = formatDateRobust(analysisData[i][colMap.createdDate]);
+          const nextCreatedDate = formatDateRobust(baseData_opp.createdDate);
+          if (nextCreatedDate && currentCreatedDate !== nextCreatedDate) {
+            analysisData[i][colMap.createdDate] = nextCreatedDate;
+            changes.push(`Data Criação: "${currentCreatedDate || '-'}" → "${nextCreatedDate}"`);
             hasChanges = true;
           }
         }
@@ -6523,6 +6794,10 @@ function processarAnaliseCompleta_(oppName, mode, config) {
   if (aggregatedData.length === 0) throw new Error(`Falha ao agregar ${oppName}`);
   
   const item = aggregatedData[0];
+
+  if (mode === 'OPEN') {
+    preencherClassificacaoVerticalIASeNecessario_(item, new Map(), { forceIA: true });
+  }
   
   const rawActivities = getSheetData(SHEETS.ATIVIDADES);
   const rawChanges = getSheetData(config.changes);

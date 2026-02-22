@@ -249,19 +249,22 @@ function syncToBigQueryScheduled() {
     const pipelineResult = loadToBigQuery(
       `${BQ_PROJECT}.${BQ_DATASET}.pipeline`,
       pipelinePrepared,
-      'WRITE_TRUNCATE'
+      'WRITE_TRUNCATE',
+      '🎯 Análise Forecast IA'
     );
 
     const wonResult = loadToBigQuery(
       `${BQ_PROJECT}.${BQ_DATASET}.closed_deals_won`,
       wonFiltered, // Usar dados filtrados
-      'WRITE_TRUNCATE'
+      'WRITE_TRUNCATE',
+      '📈 Análise Ganhas'
     );
 
     const lostResult = loadToBigQuery(
       `${BQ_PROJECT}.${BQ_DATASET}.closed_deals_lost`,
       lostFiltered, // Usar dados filtrados
-      'WRITE_TRUNCATE'
+      'WRITE_TRUNCATE',
+      '📉 Análise Perdidas'
     );
 
     const atividadesResult = loadToBigQuery(
@@ -784,7 +787,7 @@ function ensureMetaTableExists_() {
  * @param {Array} records - Array de objetos
  * @param {string} writeDisposition - WRITE_TRUNCATE ou WRITE_APPEND
  */
-function loadToBigQuery(tableId, records, writeDisposition) {
+function loadToBigQuery(tableId, records, writeDisposition, sourceSheetName) {
   const [projectId, datasetId, tableName] = tableId.split('.');
   const runId = PropertiesService.getScriptProperties().getProperty('BQ_CURRENT_RUN_ID') || new Date().toISOString();
   
@@ -797,7 +800,7 @@ function loadToBigQuery(tableId, records, writeDisposition) {
 
   // Garantir colunas novas de enriquecimento IA antes da carga.
   // Sem isso, BigQuery descarta campos desconhecidos quando ignoreUnknownValues=true.
-  ensureEnrichmentColumnsForTable_(projectId, datasetId, tableName);
+  ensureEnrichmentColumnsForTable_(projectId, datasetId, tableName, sourceSheetName);
   
   // ESTRATÉGIA:
   // - WRITE_TRUNCATE: usar load job (suporta truncate nativo, sem problema de streaming buffer)
@@ -810,7 +813,54 @@ function loadToBigQuery(tableId, records, writeDisposition) {
   }
 }
 
-function ensureEnrichmentColumnsForTable_(projectId, datasetId, tableName) {
+function normalizeSheetHeadersForBQ_(headers) {
+  const normalizedHeaders = (headers || []).map((h, idx) => {
+    let normalized = String(h)
+      .trim()
+      .replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F000}-\u{1F6FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FAFF}]/gu, '')
+      .trim()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9\s_-]/g, '')
+      .replace(/-+/g, '_')
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '');
+
+    if (!normalized) {
+      normalized = `Column_${idx}`;
+    }
+
+    return normalized;
+  });
+
+  const headerCounts = {};
+  return normalizedHeaders.map(h => {
+    if (!headerCounts[h]) {
+      headerCounts[h] = 0;
+      return h;
+    }
+    headerCounts[h]++;
+    return `${h}_${headerCounts[h]}`;
+  });
+}
+
+function inferFieldTypeForBQ_(fieldName) {
+  const key = String(fieldName || '').trim();
+  if (!key) return 'STRING';
+
+  const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Data', 'Fecha_', 'fecha_', 'created_date', 'closed_date'];
+  const excludeDateFields = ['Mudancas_', 'Total_', 'Ativ_', 'Distribuicao_'];
+  const isDateField = (key === 'Data') || (
+    dateFields.some(pattern => key.includes(pattern)) &&
+    !excludeDateFields.some(pattern => key.startsWith(pattern))
+  );
+
+  if (isDateField) return 'DATE';
+  if (isNumericFieldForBQ_(key)) return 'FLOAT';
+  return 'STRING';
+}
+
+function ensureEnrichmentColumnsForTable_(projectId, datasetId, tableName, sourceSheetName) {
   try {
     const targetTables = new Set(['pipeline', 'closed_deals_won', 'closed_deals_lost']);
     if (!targetTables.has(tableName)) return;
@@ -827,9 +877,25 @@ function ensureEnrichmentColumnsForTable_(projectId, datasetId, tableName) {
       { name: 'Segmento_consolidado', type: 'STRING', mode: 'NULLABLE' },
       { name: 'Portfolio',          type: 'STRING', mode: 'NULLABLE' },
       { name: 'Portfolio_FDM',      type: 'STRING', mode: 'NULLABLE' },
+      { name: 'Evidencia_Citada_IA', type: 'STRING', mode: 'NULLABLE' },
+      { name: 'Avaliacao_Personas_IA', type: 'STRING', mode: 'NULLABLE' },
       { name: 'Tipo_Oportunidade',   type: 'STRING', mode: 'NULLABLE' },
+      { name: 'Processo',            type: 'STRING', mode: 'NULLABLE' },
       { name: 'Processo_IA',         type: 'STRING', mode: 'NULLABLE' }
     ];
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const dynamicSheetFields = [];
+    if (sourceSheetName) {
+      const sourceSheet = ss.getSheetByName(sourceSheetName);
+      if (sourceSheet && sourceSheet.getLastColumn() > 0) {
+        const rawHeaders = sourceSheet.getRange(1, 1, 1, sourceSheet.getLastColumn()).getValues()[0] || [];
+        const normalizedHeaders = normalizeSheetHeadersForBQ_(rawHeaders);
+        normalizedHeaders.forEach((fieldName) => {
+          dynamicSheetFields.push({ name: fieldName, type: inferFieldTypeForBQ_(fieldName), mode: 'NULLABLE' });
+        });
+      }
+    }
 
     const table = BigQuery.Tables.get(projectId, datasetId, tableName);
     const schema = table && table.schema && Array.isArray(table.schema.fields)
@@ -837,7 +903,17 @@ function ensureEnrichmentColumnsForTable_(projectId, datasetId, tableName) {
       : [];
     const existing = new Set(schema.map(f => String(f.name || '').trim()));
 
-    const missing = requiredFields.filter(f => !existing.has(f.name));
+    const allRequiredFields = requiredFields.concat(dynamicSheetFields);
+    const dedupedRequired = [];
+    const seen = new Set();
+    allRequiredFields.forEach((f) => {
+      const name = String(f && f.name || '').trim();
+      if (!name || seen.has(name)) return;
+      seen.add(name);
+      dedupedRequired.push(f);
+    });
+
+    const missing = dedupedRequired.filter(f => !existing.has(f.name));
     if (missing.length === 0) {
       return;
     }
@@ -849,7 +925,7 @@ function ensureEnrichmentColumnsForTable_(projectId, datasetId, tableName) {
     };
 
     BigQuery.Tables.patch(updated, projectId, datasetId, tableName);
-    console.log(`🧩 Schema atualizado em ${tableName}: adicionadas colunas ${missing.map(f => f.name).join(', ')}`);
+    console.log(`🧩 Schema atualizado em ${tableName}: adicionadas ${missing.length} colunas (${missing.map(f => f.name).join(', ')})`);
   } catch (e) {
     console.warn(`⚠️ Não foi possível garantir schema enriquecido em ${tableName}: ${e.message}`);
   }

@@ -594,10 +594,20 @@ function updateHighConfidenceDeals(period) {
 // Regra: Ciclo_dias >= 90 (no pipeline há 90+ dias) E Idle_Dias >= 30 (sem atividade há 30+ dias)
 function buildStagnantCard() {
   var pipe = window.pipelineDataRaw || [];
+  if (!pipe.length) return;
+
+  // Try multiple field name variants for cycle days
+  var hasCycleData = pipe.some(function(d) {
+    return parseFloat(d.Ciclo_dias || d.ciclo_dias || d.Ciclo_Dias || 0) > 0;
+  });
+
   var stagnant = pipe.filter(function(d) {
-    var idle  = parseFloat(d.Idle_Dias  || d.Dias_Idle || 0);
-    var cycle = parseFloat(d.Ciclo_dias || 0);
-    return cycle >= 90 && idle >= 30;
+    var idle  = parseFloat(d.Idle_Dias || d.Dias_Idle || d.idle_dias || 0);
+    var cycle = parseFloat(d.Ciclo_dias || d.ciclo_dias || d.Ciclo_Dias || 0);
+    // If cycle data exists: require both conditions
+    // If cycle data is missing for all deals: fall back to idle >= 30 only
+    if (hasCycleData) return cycle >= 90 && idle >= 30;
+    return idle >= 30;
   });
 
   var section = document.getElementById('exec-stagnant-section');
@@ -613,6 +623,14 @@ function buildStagnantCard() {
   var badge = document.getElementById('exec-stagnant-badge');
   if (badge) badge.textContent = stagnant.length;
 
+  // Update rule label dynamically
+  var ruleEl = section.querySelector('.exec-stagnant-rule');
+  if (ruleEl) {
+    ruleEl.textContent = hasCycleData
+      ? '+90 dias no pipeline · sem atividade há +30 dias'
+      : 'sem atividade há +30 dias · ' + stagnant.length + ' oportunidades';
+  }
+
   // Sort by idle days DESC
   stagnant.sort(function(a, b) {
     return (parseFloat(b.Idle_Dias || b.Dias_Idle) || 0) - (parseFloat(a.Idle_Dias || a.Dias_Idle) || 0);
@@ -625,28 +643,31 @@ function buildStagnantCard() {
   var listEl = document.getElementById('exec-stagnant-list');
   if (!listEl) return;
 
-  listEl.innerHTML = top.map(function(d) {
-    var idle  = Math.round(parseFloat(d.Idle_Dias  || d.Dias_Idle) || 0);
-    var cycle = Math.round(parseFloat(d.Ciclo_dias) || 0);
+  listEl.innerHTML = top.map(function(d, idx) {
+    var idle  = Math.round(parseFloat(d.Idle_Dias || d.Dias_Idle || d.idle_dias) || 0);
+    var cycle = Math.round(parseFloat(d.Ciclo_dias || d.ciclo_dias || d.Ciclo_Dias) || 0);
     var gross = parseFloat(d.Gross || d.gross) || 0;
     var name  = (d.Oportunidade || d.name || 'Deal sem nome').replace(/</g,'&lt;');
     var seller = (d.Vendedor || d.seller || '-').replace(/</g,'&lt;');
     var stage  = (d.Fase_Atual || d.stage || '-').replace(/</g,'&lt;');
     var idleClass = idle > 60 ? 'stagnant-badge--critical' : 'stagnant-badge--warn';
 
-    return '<div class="stagnant-deal-row" onclick="window._openStagnantItem(' + JSON.stringify({i: stagnant.indexOf(d)}) + ')">'
+    return '<div class="stagnant-deal-row" onclick="window._openStagnantItem(' + idx + ')">'
       + '<div style="min-width:0;flex:1;">'
       + '<div class="stagnant-deal-name">' + name + '</div>'
       + '<div class="stagnant-deal-meta">' + stage + ' &middot; ' + seller + '</div>'
       + '</div>'
       + '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">'
       + '<span class="stagnant-idle-badge ' + idleClass + '">' + idle + 'd idle</span>'
-      + '<span class="stagnant-cycle-badge">' + cycle + 'd pipeline</span>'
+      + (cycle > 0 ? '<span class="stagnant-cycle-badge">' + cycle + 'd pipeline</span>' : '')
       + '</div>'
-      + '<div class="stagnant-deal-value">' + (typeof formatMoney === 'function' ? formatMoney(gross) : gross) + '</div>'
+      + '<div class="stagnant-deal-value">' + (typeof formatMoney === 'function' ? formatMoney(gross) : 'R$' + gross) + '</div>'
       + '</div>';
   }).join('');
 }
+
+// Expose globally
+window.buildStagnantCard = buildStagnantCard;
 
 window._openStagnantItem = function(ref) {
   if (!window._stagnantDeals) return;

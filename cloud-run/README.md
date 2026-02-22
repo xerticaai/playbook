@@ -228,8 +228,16 @@ Variáveis principais lidas pela API:
 |---|---|---|
 | `GCP_PROJECT` | `operaciones-br` | ID do projeto GCP |
 | `BQ_DATASET` | `sales_intelligence` | Dataset do BigQuery |
-| `GEMINI_API_KEY` | — | Chave da API Gemini (obrigatória para IA) |
+| `USE_VERTEX_AI` | `true` | Usa Vertex AI com autenticação da service account (recomendado) |
+| `VERTEX_AI_LOCATION` | `us-central1` | Região do Vertex AI |
+| `GEMINI_API_KEY` | — | Fallback opcional (evite em produção quando usar Vertex AI) |
 | `CACHE_TTL_SECONDS` | `120` | TTL do cache interno da API |
+
+### Recomendações de segurança para IA
+
+- Preferir Vertex AI com service account do Cloud Run (sem API key no código/frontend).
+- Garantir IAM mínimo para a service account do serviço: `roles/aiplatform.user`.
+- Usar `GEMINI_API_KEY` apenas como fallback em Secret Manager, nunca hardcoded.
 
 ---
 

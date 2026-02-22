@@ -354,7 +354,7 @@ function testarConexaoBigQuery() {
  * Inicia análise OPEN via setupTriggerAndStart (inicializa flag + fila + trigger).
  */
 function rodarAnaliseOPENManual() {
-  setupTriggerAndStart('OPEN');
+  iniciarSyncOpenManualSemCleanup_();
 }
 
 /**

@@ -24,11 +24,11 @@ except Exception:
 
 router = APIRouter()
 
-PROJECT_ID = os.getenv("GCP_PROJECT", "operaciones-br")
+PROJECT_ID = os.getenv("GCP_PROJECT", "operaciones-br").strip().rstrip("\\/")
 DATASET_ID = os.getenv("BQ_DATASET", "sales_intelligence")
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-preview-09-2025")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-pro")
 
 ACTIVITY_SUMMARY_FIRESTORE_COLLECTION = os.getenv("ACTIVITY_SUMMARY_FIRESTORE_COLLECTION", "")
 

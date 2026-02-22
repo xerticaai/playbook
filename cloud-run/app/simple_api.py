@@ -57,7 +57,7 @@ app.include_router(export_router, prefix="/api", tags=["Export"])
 app.include_router(ml_predictions_router, prefix="/api", tags=["ML Predictions"])
 
 # BigQuery
-PROJECT_ID = os.getenv("GCP_PROJECT", "operaciones-br")
+PROJECT_ID = os.getenv("GCP_PROJECT", "operaciones-br").strip().rstrip("\\/")
 DATASET_ID = os.getenv("BQ_DATASET", "sales_intelligence")
 
 # Gemini Configuration (optional)
@@ -899,7 +899,7 @@ def get_pipeline(
         query = f"""
         SELECT 
             Oportunidade, Vendedor, Fase_Atual,
-            Conta, Idle_Dias, Atividades,
+            Conta, Idle_Dias, SAFE_CAST(Ciclo_dias AS FLOAT64) as Ciclo_dias, Atividades,
             Data_Prevista, SAFE_CAST(Confianca AS FLOAT64) as Confianca,
             Gross, Net, Forecast_SF, Forecast_IA,
             Perfil, Produtos,

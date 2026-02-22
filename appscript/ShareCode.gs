@@ -1275,6 +1275,7 @@ function buildOpenOutputRow(runId, item, profile, fiscal, activity, meddic, ia, 
     item.forecast_sf || "-",              
     fiscal.label,
     closedDateFormatted,
+    createdDateFormatted,
     cicloDias,
     diasFunil,
     activity.count,           
@@ -1317,13 +1318,11 @@ function buildOpenOutputRow(runId, item, profile, fiscal, activity, meddic, ia, 
     quarterRecognition.q2 || 0,
     quarterRecognition.q3 || 0,
     quarterRecognition.q4 || 0,
-    createdDateFormatted,
     item.subsegmentoMercado || "-",
     item.segmentoConsolidado || "-",
     item.portfolio || "-",
     categoriaFDM,
     item.ownerPreventa || "-",
-    item.products || "-",
     item.billingCity || "-",
     item.billingState || "-",
     verticalIA,
@@ -2326,6 +2325,9 @@ function getColumnMapping(headers) {
     p_forecast: find(["Forecast", "Forecast SF", "Forecast IA"]),
     p_portfolio: findColumnByAlias_(headers, "portfolio"),
     p_categoria_sdr: findColumnByAlias_(headers, "categoria_sdr"),
+    p_vertical_ia: findColumnByAlias_(headers, "vertical_ia"),
+    p_sub_vertical_ia: findColumnByAlias_(headers, "sub_vertical_ia"),
+    p_sub_sub_vertical_ia: findColumnByAlias_(headers, "sub_sub_vertical_ia"),
     p_owner_preventa: findColumnByAlias_(headers, "owner_preventa"),
     p_segment: find(["Segmento", "Segment", "Segmento Consolidado", "Subsegmento de mercado"]),
     p_subsegmento_mercado: findColumnByAlias_(headers, "subsegmento_mercado"),
@@ -2530,7 +2532,12 @@ function aggregateOpportunities(values, cols, mode = 'UNKNOWN') {
     const codAcao = cols.p_cod_acao > -1 ? String(row[cols.p_cod_acao] || "").trim() : "";
     const tipoResultado = cols.p_tipo_resultado > -1 ? String(row[cols.p_tipo_resultado] || "").trim() : "";
     const labels = cols.p_labels > -1 ? String(row[cols.p_labels] || "").trim() : "";
-    const portfolio = cols.p_portfolio > -1 ? String(row[cols.p_portfolio] || "") : "";
+    const portfolioFromCategoriaSDR = cols.p_categoria_sdr > -1 ? String(row[cols.p_categoria_sdr] || "").trim() : "";
+    const portfolioFromBase = cols.p_portfolio > -1 ? String(row[cols.p_portfolio] || "").trim() : "";
+    const portfolio = mode === 'OPEN' ? (portfolioFromCategoriaSDR || portfolioFromBase) : portfolioFromBase;
+    const verticalIA = cols.p_vertical_ia > -1 ? String(row[cols.p_vertical_ia] || "").trim() : "";
+    const subVerticalIA = cols.p_sub_vertical_ia > -1 ? String(row[cols.p_sub_vertical_ia] || "").trim() : "";
+    const subSubVerticalIA = cols.p_sub_sub_vertical_ia > -1 ? String(row[cols.p_sub_sub_vertical_ia] || "").trim() : "";
     const ownerPreventa = cols.p_owner_preventa > -1 ? String(row[cols.p_owner_preventa] || "").trim() : "";
     const segment = cols.p_segment > -1 ? String(row[cols.p_segment] || "") : "";
     const subsegmentoMercado = cols.p_subsegmento_mercado > -1 ? String(row[cols.p_subsegmento_mercado] || "") : "";
@@ -2632,6 +2639,9 @@ function aggregateOpportunities(values, cols, mode = 'UNKNOWN') {
         segment: segment,
         subsegmentoMercado: subsegmentoMercado,
         segmentoConsolidado: segmentoConsolidado,
+        verticalIA: verticalIA,
+        subVerticalIA: subVerticalIA,
+        subSubVerticalIA: subSubVerticalIA,
         productFamily: productFamily,
         billingState: billingState,
         billingCity: billingCity,
@@ -2667,6 +2677,15 @@ function aggregateOpportunities(values, cols, mode = 'UNKNOWN') {
       }
       if (!item.ownerPreventa && ownerPreventa) {
         item.ownerPreventa = ownerPreventa;
+      }
+      if (!item.verticalIA && verticalIA) {
+        item.verticalIA = verticalIA;
+      }
+      if (!item.subVerticalIA && subVerticalIA) {
+        item.subVerticalIA = subVerticalIA;
+      }
+      if (!item.subSubVerticalIA && subSubVerticalIA) {
+        item.subSubVerticalIA = subSubVerticalIA;
       }
     }
   });

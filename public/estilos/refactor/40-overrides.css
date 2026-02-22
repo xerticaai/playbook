@@ -518,3 +518,158 @@
   background: rgba(220,38,38,0.05);
   border-color: rgba(220,38,38,0.20);
 }
+
+/* ============================================================
+   AI STRATEGY SLIDE PANEL
+   ============================================================ */
+.ai-strategy-panel {
+  position: fixed;
+  top: 0; right: 0;
+  width: min(680px, 96vw);
+  height: 100vh;
+  transform: translateX(100%);
+  transition: transform 0.36s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 9000;
+  display: flex;
+  flex-direction: column;
+  background: rgba(13, 17, 30, 0.97);
+  backdrop-filter: blur(28px) saturate(1.4);
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: -24px 0 72px rgba(0, 0, 0, 0.55);
+}
+.ai-strategy-panel.open {
+  transform: translateX(0);
+}
+
+/* HEADER */
+.ai-strategy-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px 22px 18px;
+  background: linear-gradient(135deg,
+    rgba(0, 190, 255, 0.09) 0%,
+    rgba(139, 92, 246, 0.09) 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  flex-shrink: 0;
+}
+.ai-strategy-icon-wrap {
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #00BEFF 0%, #8b5cf6 100%);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 18px rgba(0, 190, 255, 0.30);
+}
+.ai-strategy-title-main {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main, #F8FAFC);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  line-height: 1.3;
+}
+.ai-badge-title {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: var(--x-pink-50, #FF89FF);
+  color: #080D17;
+  padding: 3px 9px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.ai-strategy-subtitle {
+  font-size: 11px;
+  color: var(--text-muted, #94A3B8);
+  margin-top: 3px;
+  font-weight: 400;
+}
+.ai-strategy-close {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  color: var(--text-muted, #94A3B8);
+  font-size: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+.ai-strategy-close:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.28);
+}
+
+/* BODY */
+.ai-strategy-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 22px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 190, 255, 0.18) transparent;
+}
+.ai-strategy-body::-webkit-scrollbar { width: 4px; }
+.ai-strategy-body::-webkit-scrollbar-track { background: transparent; }
+.ai-strategy-body::-webkit-scrollbar-thumb {
+  background: rgba(0, 190, 255, 0.22);
+  border-radius: 4px;
+}
+
+/* TRIGGER BUTTON (in PIPELINE ABERTO header) */
+.ai-strategy-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg,
+    rgba(0, 190, 255, 0.10) 0%,
+    rgba(139, 92, 246, 0.10) 100%);
+  border: 1px solid rgba(0, 190, 255, 0.22);
+  color: var(--primary-cyan, #00BEFF);
+  padding: 6px 13px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Poppins', 'Inter', sans-serif;
+  letter-spacing: 0.3px;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.ai-strategy-trigger-btn:hover {
+  background: linear-gradient(135deg,
+    rgba(0, 190, 255, 0.20) 0%,
+    rgba(139, 92, 246, 0.20) 100%);
+  border-color: rgba(0, 190, 255, 0.45);
+  box-shadow: 0 4px 16px rgba(0, 190, 255, 0.18);
+  transform: translateY(-1px);
+}
+.ai-strategy-trigger-btn:active {
+  transform: translateY(0);
+}
+
+/* Light theme */
+[data-theme="light"] .ai-strategy-panel {
+  background: rgba(248, 250, 252, 0.98);
+  border-left-color: rgba(0, 0, 0, 0.08);
+  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.18);
+}
+[data-theme="light"] .ai-strategy-header {
+  background: linear-gradient(135deg,
+    rgba(0, 140, 200, 0.06) 0%,
+    rgba(120, 60, 220, 0.06) 100%);
+  border-bottom-color: rgba(0, 0, 0, 0.07);
+}
+[data-theme="light"] .ai-strategy-title-main { color: #0f172a; }
+[data-theme="light"] .ai-strategy-subtitle { color: #64748b; }
+[data-theme="light"] .ai-strategy-close {
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #64748b;
+}
