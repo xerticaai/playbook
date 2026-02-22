@@ -673,3 +673,146 @@
   border-color: rgba(0, 0, 0, 0.12);
   color: #64748b;
 }
+
+/* ============================================================
+   DIAGNÓSTICO ESTRATÉGICO — diag-card + action-plan
+   ============================================================ */
+.diag-layout {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 680px) {
+  .diag-layout { grid-template-columns: 1fr; }
+}
+
+/* Diagnóstico container */
+.diagnostics-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Card de diagnóstico */
+.diag-card {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 14px 16px 14px 12px;
+  border-left: 4px solid transparent;
+  transition: background .15s;
+}
+.diag-card:hover { background: rgba(255,255,255,0.07); }
+.diag-card.critical { border-left-color: var(--danger, #E14849); }
+.diag-card.warning  { border-left-color: var(--warning, #F59E0B); }
+.diag-card.healthy  { border-left-color: var(--success, #C0FF7D); }
+
+.diag-icon {
+  font-size: 20px;
+  line-height: 1;
+  padding-top: 2px;
+  text-align: center;
+}
+.diag-content { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.diag-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.diag-title {
+  font-weight: 700;
+  font-size: 12.5px;
+  color: var(--text-primary, #e0e6ed);
+  letter-spacing: .3px;
+}
+.diag-impact-tag {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.diag-impact-tag.critical { background: rgba(225,72,73,.15); color: #ff6b6b; }
+.diag-impact-tag.warning  { background: rgba(245,158,11,.15); color: #fbbf24; }
+.diag-impact-tag.healthy  { background: rgba(192,255,125,.15); color: #86efac; }
+.diag-desc {
+  font-size: 12px;
+  color: var(--text-secondary, #b0b8c4);
+  margin: 0;
+  line-height: 1.5;
+}
+.diag-action {
+  font-size: 11.5px;
+  color: var(--primary-cyan, #00BEFF);
+  margin: 0;
+  font-style: italic;
+}
+
+/* Light theme overrides */
+[data-theme="light"] .diag-card { background: rgba(0,0,0,.03); border-color: rgba(0,0,0,.08); }
+[data-theme="light"] .diag-card:hover { background: rgba(0,0,0,.06); }
+[data-theme="light"] .diag-title { color: #0f172a; }
+[data-theme="light"] .diag-desc { color: #475569; }
+[data-theme="light"] .diag-action { color: #0369a1; }
+
+/* Plano de Ação */
+.action-plan-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.action-plan-header {
+  padding: 12px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  color: var(--primary-cyan, #00BEFF);
+  background: rgba(0,190,255,.07);
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.action-step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  transition: background .15s;
+}
+.action-step:last-child { border-bottom: none; }
+.action-step:hover { background: rgba(255,255,255,.04); }
+.action-step.urgent .step-number { background: #FF89FF; color: #1a0025; }
+.step-number {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0,190,255,.25);
+  color: var(--primary-cyan, #00BEFF);
+  font-size: 11px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+.step-content { font-size: 12px; line-height: 1.5; color: var(--text-secondary, #b0b8c4); }
+.step-content strong { color: var(--text-primary, #e0e6ed); display: block; margin-bottom: 2px; font-size: 12.5px; }
+.step-content p { margin: 0; }
+
+[data-theme="light"] .action-plan-container { background: rgba(0,0,0,.03); border-color: rgba(0,0,0,.07); }
+[data-theme="light"] .action-plan-header { background: rgba(0,120,180,.07); color: #0369a1; border-bottom-color: rgba(0,0,0,.07); }
+[data-theme="light"] .action-step { border-bottom-color: rgba(0,0,0,.05); }
+[data-theme="light"] .action-step:hover { background: rgba(0,0,0,.04); }
+[data-theme="light"] .step-content { color: #475569; }
+[data-theme="light"] .step-content strong { color: #0f172a; }

@@ -683,126 +683,117 @@ function renderDashboard() {
         const coverage = winsGross > 0 ? (displayForecastWeighted / winsGross) : 0;
         const eficienciaCiclo = totalWins > 0 && totalLosses > 0 ? ((avgWinCycle || 0) / (avgLossCycle || 1)) : 0;
         
-        // ====== ANÁLISE INTELIGENTE COMPLETA ======
-        const analysis = [];
-        
-        // 1. DIAGNÓSTICO CRÍTICO (identificar problemas reais)
-        const diagnosticos = [];
-        
-        // Problema 1: Win Rate baixo com análise de causa
+        // ====== ANÁLISE ESTRATÉGICA — ESTRUTURA DIAG-CARD ======
+        const diagCards = [];   // { type: 'critical'|'warning'|'healthy', icon, title, impact, desc, action }
+        const actionSteps = []; // { label, desc, urgent: bool }
+
+        // ——— DIAGNÓSTICO 1: Win Rate ———
         if (displayConversionRate < 20 && totalDeals >= 10) {
-          let problema = `<strong style="color: var(--danger);">🚨 ALERTA CRÍTICO: Win Rate de ${displayConversionRate}%</strong> indica desperdício massivo de recursos. `;
-          
-          // Análise de causa-raiz
+          let desc = `Win Rate de ${displayConversionRate}% indica desperdício massivo de recursos.`;
+          let action = 'Revisar urgentemente processo de qualificação e ICP.';
+          let impact = formatMoney(lossesGross) + ' em perdas';
           if (ticketPerda > ticketGanho * 1.5) {
-            problema += `<strong>Causa identificada:</strong> Foco em deals grandes sem fit adequado (perda média ${formatMoney(ticketPerda)} vs ganho ${formatMoney(ticketGanho)}). `;
-            problema += `<strong>Impacto:</strong> ${formatMoney(lossesGross)} queimados perseguindo deals errados. `;
-            problema += `<span style="color: var(--warning);">→ Implementar filtro MEDDIC >20 antes de investir em deals >${formatMoney(ticketPerda * 0.8)}</span>`;
+            desc += ` Foco em deals grandes sem fit (perda média ${formatMoney(ticketPerda)} vs ganho ${formatMoney(ticketGanho)}).`;
+            action = `Implementar filtro MEDDIC >20 antes de investir em deals >${formatMoney(ticketPerda * 0.8)}.`;
           } else if (ratioPerdasVsGanhos > 10) {
-            problema += `<strong>Causa identificada:</strong> Qualificação inexistente - ${Math.round(ratioPerdasVsGanhos)}x mais valor perdido que ganho. `;
-            problema += `<span style="color: var(--warning);">→ Pausar novos deals até revisar ICP e processo de qualificação</span>`;
-          } else {
-            problema += `<span style="color: var(--warning);">→ Revisar urgentemente processo de qualificação e ICP</span>`;
+            desc += ` ${Math.round(ratioPerdasVsGanhos)}× mais valor perdido que ganho — qualificação ausente.`;
+            action = 'Pausar novos deals até revisar ICP e processo de qualificação.';
           }
-          
-          diagnosticos.push(problema);
+          diagCards.push({ type: 'critical', icon: '🚨', title: 'Win Rate Crítico', impact, desc, action });
+          actionSteps.push({ label: 'Filtro de Entrada', desc: action, urgent: true });
         } else if (displayConversionRate >= 20 && displayConversionRate < 30 && totalDeals >= 10) {
-          diagnosticos.push(`<strong style="color: var(--warning);">⚠️ Win Rate de ${displayConversionRate}%</strong> está abaixo do benchmark (30%+). Com ${formatMoney(lossesGross)} perdidos, há margem para melhora significativa através de melhor qualificação inicial.`);
+          diagCards.push({ type: 'warning', icon: '⚠️', title: 'Win Rate Abaixo do Benchmark', impact: `${displayConversionRate}% vs benchmark 30%+`, desc: `Com ${formatMoney(lossesGross)} perdidos, há margem para melhora significativa via qualificação inicial.`, action: 'Implementar checklist BANT obrigatório antes de Proposta.' });
+          actionSteps.push({ label: 'Qualificação BANT', desc: 'Implementar checklist obrigatório antes de avançar para Proposta.', urgent: false });
         }
-        
-        // Problema 2: Pipeline desproporcional ao resultado
+
+        // ——— DIAGNÓSTICO 2: Cobertura de Pipeline ———
         if (coverage < 2 && winsGross > 0) {
-          diagnosticos.push(`<strong style="color: var(--danger);">🎯 COBERTURA CRÍTICA:</strong> Pipeline de apenas ${coverage.toFixed(1)}x o resultado atual. Para manter ritmo, necessário <strong>${formatMoney(winsGross * 3 - displayForecastWeighted)}</strong> adicionais em pipeline qualificado.`);
+          const gap = formatMoney(winsGross * 3 - displayForecastWeighted);
+          diagCards.push({ type: 'critical', icon: '🎯', title: 'Cobertura Crítica de Pipeline', impact: `${coverage.toFixed(1)}× (mín. recomendado: 3×)`, desc: `Pipeline ${coverage.toFixed(1)}× abaixo do resultado atual. Necessário ${gap} adicionais em pipeline qualificado para manter ritmo.`, action: 'Intensificar prospecção e qualificação de novos deals.' });
+          actionSteps.push({ label: 'Pipeline Rebuild', desc: `Adicionar ${gap} em pipeline qualificado nos próximos 30 dias.`, urgent: true });
         } else if (coverage > 5) {
-          diagnosticos.push(`<strong style="color: var(--success);">📊 PIPELINE SAUDÁVEL:</strong> Cobertura de ${coverage.toFixed(1)}x indica geração forte. Foco deve ser <strong>aceleração e conversão</strong>, não geração.`);
+          diagCards.push({ type: 'healthy', icon: '📊', title: 'Pipeline Saudável', impact: `Cobertura ${coverage.toFixed(1)}×`, desc: `Cobertura forte. Foco deve estar em aceleração e conversão, não geração.`, action: 'Priorizar deals ≥50% confiança para fechamento.' });
         }
-        
-        // Problema 3: Confiança baixa generalizada
+
+        // ——— DIAGNÓSTICO 3: Scoring / Confiança ———
         if (displayAvgConfidence < 35 && displayPipelineDeals > 10) {
-          diagnosticos.push(`<strong style="color: var(--danger);">🤖 SCORING QUEBRADO:</strong> Confiança média de ${Math.round(displayAvgConfidence)}% sugere que IA não confia no pipeline. Possíveis causas: deals mal qualificados, falta de atividade, ou MEDDIC baixo. <span style="color: var(--warning);">→ Auditar ${Math.round(displayPipelineDeals * 0.3)} maiores deals</span>`);
+          diagCards.push({ type: 'critical', icon: '🤖', title: 'Scoring de IA Comprometido', impact: `Confiança média ${Math.round(displayAvgConfidence)}%`, desc: `IA não confia no pipeline. Possíveis causas: deals mal qualificados, inatividade ou MEDDIC baixo.`, action: `Auditar ${Math.round(displayPipelineDeals * 0.3)} maiores deals e atualizar MEDDIC.` });
+          actionSteps.push({ label: 'Scoring Audit', desc: `Revisar MEDDIC dos ${Math.round(displayPipelineDeals * 0.3)} maiores deals e atualizar próximas ações.`, urgent: false });
         }
-        
-        // Problema 4: Falta de COMMIT
+
+        // ——— DIAGNÓSTICO 4: Falta de COMMIT ———
         if (!hasCommit && displayPipelineDeals > 5) {
-          diagnosticos.push(`<strong style="color: var(--danger);">⏰ RISCO DE QUARTER:</strong> Zero deals em COMMIT significa nenhum fechamento garantido curto prazo. <span style="color: var(--warning);">→ Ação imediata: identificar 3-5 deals para fechar em 30 dias</span>`);
+          diagCards.push({ type: 'critical', icon: '⏰', title: 'Risco de Quarter', impact: 'Zero deals em COMMIT', desc: 'Nenhum fechamento garantido no curto prazo. Receita do quarter em risco.', action: 'Identificar 3–5 deals para converter em COMMIT até fim do mês.' });
+          if (above50Count > 0) {
+            actionSteps.push({ label: 'Aceleração Imediata', desc: `Daily standups nos ${above50Count} deals ≥50% confiança. Meta: mover ${Math.min(3, above50Count)} para COMMIT.`, urgent: true });
+          } else {
+            actionSteps.push({ label: 'Pipeline Rebuild', desc: 'Identificar 5 deals potenciais com fechamento em 30–45 dias.', urgent: true });
+          }
         }
-        
-        // Problema 5: Ciclo muito longo em perdas
+
+        // ——— DIAGNÓSTICO 5: Ciclo de Perda ———
         if (avgLossCycle > avgWinCycle * 2 && totalLosses >= 5) {
-          const diasDesperdicio = avgLossCycle - avgWinCycle;
-          diagnosticos.push(`<strong style="color: var(--warning);">⏱️ INEFICIÊNCIA DE CICLO:</strong> Deals perdidos levam ${Math.round(diasDesperdicio)} dias a mais que vitórias para falhar (${Math.round(avgLossCycle)}d vs ${Math.round(avgWinCycle)}d). <strong>Custo oculto:</strong> Tempo de vendedor desperdiçado em deals sem fit. <span style="color: var(--warning);">→ Implementar early exit criteria</span>`);
+          const extra = Math.round(avgLossCycle - avgWinCycle);
+          diagCards.push({ type: 'warning', icon: '⏱️', title: 'Ineficiência de Ciclo', impact: `+${extra}d desperdiçados por perda`, desc: `Deals perdidos levam ${Math.round(avgLossCycle)}d vs ${Math.round(avgWinCycle)}d nas vitórias. Custo oculto: tempo de vendedor em deals sem fit.`, action: 'Definir critério de early exit (ex: 60d sem avanço = kill deal).' });
+          actionSteps.push({ label: 'Early Exit Criteria', desc: `Definir: 60 dias sem progressão de estágio = encerrar deal. Resgatar ${totalLosses} análises de perda.`, urgent: false });
         }
-        
-        if (diagnosticos.length > 0) {
-          analysis.push(`<div style="background: rgba(225,72,73,0.1); padding: 15px; border-radius: 8px; border-left: 3px solid var(--danger); margin-bottom: 15px;">${diagnosticos.join('<br><br>')}</div>`);
+
+        // ——— OPORTUNIDADES → diag-card healthy ———
+        if (above50Count > 0 && displayForecastWeighted > 0) {
+          diagCards.push({ type: 'healthy', icon: '💰', title: 'Quick Wins Identificados', impact: `${above50Count} deals · ${formatMoney(above50Value)}`, desc: `${above50Count} deals com confiança ≥50% prontos para fechamento.`, action: `Priorizar esses ${above50Count} deals como #1 nas próximas semanas.` });
         }
-        
-        // 2. OPORTUNIDADES IDENTIFICADAS (onde focar energia)
-        const oportunidades = [];
-        
-        if (above50Count > 0 && above50Value > displayForecastWeighted * 0.3) {
-          oportunidades.push(`<strong style="color: var(--success);">💰 QUICK WINS:</strong> ${above50Count} deals com confiança ≥50% representam ${formatMoney(above50Value)}. <span style="color: var(--primary-cyan);">Esses ${above50Count} deals devem ser prioridade #1</span> - potencial de fechar ${Math.round((above50Value / displayForecastWeighted) * 100)}% do forecast.`);
-        }
-        
         if (displaySalesSpecDeals > 0) {
-          const specPercent = (displaySalesSpecGross / displayPipelineGross) * 100;
           const specTicket = displaySalesSpecGross / displaySalesSpecDeals;
-          
           if (specTicket > ticketMedio * 1.3) {
-            oportunidades.push(`<strong style="color: var(--success);">⭐ CURADORIA FUNCIONANDO:</strong> Sales Specialist curando deals ${Math.round((specTicket / ticketMedio) * 100 - 100)}% maiores que média (${formatMoney(specTicket)} vs ${formatMoney(ticketMedio)}). <span style="color: var(--primary-cyan);">Expandir programa de curadoria</span>.`);
+            diagCards.push({ type: 'healthy', icon: '⭐', title: 'Curadoria de Valor', impact: `Ticket ${Math.round((specTicket / ticketMedio) * 100 - 100)}% acima da média`, desc: `Sales Specialist focando em deals maiores (${formatMoney(specTicket)} vs média ${formatMoney(ticketMedio)}).`, action: 'Expandir programa de curadoria para cobrir mais deals estratégicos.' });
           }
         } else if (displayPipelineDeals > 15) {
-          oportunidades.push(`<strong style="color: var(--warning);">💼 FALTA CURADORIA:</strong> ${displayPipelineDeals} deals sem curadoria manual. Sales Specialist poderia identificar os ${Math.round(displayPipelineDeals * 0.15)} deals mais estratégicos para atenção VIP.`);
+          diagCards.push({ type: 'warning', icon: '💼', title: 'Curadoria Ausente', impact: `${displayPipelineDeals} deals sem triagem`, desc: `${displayPipelineDeals} deals sem curadoria manual. Alta probabilidade de deals baixo fit consumindo tempo.`, action: `Sales Specialist deve curar top ${Math.min(5, Math.round(displayPipelineDeals * 0.2))} deals para atenção executiva.` });
+          actionSteps.push({ label: 'Curadoria Estratégica', desc: `Sales Specialist: curar top ${Math.min(5, Math.round(displayPipelineDeals * 0.2))} deals por valor + fit para VIP.`, urgent: false });
         }
-        
         if (totalWins > 0 && avgWinCycle < 60) {
-          oportunidades.push(`<strong style="color: var(--success);">⚡ VELOCIDADE COMPETITIVA:</strong> Ciclo médio de ${Math.round(avgWinCycle)} dias em vitórias é excelente. Replicar padrões de sucesso: qual perfil/estágio/vendedor fecha mais rápido?`);
+          diagCards.push({ type: 'healthy', icon: '⚡', title: 'Velocidade Competitiva', impact: `Ciclo médio ${Math.round(avgWinCycle)}d`, desc: 'Ciclo de fechamento rápido é uma vantagem competitiva. Identificar padrões replicáveis.', action: 'Mapear perfil dos deals fechados: estágio de entrada, vendedor, região.' });
         }
-        
-        if (oportunidades.length > 0) {
-          analysis.push(`<div style="background: rgba(192,255,125,0.1); padding: 15px; border-radius: 8px; border-left: 3px solid var(--success); margin-bottom: 15px;">${oportunidades.join('<br><br>')}</div>`);
+
+        // ——— FALLBACK ———
+        if (diagCards.length === 0) {
+          diagCards.push({ type: 'healthy', icon: '✅', title: 'Performance Dentro do Esperado', impact: '', desc: 'Métricas principais estão saudáveis. Continue monitorando e executando.', action: 'Manter cadência de revisão semanal do pipeline.' });
         }
-        
-        // 3. PLANO DE AÇÃO ESPECÍFICO (não genérico)
-        const acoes = [];
-        
-        // Ação baseada em diagnóstico
-        if (displayConversionRate < 20 && ticketPerda > ticketGanho * 1.5) {
-          acoes.push(`<strong>1. FILTRO DE ENTRADA (urgente):</strong> Pausar pursuit em deals >${formatMoney(ticketPerda * 0.8)} com MEDDIC <20 ou sem champion identificado`);
-          acoes.push(`<strong>2. ANÁLISE POST-MORTEM:</strong> Revisar top 10 perdas do período para identificar red flags comuns`);
-        } else if (displayConversionRate < 25) {
-          acoes.push(`<strong>1. QUALIFICAÇÃO:</strong> Implementar checklist BANT obrigatório antes de avançar para Proposta`);
+        if (actionSteps.length === 0) {
+          actionSteps.push({ label: 'Revisão Semanal', desc: 'Manter cadência de revisão de pipeline e atualização de MEDDIC.', urgent: false });
         }
-        
-        if (!hasCommit && above50Count > 0) {
-          acoes.push(`<strong>2. ACELERAÇÃO IMEDIATA:</strong> Daily standups nos ${above50Count} deals ≥50% confiança até mover ${Math.min(3, above50Count)} para COMMIT`);
-        } else if (!hasCommit) {
-          acoes.push(`<strong>2. PIPELINE REBUILD:</strong> Identificar 5 deals potenciais que possam fechar em 30-45 dias`);
-        }
-        
-        if (displayAvgConfidence < 35) {
-          acoes.push(`<strong>3. SCORING AUDIT:</strong> Revisar MEDDIC dos ${Math.round(displayPipelineDeals * 0.3)} maiores deals e atualizar próximas ações`);
-        }
-        
-        if (displaySalesSpecDeals === 0 && displayPipelineDeals > 10) {
-          acoes.push(`<strong>4. CURADORIA ESTRATÉGICA:</strong> Sales Specialist deve curar top ${Math.min(5, Math.round(displayPipelineDeals * 0.2))} deals por valor + fit para atenção executiva`);
-        }
-        
-        if (avgLossCycle > 120 && totalLosses >= 5) {
-          acoes.push(`<strong>5. EARLY EXIT:</strong> Definir critérios para exit (ex: 60 dias sem progresso de estágio = kill deal)`);
-        }
-        
-        if (acoes.length > 0) {
-          analysis.push(`<div style="background: rgba(0,190,255,0.1); padding: 15px; border-radius: 8px; border-left: 3px solid var(--primary-cyan); margin-bottom: 0;"><strong style="color: var(--primary-cyan); font-size: 15px;">📋 PLANO DE AÇÃO - PRÓXIMOS 30 DIAS:</strong><br><br>${acoes.join('<br><br>')}</div>`);
-        }
-        
-        // Se não há análise, mostrar mensagem
-        if (analysis.length === 0) {
-          analysis.push(`<div style="padding: 15px; text-align: center; color: var(--text-gray);"><strong>✅ Performance dentro do esperado</strong><br>Continue monitorando métricas principais e executando plano de vendas.</div>`);
-        }
-        
-        // Gera HTML final
-        execContentEl.innerHTML = analysis.join('');
+
+        // ——— RENDER HTML ———
+        const diagCardHTML = diagCards.map(c => `
+          <div class="diag-card ${c.type}">
+            <div class="diag-icon">${c.icon}</div>
+            <div class="diag-content">
+              <div class="diag-header">
+                <span class="diag-title">${c.title}</span>
+                ${c.impact ? `<span class="diag-impact-tag ${c.type}">${c.impact}</span>` : ''}
+              </div>
+              <p class="diag-desc">${c.desc}</p>
+              <p class="diag-action">→ ${c.action}</p>
+            </div>
+          </div>`).join('');
+
+        const actionStepHTML = actionSteps.map((s, i) => `
+          <div class="action-step${s.urgent ? ' urgent' : ''}">
+            <div class="step-number">${i + 1}</div>
+            <div class="step-content">
+              <strong>${s.label}</strong>
+              <p>${s.desc}</p>
+            </div>
+          </div>`).join('');
+
+        execContentEl.innerHTML = `
+          <div class="diag-layout">
+            <div class="diagnostics-container">${diagCardHTML}</div>
+            <div class="action-plan-container">
+              <div class="action-plan-header">📋 Plano de Ação — 30 dias</div>
+              ${actionStepHTML}
+            </div>
+          </div>`;
       }
     }
     
@@ -2198,6 +2189,9 @@ function renderDashboard() {
     // Atualizar métricas de Sales Specialist
     updateSalesSpecialistMetrics();
     enhanceAllKpiCards(document);
+
+    // Card Oportunidades Estagnadas (depende de pipelineDataRaw já populado)
+    if (typeof window.buildStagnantCard === 'function') window.buildStagnantCard();
     
     log('[RENDER] ========== RENDERIZAÇÃO CONCLUÍDA ==========');
     log('[RENDER] Timestamp fim:', new Date().toISOString());

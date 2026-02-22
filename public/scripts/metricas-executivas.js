@@ -671,7 +671,7 @@ window.buildStagnantCard = buildStagnantCard;
 
 window._openStagnantItem = function(ref) {
   if (!window._stagnantDeals) return;
-  var d = window._stagnantDeals[ref.i];
+  var d = window._stagnantDeals[ref];
   if (d && typeof openDrilldown === 'function') {
     openDrilldown((d.Oportunidade || 'Deal Estagnado') + ' — Detalhes', [d]);
   }
