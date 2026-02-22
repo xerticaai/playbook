@@ -283,35 +283,10 @@
     };
   }
 
-  // ── 1. Pipeline por Fase ──────────────────────────────────────────────
+  // ── 1. Pipeline por Fase (Pipeline + Won + Lost) ──────────────────────────────────────────────
   function buildPorFase() {
-    var canvas = document.getElementById('chart-por-fase'); if (!canvas) return;
-    kill('por-fase');
-    var raw = window.pipelineDataRaw || [];
-    var getF = function (d) { return d.Fase_Atual || d.stage; };
-    var mG = groupBy(raw, getF);
-    var labels = topKeys(mG, 14); if (!labels.length) { showEmpty(canvas, 'Dados de fase não disponíveis'); return; }
-    var totG = labels.reduce(function(s,l){return s+mG[l].gross;},0);
-    var totN = labels.reduce(function(s,l){return s+mG[l].net;},0);
-    instances['por-fase'] = new Chart(canvas, {
-      type: 'bar',
-      data: { labels: labels, datasets: [
-        { label: 'Gross', data: labels.map(function(l){return mG[l].gross;}), backgroundColor: gradBg(C.cyan,true),  borderColor: C.cyan.b,  borderWidth: 1.5, borderRadius: 5 },
-        { label: 'Net',   data: labels.map(function(l){return mG[l].net;}),   backgroundColor: gradBg(C.green,true), borderColor: C.green.b, borderWidth: 1.5, borderRadius: 5 }
-      ]},
-      options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
-        plugins: { legend: leg(), tooltip: richTip([mG,mG],[totG,totN]) },
-        scales: scalesH(),
-        onClick: function(evt, elements, chart) {
-          if (!elements||!elements.length) return;
-          var label = chart.data.labels[elements[0].index]; if (!label) return;
-          var norm = label.trim();
-          var items = (window.pipelineDataRaw||[]).filter(function(d){ return (d.Fase_Atual||d.stage||'').trim()===norm; })
-            .map(function(d){ return Object.assign({_src:'pipe'}, d); });
-          openDrilldown('Fase: ' + norm, items);
-        }
-      }
-    });
+    tripleBar('chart-por-fase', 'por-fase',
+      function(d){ return d.Fase_Atual || d.stage || ''; }, 14);
   }
 
   // ── 2. Win vs Loss ────────────────────────────────────────────────────
@@ -332,11 +307,22 @@
       ]},
       options: {
         responsive:true, maintainAspectRatio:false,
-        plugins: { legend: leg(), tooltip: { callbacks: { label: function(ctx) {
-          var src = ctx.dataIndex===0 ? won : lost;
-          var tot = wG+lG;
-          return [' '+ctx.dataset.label+': '+fmt(ctx.raw), ' '+fmtPct(ctx.raw,tot)+' do total', ' '+src.length+' deals'];
-        }}}},
+        plugins: {
+          legend: leg(),
+          barDatalabels: {
+            display: true,
+            formatter: function(val, j, pct) {
+              // Show both % of total gross and the formatted value
+              var tot = wG + lG;
+              return (tot ? ((val/tot)*100).toFixed(0)+'%' : '');
+            }
+          },
+          tooltip: { callbacks: { label: function(ctx) {
+            var src = ctx.dataIndex===0 ? won : lost;
+            var tot = wG+lG;
+            return [' '+ctx.dataset.label+': '+fmt(ctx.raw), ' '+fmtPct(ctx.raw,tot)+' do total', ' '+src.length+' deals'];
+          }}}
+        },
         scales: scalesV(),
         onClick: function(evt, elements, chart) {
           if (!elements||!elements.length) return;
@@ -373,7 +359,11 @@
         { label:'Lost ('   +lost.length +')', data:labels.map(function(l){return (mL[l]||{gross:0}).gross;}), backgroundColor:gradBg(cs[2],true), borderColor:cs[2].b, borderWidth:1.5, borderRadius:5 }
       ]},
       options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
-        plugins: { legend: leg(), tooltip: richTip([mP,mW,mL],[totP,totW,totL]) },
+        plugins: {
+          legend: leg(),
+          tooltip: richTip([mP,mW,mL],[totP,totW,totL]),
+          barDatalabels: { display: true }
+        },
         scales: scalesH(),
         onClick: makeDimClick(pipe, won, lost, getter)
       }
@@ -407,7 +397,8 @@
           backgroundColor: PALETTE.map(function(c){return c.bg;}), borderColor: PALETTE.map(function(c){return c.s;}), borderWidth:1.5, hoverOffset:18, spacing:2 }] },
       options: { responsive:true, maintainAspectRatio:false, cutout:'58%',
         plugins: {
-          legend: { position:'bottom', labels:{ color:t.txt, font:{family:t.font,size:10}, boxWidth:10, padding:5 } },
+          legend: { position:'bottom', labels:{ color:t.txt, font:{family:t.font,size:10}, boxWidth:8, boxHeight:8, padding:8, usePointStyle:true, pointStyle:'circle' } },
+          arcLabels: { display: true },
           tooltip: { callbacks: { label: function(ctx) {
             var pct = fmtPct(ctx.raw, tot); var cnt = m[ctx.label]?m[ctx.label].count:0;
             return [' '+ctx.label+': '+fmt(ctx.raw),' '+pct+' do total',' '+cnt+' deals'];
@@ -475,24 +466,28 @@
         // Horizontal: labels longos ficam legíveis no eixo Y
         indexAxis: 'y',
         responsive:true, maintainAspectRatio:false,
-        plugins: { legend: leg(), tooltip: richTip([mP,mW,mL],[totP,totW,totL]) },
+        plugins: {
+          legend: leg(),
+          tooltip: richTip([mP,mW,mL],[totP,totW,totL]),
+          barDatalabels: { display: true }
+        },
         scales: scalesH(),
         onClick: makeDimClick(pipe, won, lost, portfolioLabel)
       }
     });
   }
 
-  // ── 5c. Forecast SF — doughnut ──────────────────────────────────────
+  // ── 5c. Forecast SF — doughnut (Pipeline + Won + Lost) ───────────────
   function buildForecastSF() {
     var canvas = document.getElementById('chart-forecast-sf'); if (!canvas) return;
     kill('forecast-sf');
-    var pipe = window.pipelineDataRaw || [];
-    if (!pipe.length) { showEmpty(canvas, 'Sem dados de pipeline'); return; }
+    var all = allDealsWithSrc();
+    if (!all.length) { showEmpty(canvas, 'Sem dados'); return; }
 
     var ORDER = ['Commit','Upside','Best Case','Pipeline','Não Definido'];
     var COLORS = { 'Commit': C.green, 'Upside': C.cyan, 'Best Case': C.teal, 'Pipeline': C.purple, 'Não Definido': C.muted };
 
-    var m = groupBy(pipe, function(d) { return d.Forecast_SF || d.forecast_sf || 'Não Definido'; });
+    var m = groupBy(all, function(d) { return d.Forecast_SF || d.forecast_sf || 'Não Definido'; });
     var inOrder = ORDER.filter(function(k) { return m[k] && m[k].count > 0; });
     var extra   = topKeys(m,10).filter(function(k) { return ORDER.indexOf(k) === -1; });
     var labels  = inOrder.concat(extra);
@@ -515,19 +510,24 @@
       options: {
         responsive:true, maintainAspectRatio:false, cutout:'56%',
         plugins: {
-          legend: { position:'bottom', labels:{ color:t.txt, font:{family:t.font,size:10}, boxWidth:10, padding:5 } },
+          legend: { position:'bottom', labels:{ color:t.txt, font:{family:t.font,size:10}, boxWidth:8, boxHeight:8, padding:8, usePointStyle:true, pointStyle:'circle' } },
+          arcLabels: { display: true },
           tooltip: { callbacks: { label: function(ctx) {
             var cnt = m[ctx.label] ? m[ctx.label].count : 0;
-            return [' '+ctx.label+': '+fmt(ctx.raw), ' '+fmtPct(ctx.raw,tot)+' do total', ' '+cnt+' deals'];
+            var srcBreak = '';
+            var pipeC = all.filter(function(d){ return (d.Forecast_SF||d.forecast_sf||'Não Definido')===ctx.label && d._src==='pipe'; }).length;
+            var wonC  = all.filter(function(d){ return (d.Forecast_SF||d.forecast_sf||'Não Definido')===ctx.label && d._src==='won';  }).length;
+            var lostC = all.filter(function(d){ return (d.Forecast_SF||d.forecast_sf||'Não Definido')===ctx.label && d._src==='lost'; }).length;
+            return [' '+ctx.label+': '+fmt(ctx.raw), ' '+fmtPct(ctx.raw,tot)+' do total', ' Pipeline: '+pipeC+' · Won: '+wonC+' · Lost: '+lostC];
           }}}
         },
         onClick: function(evt, elements, chart) {
           if (!elements||!elements.length) return;
           var label = chart.data.labels[elements[0].index]; if (!label) return;
           var norm = label.trim();
-          var items = (window.pipelineDataRaw||[]).filter(function(d) {
+          var items = all.filter(function(d) {
             return (d.Forecast_SF||d.forecast_sf||'Não Definido').trim() === norm;
-          }).map(function(d){ return Object.assign({_src:'pipe'}, d); });
+          });
           openDrilldown('Forecast SF: ' + norm, items);
         }
       }
@@ -589,7 +589,10 @@
         responsive: true, maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
-          barDatalabels: { display: true, formatter: function(v) { return v + '%'; } },
+          barDatalabels: {
+            display: true,
+            formatter: function(v) { return v + '%'; }
+          },
           tooltip: { callbacks: { label: function(ctx) {
             var s  = sellers[keys[ctx.dataIndex]];
             var tot = s.wins + s.losses;
@@ -882,30 +885,85 @@
       }
     });
 
-    // 2. Opt-in bar value labels at end of horizontal bars
+    // 2. Bar value/% labels (end of bar for horizontal, top for vertical)
     Chart.register({
       id: 'barDatalabels',
       afterDatasetsDraw: function (chart) {
         var opts = chart.options.plugins && chart.options.plugins.barDatalabels;
         if (!opts || !opts.display) return;
-        if (chart.options.indexAxis !== 'y') return;
-        var t = th();
+        var horiz = chart.options.indexAxis === 'y';
+        var t     = th();
         chart.data.datasets.forEach(function (dataset, i) {
+          if (dataset.type === 'line') return;
           var meta = chart.getDatasetMeta(i);
           if (!meta || meta.hidden) return;
+          // Compute dataset total for % calc
+          var dsTotal = 0;
+          (dataset.data || []).forEach(function(v){ dsTotal += (typeof v === 'number' ? v : 0); });
+          if (!dsTotal) return;
           meta.data.forEach(function (bar, j) {
             var val = dataset.data[j];
-            if (val == null || val <= 0) return;
-            var text = opts.formatter ? opts.formatter(val, j) : String(val);
-            chart.ctx.save();
-            chart.ctx.textAlign    = 'left';
-            chart.ctx.textBaseline = 'middle';
-            chart.ctx.font      = "bold 11px 'Roboto',sans-serif";
-            chart.ctx.fillStyle = t.txt;
-            chart.ctx.globalAlpha = 0.85;
-            chart.ctx.fillText(text, bar.x + 5, bar.y);
-            chart.ctx.restore();
+            if (!val || val <= 0) return;
+            var pct = (val / dsTotal * 100);
+            if (pct < 1) return; // skip tiny segments
+            var label = opts.formatter
+              ? opts.formatter(val, j, pct)
+              : (pct.toFixed(0) + '%');
+            var ctx = chart.ctx;
+            ctx.save();
+            ctx.font         = "bold 10px 'Roboto',sans-serif";
+            ctx.fillStyle    = t.txt;
+            ctx.globalAlpha  = 0.80;
+            if (horiz) {
+              ctx.textAlign    = 'left';
+              ctx.textBaseline = 'middle';
+              // Only draw if bar wide enough
+              if (bar.x - bar.base > 28) {
+                ctx.fillText(label, bar.x + 4, bar.y);
+              }
+            } else {
+              ctx.textAlign    = 'center';
+              ctx.textBaseline = 'bottom';
+              if (bar.base - bar.y > 14) {
+                ctx.fillText(label, bar.x, bar.y - 3);
+              }
+            }
+            ctx.restore();
           });
+        });
+      }
+    });
+
+    // 3. Doughnut arc % labels
+    Chart.register({
+      id: 'arcLabels',
+      afterDraw: function (chart) {
+        var opts = chart.options.plugins && chart.options.plugins.arcLabels;
+        if (!opts || !opts.display) return;
+        if (chart.config.type !== 'doughnut' && chart.config.type !== 'pie') return;
+        var ds  = chart.data.datasets[0]; if (!ds) return;
+        var tot = (ds.data || []).reduce(function(s, v){ return s + (+v || 0); }, 0);
+        if (!tot) return;
+        var meta = chart.getDatasetMeta(0); if (!meta) return;
+        var ctx = chart.ctx;
+        meta.data.forEach(function (arc, i) {
+          var val = ds.data[i]; if (!val || val <= 0) return;
+          var pct = val / tot * 100;
+          if (pct < 4) return; // skip tiny arcs
+          var midAngle  = (arc.startAngle + arc.endAngle) / 2;
+          var midRadius = (arc.innerRadius + arc.outerRadius) * 0.56;
+          var tx = arc.x + Math.cos(midAngle) * midRadius;
+          var ty = arc.y + Math.sin(midAngle) * midRadius;
+          ctx.save();
+          ctx.textAlign    = 'center';
+          ctx.textBaseline = 'middle';
+          // Shadow for readability
+          ctx.shadowColor   = 'rgba(0,0,0,0.7)';
+          ctx.shadowBlur    = 4;
+          ctx.font          = "bold 11px 'Poppins','Roboto',sans-serif";
+          ctx.fillStyle     = '#ffffff';
+          ctx.fillText(pct.toFixed(0) + '%', tx, ty);
+          ctx.restore();
         });
       }
     });
