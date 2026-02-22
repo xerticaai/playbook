@@ -18,6 +18,24 @@
 
   var PALETTE = [C.cyan, C.green, C.orange, C.purple, C.red, C.warning, C.teal, C.pink, C.indigo, C.muted];
 
+  // Gradient fill factory — horiz = left→right (indexAxis:'y'), else top→bottom
+  function gradBg(color, horiz) {
+    return function (context) {
+      var chart = context.chart;
+      var ca    = chart.chartArea;
+      if (!ca) return color.bg;
+      var ctx   = chart.ctx;
+      var m     = color.bg.match(/rgba\((\d+),\s*(\d+),\s*(\d+)/);
+      var rgb   = m ? (m[1]+','+m[2]+','+m[3]) : '128,128,128';
+      var g     = horiz
+        ? ctx.createLinearGradient(ca.left, 0, ca.right, 0)
+        : ctx.createLinearGradient(0, ca.top, 0, ca.bottom);
+      g.addColorStop(0, 'rgba(' + rgb + ',0.92)');
+      g.addColorStop(1, 'rgba(' + rgb + ',0.13)');
+      return g;
+    };
+  }
+
   var instances = {};
   function kill(id) { if (instances[id]) { instances[id].destroy(); delete instances[id]; } }
 
@@ -39,20 +57,27 @@
   function scalesH() { // horizontal bar (indexAxis:'y')
     var t = th();
     return {
-      x: { ticks: { color: t.txt, font: { family: t.font, size: 11 }, callback: fmt }, grid: { color: t.grid } },
-      y: { ticks: { color: t.txt, font: { family: t.font, size: 11 }, maxTicksLimit: 14 }, grid: { color: 'transparent' } }
+      x: { ticks: { color: t.txt, font: { family: t.font, size: 11 }, callback: fmt }, grid: { color: t.grid, borderDash: [4, 4] } },
+      y: { ticks: { color: t.txt, font: { family: t.font, size: 12 }, maxTicksLimit: 14 }, grid: { color: 'transparent' } }
     };
   }
   function scalesV() { // vertical bar
     var t = th();
     return {
-      y: { ticks: { color: t.txt, font: { family: t.font, size: 11 }, callback: fmt }, grid: { color: t.grid } },
-      x: { ticks: { color: t.txt, font: { family: t.font, size: 11 } }, grid: { color: 'transparent' } }
+      y: { ticks: { color: t.txt, font: { family: t.font, size: 11 }, callback: fmt }, grid: { color: t.grid, borderDash: [4, 4] } },
+      x: { ticks: { color: t.txt, font: { family: t.font, size: 12 } }, grid: { color: 'transparent' } }
     };
   }
   function leg(pos) {
     var t = th();
-    return { position: pos || 'top', labels: { color: t.txt, font: { family: t.font, size: 11 }, boxWidth: 10, padding: 8 } };
+    return {
+      position: pos || 'top',
+      labels: {
+        color: t.txt, font: { family: t.font, size: 11 },
+        boxWidth: 8, boxHeight: 8, padding: 12,
+        usePointStyle: true, pointStyle: 'circle'
+      }
+    };
   }
 
   // Rich tooltip: value + % of total + deal count
@@ -271,8 +296,8 @@
     instances['por-fase'] = new Chart(canvas, {
       type: 'bar',
       data: { labels: labels, datasets: [
-        { label: 'Gross', data: labels.map(function(l){return mG[l].gross;}), backgroundColor: C.cyan.bg, borderColor: C.cyan.b, borderWidth: 2, borderRadius: 4 },
-        { label: 'Net',   data: labels.map(function(l){return mG[l].net;}),   backgroundColor: C.green.bg, borderColor: C.green.b, borderWidth: 2, borderRadius: 4 }
+        { label: 'Gross', data: labels.map(function(l){return mG[l].gross;}), backgroundColor: gradBg(C.cyan,true),  borderColor: C.cyan.b,  borderWidth: 1.5, borderRadius: 5 },
+        { label: 'Net',   data: labels.map(function(l){return mG[l].net;}),   backgroundColor: gradBg(C.green,true), borderColor: C.green.b, borderWidth: 1.5, borderRadius: 5 }
       ]},
       options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
         plugins: { legend: leg(), tooltip: richTip([mG,mG],[totG,totN]) },
@@ -302,8 +327,8 @@
     instances['winloss'] = new Chart(canvas, {
       type: 'bar',
       data: { labels: ['Ganhos (' + won.length + ')', 'Perdidos (' + lost.length + ')'], datasets: [
-        { label: 'Gross', data: [wG,lG], backgroundColor:[C.green.bg,C.red.bg], borderColor:[C.green.b,C.red.b], borderWidth:2, borderRadius:6 },
-        { label: 'Net',   data: [wN,lN], backgroundColor:[C.cyan.bg,C.orange.bg], borderColor:[C.cyan.b,C.orange.b], borderWidth:2, borderRadius:6 }
+        { label: 'Gross', data: [wG,lG], backgroundColor:['rgba(91,155,111,0.88)','rgba(198,90,100,0.88)'],  borderColor:[C.green.b,C.red.b],   borderWidth:1.5, borderRadius:8 },
+        { label: 'Net',   data: [wN,lN], backgroundColor:['rgba(51,182,232,0.88)','rgba(201,135,82,0.88)'],  borderColor:[C.cyan.b,C.orange.b], borderWidth:1.5, borderRadius:8 }
       ]},
       options: {
         responsive:true, maintainAspectRatio:false,
@@ -343,9 +368,9 @@
     instances[instKey] = new Chart(canvas, {
       type: 'bar',
       data: { labels: labels, datasets: [
-        { label:'Pipeline ('+pipe.length+')', data:labels.map(function(l){return (mP[l]||{gross:0}).gross;}), backgroundColor:cs[0].bg, borderColor:cs[0].b, borderWidth:2, borderRadius:3 },
-        { label:'Won ('    +won.length  +')', data:labels.map(function(l){return (mW[l]||{gross:0}).gross;}), backgroundColor:cs[1].bg, borderColor:cs[1].b, borderWidth:2, borderRadius:3 },
-        { label:'Lost ('   +lost.length +')', data:labels.map(function(l){return (mL[l]||{gross:0}).gross;}), backgroundColor:cs[2].bg, borderColor:cs[2].b, borderWidth:2, borderRadius:3 }
+        { label:'Pipeline ('+pipe.length+')', data:labels.map(function(l){return (mP[l]||{gross:0}).gross;}), backgroundColor:gradBg(cs[0],true), borderColor:cs[0].b, borderWidth:1.5, borderRadius:5 },
+        { label:'Won ('    +won.length  +')', data:labels.map(function(l){return (mW[l]||{gross:0}).gross;}), backgroundColor:gradBg(cs[1],true), borderColor:cs[1].b, borderWidth:1.5, borderRadius:5 },
+        { label:'Lost ('   +lost.length +')', data:labels.map(function(l){return (mL[l]||{gross:0}).gross;}), backgroundColor:gradBg(cs[2],true), borderColor:cs[2].b, borderWidth:1.5, borderRadius:5 }
       ]},
       options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
         plugins: { legend: leg(), tooltip: richTip([mP,mW,mL],[totP,totW,totL]) },
@@ -379,7 +404,7 @@
     instances['portfolio-fdm'] = new Chart(canvas, {
       type: 'doughnut',
       data: { labels: labels, datasets: [{ data: labels.map(function(l){return m[l].gross;}),
-        backgroundColor: PALETTE.map(function(c){return c.bg;}), borderColor: PALETTE.map(function(c){return c.s;}), borderWidth:2, hoverOffset:10 }] },
+          backgroundColor: PALETTE.map(function(c){return c.bg;}), borderColor: PALETTE.map(function(c){return c.s;}), borderWidth:1.5, hoverOffset:18, spacing:2 }] },
       options: { responsive:true, maintainAspectRatio:false, cutout:'58%',
         plugins: {
           legend: { position:'bottom', labels:{ color:t.txt, font:{family:t.font,size:10}, boxWidth:10, padding:5 } },
@@ -442,9 +467,9 @@
     instances['portfolio-versao'] = new Chart(canvas, {
       type: 'bar',
       data: { labels: labels, datasets: [
-        { label:'Pipeline', data:labels.map(function(l){return (mP[l]||{gross:0}).gross;}), backgroundColor:C.warning.bg, borderColor:C.warning.b, borderWidth:2, borderRadius:4 },
-        { label:'Won',      data:labels.map(function(l){return (mW[l]||{gross:0}).gross;}), backgroundColor:C.green.bg,   borderColor:C.green.b,   borderWidth:2, borderRadius:4 },
-        { label:'Lost',     data:labels.map(function(l){return (mL[l]||{gross:0}).gross;}), backgroundColor:C.red.bg,     borderColor:C.red.b,     borderWidth:2, borderRadius:4 }
+        { label:'Pipeline', data:labels.map(function(l){return (mP[l]||{gross:0}).gross;}), backgroundColor:gradBg(C.warning,true), borderColor:C.warning.b, borderWidth:1.5, borderRadius:5 },
+        { label:'Won',      data:labels.map(function(l){return (mW[l]||{gross:0}).gross;}), backgroundColor:gradBg(C.green,true),   borderColor:C.green.b,   borderWidth:1.5, borderRadius:5 },
+        { label:'Lost',     data:labels.map(function(l){return (mL[l]||{gross:0}).gross;}), backgroundColor:gradBg(C.red,true),     borderColor:C.red.b,     borderWidth:1.5, borderRadius:5 }
       ]},
       options: {
         // Horizontal: labels longos ficam legíveis no eixo Y
@@ -484,7 +509,7 @@
           data: labels.map(function(l){ return m[l] ? m[l].gross : 0; }),
           backgroundColor: labels.map(function(l){ return (COLORS[l]||C.orange).bg; }),
           borderColor:     labels.map(function(l){ return (COLORS[l]||C.orange).s; }),
-          borderWidth: 2, hoverOffset: 10
+          borderWidth: 1.5, hoverOffset: 18, spacing: 2
         }]
       },
       options: {
@@ -556,7 +581,7 @@
           data: rates,
           backgroundColor: rates.map(function(r){ return r>=60 ? C.green.bg : r>=40 ? C.warning.bg : C.red.bg; }),
           borderColor:     rates.map(function(r){ return r>=60 ? C.green.b  : r>=40 ? C.warning.b  : C.red.b;  }),
-          borderWidth: 2, borderRadius: 4
+          borderWidth: 1.5, borderRadius: 6
         }]
       },
       options: {
@@ -564,6 +589,7 @@
         responsive: true, maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
+          barDatalabels: { display: true, formatter: function(v) { return v + '%'; } },
           tooltip: { callbacks: { label: function(ctx) {
             var s  = sellers[keys[ctx.dataIndex]];
             var tot = s.wins + s.losses;
@@ -798,9 +824,9 @@
     instances['monthly'] = new Chart(canvas, {
       type: 'bar',
       data: { labels: labels, datasets: [
-        { type:'bar',  label:'Won Gross',  data:wG, backgroundColor:C.cyan.bg,  borderColor:C.cyan.b,  borderWidth:2, borderRadius:4, order:2 },
-        { type:'bar',  label:'Won Net',    data:wN, backgroundColor:C.green.bg, borderColor:C.green.b, borderWidth:2, borderRadius:4, order:2 },
-        { type:'bar',  label:'Lost Gross', data:lG, backgroundColor:C.red.bg,   borderColor:C.red.b,   borderWidth:2, borderRadius:4, order:2 },
+        { type:'bar',  label:'Won Gross',  data:wG, backgroundColor:gradBg(C.cyan,false),  borderColor:C.cyan.b,  borderWidth:1.5, borderRadius:5, order:2 },
+        { type:'bar',  label:'Won Net',    data:wN, backgroundColor:gradBg(C.green,false), borderColor:C.green.b, borderWidth:1.5, borderRadius:5, order:2 },
+        { type:'bar',  label:'Lost Gross', data:lG, backgroundColor:gradBg(C.red,false),   borderColor:C.red.b,   borderWidth:1.5, borderRadius:5, order:2 },
         { type:'line', label:'Tendência Won', data:trendWG, borderColor:C.warning.s, backgroundColor:'transparent',
           borderWidth:2.5, pointRadius:4, pointBackgroundColor:C.warning.s, tension:0.5, order:1,
           borderDash:[], fill:false }
@@ -828,11 +854,80 @@
     });
   }
 
+  // ── Custom Plugins ───────────────────────────────────────────────────
+  // 1. Doughnut center text — shows Gross Total inside the hole
+  if (window.Chart && window.Chart.register) {
+    Chart.register({
+      id: 'doughnutCenter',
+      afterDraw: function (chart) {
+        if (chart.config.type !== 'doughnut') return;
+        var ds = chart.data && chart.data.datasets && chart.data.datasets[0];
+        if (!ds) return;
+        var tot = (ds.data || []).reduce(function (s, v) { return s + (+v || 0); }, 0);
+        if (!tot) return;
+        var ca = chart.chartArea; if (!ca) return;
+        var cx  = ca.left + (ca.right  - ca.left)  / 2;
+        var cy  = ca.top  + (ca.bottom - ca.top)   / 2;
+        var ctx = chart.ctx;
+        ctx.save();
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = isLight() ? '#0f1b2d' : '#e8f2fb';
+        ctx.font      = "700 15px 'Poppins','Roboto',sans-serif";
+        ctx.fillText(fmt(tot), cx, cy - 9);
+        ctx.font      = "10px 'Roboto',sans-serif";
+        ctx.fillStyle = isLight() ? '#6b7f97' : '#7b8fa6';
+        ctx.fillText('Gross Total', cx, cy + 9);
+        ctx.restore();
+      }
+    });
+
+    // 2. Opt-in bar value labels at end of horizontal bars
+    Chart.register({
+      id: 'barDatalabels',
+      afterDatasetsDraw: function (chart) {
+        var opts = chart.options.plugins && chart.options.plugins.barDatalabels;
+        if (!opts || !opts.display) return;
+        if (chart.options.indexAxis !== 'y') return;
+        var t = th();
+        chart.data.datasets.forEach(function (dataset, i) {
+          var meta = chart.getDatasetMeta(i);
+          if (!meta || meta.hidden) return;
+          meta.data.forEach(function (bar, j) {
+            var val = dataset.data[j];
+            if (val == null || val <= 0) return;
+            var text = opts.formatter ? opts.formatter(val, j) : String(val);
+            chart.ctx.save();
+            chart.ctx.textAlign    = 'left';
+            chart.ctx.textBaseline = 'middle';
+            chart.ctx.font      = "bold 11px 'Roboto',sans-serif";
+            chart.ctx.fillStyle = t.txt;
+            chart.ctx.globalAlpha = 0.85;
+            chart.ctx.fillText(text, bar.x + 5, bar.y);
+            chart.ctx.restore();
+          });
+        });
+      }
+    });
+  }
+
   // ── Public API ───────────────────────────────────────────────────────
   window.initDashboardCharts = function () {
     if (window.Chart && window.Chart.defaults) {
       Chart.defaults.font.family = "'Roboto', sans-serif";
       Chart.defaults.font.size   = 12;
+      // Premium tooltip
+      var Td = Chart.defaults.plugins.tooltip;
+      Td.backgroundColor = isLight() ? 'rgba(15,27,45,0.96)' : 'rgba(4,9,18,0.97)';
+      Td.titleColor      = '#f2f6fb';
+      Td.bodyColor       = '#9aafc4';
+      Td.borderColor     = 'rgba(0,190,255,0.24)';
+      Td.borderWidth     = 1;
+      Td.padding         = 12;
+      Td.cornerRadius    = 10;
+      Td.titleFont       = { family: "'Poppins','Roboto',sans-serif", size: 12, weight: '600' };
+      Td.bodyFont        = { family: "'Roboto',sans-serif", size: 11 };
+      Td.boxPadding      = 4;
     }
     buildPorFase();
     buildWinLoss();
