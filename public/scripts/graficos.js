@@ -82,18 +82,20 @@
     };
   }
 
-  // Rich tooltip: value + % of total + deal count
+  // Rich tooltip: Gross + % total + Net + deal count
   function richTip(countMaps, totals) {
     return { callbacks: { label: function (ctx) {
       var val   = ctx.raw || 0;
       var cm    = countMaps && countMaps[ctx.datasetIndex];
       var entry = cm && cm[ctx.label];
       var cnt   = entry ? entry.count : null;
+      var net   = entry ? entry.net   : null;
       var tot   = totals ? totals[ctx.datasetIndex] : null;
       var pct   = (tot) ? fmtPct(val, tot) : null;
       var out   = [' ' + ctx.dataset.label + ': ' + fmt(val)];
-      if (pct) out.push(' ' + pct + ' do total');
-      if (cnt != null) out.push(' ' + cnt + ' deal' + (cnt !== 1 ? 's' : ''));
+      if (pct)          out.push(' ' + pct + ' do total');
+      if (net)          out.push(' Net: ' + fmt(net));
+      if (cnt != null)  out.push(' ' + cnt + ' deal' + (cnt !== 1 ? 's' : ''));
       return out;
     }}};
   }
@@ -168,7 +170,7 @@
     });
   }
 
-  window.chartCategoryState = window.chartCategoryState || { fase: true, seg: true, geo: true };
+  window.chartCategoryState = window.chartCategoryState || { fase: true, seg: true, port: true, geo: true };
 
   function applyCategoryState(cat) {
     var expanded = window.chartCategoryState[cat] !== false;
@@ -188,7 +190,7 @@
   };
 
   function initChartCategoryToggles() {
-    ['fase', 'seg', 'geo'].forEach(applyCategoryState);
+    ['fase', 'seg', 'port', 'geo'].forEach(applyCategoryState);
   }
 
   // ── Active filter label ────────────────────────────────────────────────
@@ -769,26 +771,44 @@
   function buildMonthly() {
     var canvas = document.getElementById('chart-receita-mensal'); if (!canvas) return;
     kill('monthly');
+
+    // Determine display year (filter → FY → current calendar year)
+    var displayYear = null;
+    if (window.currentFilters && window.currentFilters.year) {
+      displayYear = +window.currentFilters.year;
+    } else if (window.currentFY) {
+      var fy = String(window.currentFY);
+      displayYear = +(/^FY\d{2}$/.test(fy) ? '20' + fy.slice(2) : fy);
+    }
+    if (!displayYear) displayYear = new Date().getFullYear();
+
     var titleEl = document.getElementById('chart-booking-mensal-label');
     if (titleEl) {
-      var yearLabel = (window.currentFilters && window.currentFilters.year) ? String(window.currentFilters.year) : '';
-      if (!yearLabel && window.currentFY) {
-        yearLabel = /^FY\d{2}$/.test(window.currentFY) ? ('20' + String(window.currentFY).slice(2)) : String(window.currentFY);
-      }
-      if (!yearLabel) yearLabel = 'Todos os Anos';
-      titleEl.textContent = 'Booking Mensal (' + yearLabel + ') — Ganhos & Perdidos';
+      titleEl.textContent = 'Booking Mensal (' + displayYear + ') — Ganhos & Perdidos';
     }
+
     var won  = window.wonAgg  || [];
     var lost = window.lostAgg || [];
     var ML = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+    var now = new Date();
+
+    // Filter to display year and exclude future dates
+    function inYear(d) {
+      var dt = new Date(d.Data_Fechamento||d.closeDate||'');
+      return !isNaN(dt.getTime()) && dt.getFullYear() === displayYear && dt <= now;
+    }
+    won  = won.filter(inYear);
+    lost = lost.filter(inYear);
+
     var wonM = {}, lostM = {};
     won.forEach(function(d) {
-      var dt = new Date(d.Data_Fechamento||d.closeDate||''); if (isNaN(dt.getTime())) return;
+      var dt = new Date(d.Data_Fechamento||d.closeDate||'');
       var k = dt.getMonth(); if (!wonM[k]) wonM[k]={g:0,n:0,c:0};
       wonM[k].g+=+(d.Gross||d.gross||0); wonM[k].n+=+(d.Net||d.net||0); wonM[k].c++;
     });
     lost.forEach(function(d) {
-      var dt = new Date(d.Data_Fechamento||d.closeDate||''); if (isNaN(dt.getTime())) return;
+      var dt = new Date(d.Data_Fechamento||d.closeDate||'');
       var k = dt.getMonth(); if (!lostM[k]) lostM[k]={g:0,c:0};
       lostM[k].g+=+(d.Gross||d.gross||0); lostM[k].c++;
     });
@@ -1005,18 +1025,17 @@
         }
       } catch(e) { console.warn('[CHART] tooltip defaults:', e); }
     }
-    safeBuild(buildPorFase,       'PorFase');
-    safeBuild(buildWinLoss,       'WinLoss');
-    safeBuild(buildVertical,      'Vertical');
-    safeBuild(buildSubVertical,   'SubVertical');
-    safeBuild(buildPortfolioFDM,  'PortfolioFDM');
+    safeBuild(buildPorFase,        'PorFase');
+    safeBuild(buildWinLoss,        'WinLoss');
+    safeBuild(buildVertical,       'Vertical');
+    safeBuild(buildSubVertical,    'SubVertical');
+    safeBuild(buildSegmento,       'Segmento');
+    safeBuild(buildPortfolioFDM,   'PortfolioFDM');
     safeBuild(buildPortfolioVersao,'PortfolioVersao');
-    safeBuild(buildForecastSF,    'ForecastSF');
-    safeBuild(buildWinRateVendedor,'WinRateVendedor');
-    safeBuild(buildSegmento,      'Segmento');
-    safeBuild(buildEstado,        'Estado');
-    safeBuild(buildCidade,        'Cidade');
-    safeBuild(buildMonthly,       'Monthly');
+    safeBuild(buildForecastSF,     'ForecastSF');
+    safeBuild(buildEstado,         'Estado');
+    safeBuild(buildCidade,         'Cidade');
+    safeBuild(buildMonthly,        'Monthly');
     installChartExpandButtons();
     initChartCategoryToggles();
   };
