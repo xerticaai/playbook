@@ -251,6 +251,10 @@ async function loadDashboardData() {
     renderDashboard();
 
     // Restaura o estado do toggle Gross/Net após re-render
+    // Render always writes Gross-first; re-apply Net mode if active
+    if (window.execDisplayMode === 'net' && typeof applyExecDisplayMode === 'function') {
+      setTimeout(function() { applyExecDisplayMode('net'); }, 80);
+    }
     if (typeof updateExecutiveHighlightToggleUI === 'function') {
       updateExecutiveHighlightToggleUI(window.execDisplayMode || 'gross');
     }
@@ -449,7 +453,26 @@ function normalizeCloudResponse(raw) {
       Tipo_Resultado: deal.Tipo_Resultado || '',
       Fatores_Sucesso: deal.Fatores_Sucesso || '',
       Win_Reason: deal.Win_Reason || deal.Fatores_Sucesso || deal.Causa_Raiz || 'Motivo não especificado',
-      winReason: deal.Win_Reason || deal.Fatores_Sucesso || deal.Causa_Raiz || 'Motivo não especificado'
+      winReason: deal.Win_Reason || deal.Fatores_Sucesso || deal.Causa_Raiz || 'Motivo não especificado',
+      Vertical_IA: deal.Vertical_IA || '',
+      Sub_vertical_IA: deal.Sub_vertical_IA || '',
+      Sub_sub_vertical_IA: deal.Sub_sub_vertical_IA || '',
+      Segmento_consolidado: deal.Segmento_consolidado || '',
+      Portfolio_FDM: deal.Portfolio_FDM || '',
+      Estado_Provincia_de_cobranca: deal.Estado_Provincia_de_cobranca || '',
+      Cidade_de_cobranca: deal.Cidade_de_cobranca || '',
+      Estado_Cidade_Detectado: deal.Estado_Cidade_Detectado || '',
+      Fase_Atual: deal.Fase_Atual || deal.stage || '',
+      Confianca: parseFloat(deal.Confianca) || 0,
+      BANT_Score: parseFloat(deal.BANT_Score) || 0,
+      MEDDIC_Score: parseFloat(deal.MEDDIC_Score) || 0,
+      Risco_Score: parseFloat(deal.Risco_Score) || 0,
+      Idle_Dias: parseFloat(deal.Idle_Dias) || 0,
+      Forecast_SF: deal.Forecast_SF || '',
+      Forecast_IA: deal.Forecast_IA || '',
+      Produtos: deal.Produtos || '',
+      Perfil: deal.Perfil || '',
+      Oportunidade: deal.Oportunidade || deal.Opportunity_Name || ''
     });
   });
   
@@ -478,7 +501,27 @@ function normalizeCloudResponse(raw) {
       lossReason: deal.Causa_Raiz || deal.Loss_Reason || 'Motivo não especificado',
       cause: deal.Causa_Raiz || 'OUTRO',
       Ciclo_dias: parseFloat(deal.Ciclo_dias) || 0,
-      ciclo_dias: parseFloat(deal.Ciclo_dias) || 0
+      ciclo_dias: parseFloat(deal.Ciclo_dias) || 0,
+      Vertical_IA: deal.Vertical_IA || '',
+      Sub_vertical_IA: deal.Sub_vertical_IA || '',
+      Sub_sub_vertical_IA: deal.Sub_sub_vertical_IA || '',
+      Segmento_consolidado: deal.Segmento_consolidado || '',
+      Portfolio_FDM: deal.Portfolio_FDM || '',
+      Estado_Provincia_de_cobranca: deal.Estado_Provincia_de_cobranca || '',
+      Cidade_de_cobranca: deal.Cidade_de_cobranca || '',
+      Estado_Cidade_Detectado: deal.Estado_Cidade_Detectado || '',
+      Fase_Atual: deal.Fase_Atual || deal.stage || '',
+      Confianca: parseFloat(deal.Confianca) || 0,
+      BANT_Score: parseFloat(deal.BANT_Score) || 0,
+      MEDDIC_Score: parseFloat(deal.MEDDIC_Score) || 0,
+      Risco_Score: parseFloat(deal.Risco_Score) || 0,
+      Idle_Dias: parseFloat(deal.Idle_Dias) || 0,
+      Forecast_SF: deal.Forecast_SF || '',
+      Forecast_IA: deal.Forecast_IA || '',
+      Produtos: deal.Produtos || '',
+      Perfil: deal.Perfil || '',
+      Oportunidade: deal.Oportunidade || deal.Opportunity_Name || '',
+      Evitavel: deal.Evitavel || ''
     });
   });
   

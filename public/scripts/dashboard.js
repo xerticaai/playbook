@@ -1935,13 +1935,18 @@ function renderDashboard() {
     window.allDealsWithQuarter = allDeals;
 
     // Helper function global para criar word cloud
-    window.createWordCloud = function(dataArray, containerId, colorScheme = 'default') {
+    window.createWordCloud = function(dataArray, containerId, colorScheme = 'default', clickContext = null) {
       const container = document.getElementById(containerId);
       if (!container || dataArray.length === 0) {
         if (container) {
           container.innerHTML = '<p style="color: var(--text-gray); text-align: center;">Nenhum dado disponível</p>';
         }
         return;
+      }
+
+      // Store drill context on container for _wcloudClick
+      if (clickContext) {
+        container._drillContext = clickContext;
       }
       
       const maxCount = dataArray[0][1];
@@ -1971,8 +1976,11 @@ function renderDashboard() {
             const size = 10 + (count / maxCount) * 10;
             const opacity = 0.5 + (count / maxCount) * 0.5;
             const color = getColor(count, colorScheme);
+            const clickable = clickContext ? 'wcloud-item-clickable' : '';
+            const clickAttr = clickContext ? `data-wlabel="${label.replace(/"/g, '&quot;')}" onclick="window._wcloudClick(this)"` : '';
+            const cursor = clickContext ? 'pointer' : 'help';
             return `
-              <span style="
+              <span class="${clickable}" ${clickAttr} style="
                 font-size: ${size}px;
                 color: ${color};
                 opacity: ${opacity};
@@ -1982,8 +1990,8 @@ function renderDashboard() {
                 border-radius: 4px;
                 white-space: nowrap;
                 transition: all 0.3s;
-                cursor: help;
-              " title="${count} ocorrência${count > 1 ? 's' : ''}">
+                cursor: ${cursor};
+              " title="${clickContext ? 'Clique para ver deals' : count + ' ocorrência' + (count > 1 ? 's' : '')}">
                 ${label} <span style="font-size: 9px; opacity: 0.7;">(${count})</span>
               </span>
             `;
@@ -2001,17 +2009,23 @@ function renderDashboard() {
       log('[DATA] Flags de risco:', flagsArray.length, 'tipos');
       
       if (flagsArray.length > 0) {
+        riskFlagsContainer._drillContext = {
+          src: 'pipe',
+          field: 'Forecast_IA',
+          data: window.pipelineDataRaw || [],
+          title: 'Pipeline — Risco'
+        };
         const maxCount = flagsArray[0].value;
         riskFlagsContainer.innerHTML = `
           <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center;">
             ${flagsArray.map(item => {
-              const size = 10 + (item.value / maxCount) * 10; // Tamanho de 10px a 20px
-              const opacity = 0.5 + (item.value / maxCount) * 0.5; // Opacidade de 0.5 a 1
+              const size = 10 + (item.value / maxCount) * 10;
+              const opacity = 0.5 + (item.value / maxCount) * 0.5;
               const color = item.value >= maxCount * 0.7 ? 'var(--danger)' : 
                            item.value >= maxCount * 0.4 ? 'var(--warning)' : 
                            'var(--text-gray)';
               return `
-                <span style="
+                <span class="wcloud-item-clickable" data-wlabel="${item.text.replace(/"/g, '&quot;')}" onclick="window._wcloudClick(this)" style="
                   font-size: ${size}px;
                   color: ${color};
                   opacity: ${opacity};
@@ -2021,8 +2035,8 @@ function renderDashboard() {
                   border-radius: 4px;
                   white-space: nowrap;
                   transition: all 0.3s;
-                  cursor: help;
-                " title="${item.value} ocorrência(s)">
+                  cursor: pointer;
+                " title="Clique para ver deals">
                   ${item.text} <span style="font-size: 10px; color: var(--text-gray);">(${item.value})</span>
                 </span>
               `;
@@ -2044,7 +2058,7 @@ function renderDashboard() {
       log('[DATA] Labels de ação:', actionLabelsArray.length, 'tipos');
       
       if (actionLabelsArray.length > 0) {
-        window.createWordCloud(actionLabelsArray.map(item => [item.text, item.value]), 'exec-action-labels-container', 'info');
+        window.createWordCloud(actionLabelsArray.map(item => [item.text, item.value]), 'exec-action-labels-container', 'info', { src: 'pipe', field: 'Forecast_IA', data: window.pipelineDataRaw || [], title: 'Pipeline' });
       } else {
         actionLabelsContainer.innerHTML = '<p style="color: var(--text-gray); text-align: center;">Nenhum dado disponível</p>';
       }
@@ -2079,8 +2093,8 @@ function renderDashboard() {
       log('[DATA] Perfil vitórias:', winTypesArray.length, 'tipos');
       log('[DATA] Perfil perdas:', lossTypesArray.length, 'tipos');
       
-      window.createWordCloud(winTypesArray, 'exec-win-types-container', 'success');
-      window.createWordCloud(lossTypesArray, 'exec-loss-types-container', 'danger');
+      window.createWordCloud(winTypesArray, 'exec-win-types-container', 'success', { src: 'won', field: 'Tipo_Resultado', data: window.wonAgg || [], title: 'Vitórias' });
+      window.createWordCloud(lossTypesArray, 'exec-loss-types-container', 'danger', { src: 'lost', field: 'Tipo_Resultado', data: window.lostAgg || [], title: 'Perdas' });
     }
     
     // SEÇÃO 10 & 11: PADRÕES DE SUCESSO E PERDA (Labels)
@@ -2110,8 +2124,8 @@ function renderDashboard() {
       log('[DATA] Padrões sucesso:', winLabelsArray.length, 'labels');
       log('[DATA] Padrões perda:', lossLabelsArray.length, 'labels');
       
-      window.createWordCloud(winLabelsArray, 'exec-win-labels-container', 'success');
-      window.createWordCloud(lossLabelsArray, 'exec-loss-labels-container', 'danger');
+      window.createWordCloud(winLabelsArray, 'exec-win-labels-container', 'success', { src: 'won', field: 'Fatores_Sucesso', data: window.wonAgg || [], title: 'Padrões de Sucesso' });
+      window.createWordCloud(lossLabelsArray, 'exec-loss-labels-container', 'danger', { src: 'lost', field: 'Causa_Raiz', data: window.lostAgg || [], title: 'Padrões de Perda' });
     }
 
     // AI Insights

@@ -526,3 +526,50 @@ RODADA 3 (prioridade normal — completude e polimento)
 | D3 | Suspender filtros: fica no header ou no painel? | Badge/ícone no header (no ícone ⧉) | Botão dentro do painel expandido |
 | D4 | Split de `dashboard.js`: fazer agora ou pós-Rodada 2? | Agora (correto mas arriscado) | Pós-Rodada 2 (seguro) |
 | D5 | ML predictions: todos os usuários veem ou só admin? | Todos veem (somente-leitura) | Só admin vê |
+
+---
+
+## Adendos — Rodada 2 (atualização pós-sprint)
+
+### HOTFIX entregue (commit anterior a este adendo)
+
+| Item | Arquivo | Descrição |
+|------|---------|-----------|
+| HF-1 | `api-dados.js` | `wonAgg`/`lostAgg` — campos dimensionais adicionados: `Vertical_IA`, `Sub_vertical_IA`, `Segmento_consolidado`, `Portfolio_FDM`, `Estado_Provincia_de_cobranca`, `Fase_Atual`, `Confianca`, `BANT_Score`, `MEDDIC_Score`, `Risco_Score`, `Idle_Dias`, `Forecast_SF/IA`. Corrige gráficos de tripleBar (Vertical, Sub-Vertical, Segmento, Estado) que retornavam vazio. |
+| HF-2 | `scripts/drilldown.js` *(novo)* | Módulo canônico de drilldown. Define `window.openDrilldown(title, items)` com tabela acordeão expansível por deal. Cada linha abre card completo com: nome/conta/vendedor, FiscalQ/data/ciclo/fase, financeiros (Gross/Net/Margem), scorecard (Confiança/Risco/BANT/MEDDIC), badges de risco (Sem Atividade, Funil Longo, Confiança Baixa, BANT Baixo, MEDDIC Baixo), chips de dimensão, nota IA (Fatores_Sucesso / Causa_Raiz). |
+| HF-3 | `graficos.js` | Delegação `openDrilldown` local → `window.openDrilldown` se definido. Permite override sem tocar no IIFE. |
+| HF-4 | `dashboard.js` | `createWordCloud` atualizada com 4º parâmetro `clickContext`. Todos os containers de word cloud (winTypes, lossTypes, winLabels, lossLabels, riskFlags, actionLabels) agora têm `onclick` que abre drilldown filtrando deals pelo texto clicado. |
+| HF-5 | `estilos-principais.css` | Adicionados: `.deal-expanded`, `.deal-exp-header/financials`, `.deal-score-grid`, `.deal-dims`, `.deal-dim-chip`, `.risk-flag-badge` (flag-red/orange/yellow), `.deal-ai-note`, `.deal-row` (hover/expanded), `.wcloud-item-clickable`. |
+
+### Regra permanente — NÃO TOCAR
+
+> **`agenda-semanal-weekly.js`** e **`agenda-semanal.js`** são **OFF LIMITS**.  
+> Nenhuma modificação, refactor ou migração deve ser feita nestes arquivos.  
+> A Pauta Semanal tem lógica própria e qualquer toque pode quebrar funcionalidades críticas de agendamento.
+
+### R2.6 — Drilldown Canônico (spec confirmada pelo usuário)
+
+Campos obrigatórios no card expandido (exemplo: MMDJ-130794):
+
+```
+[OPPORTUNITY NAME]
+[CONTA] — [TIPO: BASE INSTALADA / NOVO] — <badge: Ganho|Perdido|Pipeline>
+[VENDEDOR]
+[FISCAL_Q] • Fechamento: [DATA] • [CICLO] dias funil • Fase: [FASE_ATUAL] • [N] atividades
+
+Gross: R$ X.X M   Net: R$ X.X M   Margem: X%
+
+Confiança: X%   Risco: X/5   BANT: X/5   MEDDIC: X/5
+
+<chips de dimensão: Vertical | Sub-vertical | Segmento | Estado | Portfolio | Tipo | Forecast>
+<badges de risco: Sem Atividade | Funil Longo | Confiança Baixa | BANT Baixo | MEDDIC Baixo>
+
+Fatores de Sucesso / Causa Raiz: [texto]
+```
+
+### R2.7 — Word Cloud → Drilldown (implementado)
+
+- Clique em qualquer palavra nos containers Mapas/Word Cloud → `window._wcloudClick(span)` → filtra `wonAgg`/`lostAgg`/`pipelineDataRaw` pelo campo mapeado → abre `openDrilldown` com os deals relevantes.
+- Mapeamento: winTypes/lossTypes → `Tipo_Resultado`; winLabels → `Fatores_Sucesso`; lossLabels → `Causa_Raiz`; actionLabels → `Forecast_IA`; riskFlags → `Forecast_IA`.
+- Visual: chips clicáveis têm `cursor: pointer` e scale hover via `.wcloud-item-clickable`.
+

@@ -1506,9 +1506,9 @@ table tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
   background: var(--x-cyan-bg);
   color: var(--x-cyan-50);
 }
-.dd-badge.won  { background: var(--x-green-bg); color: var(--x-green-50); }
-.dd-badge.lost { background: var(--x-red-bg);   color: var(--x-red); }
-.dd-badge.pipe { background: var(--x-cyan-bg);   color: var(--x-cyan-50); }
+.dd-badge.won,  .dd-badge-won  { background: var(--x-green-bg); color: var(--x-green-50); }
+.dd-badge.lost, .dd-badge-lost { background: var(--x-red-bg);   color: var(--x-red);      }
+.dd-badge.pipe, .dd-badge-pipe { background: var(--x-cyan-bg);  color: var(--x-cyan-50);  }
 
 /* ── Chart empty placeholder ── */
 .chart-empty-msg {
@@ -1521,4 +1521,134 @@ table tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
   color: var(--text-muted);
   font-family: var(--font-body), sans-serif;
   letter-spacing: 0.03em;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   CANONICAL DRILLDOWN — expanded deal accordion
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* Clickable deal row */
+.deal-row {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.deal-row:hover td { background: var(--x-cyan-bg) !important; }
+.deal-row.expanded td {
+  background: rgba(0,190,255,0.08) !important;
+  border-bottom: none;
+}
+.deal-row td:first-child::before {
+  content: '▶';
+  display: inline-block;
+  font-size: 9px;
+  margin-right: 6px;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+.deal-row.expanded td:first-child::before {
+  transform: rotate(90deg);
+  color: var(--x-cyan-50);
+}
+.dd-opp-col { max-width: 240px; word-break: break-word; }
+
+/* Expansion row */
+.deal-exp-row td { padding: 0 !important; border-bottom: 1px solid var(--glass-border) !important; }
+.deal-exp-cell   { padding: 0 !important; background: transparent !important; }
+
+/* ── Expanded deal card ── */
+.deal-expanded {
+  padding: 16px 20px 20px;
+  background: var(--bg-surface);
+  border-left: 3px solid var(--x-cyan-50);
+  border-radius: 0 0 8px 8px;
+  font-family: var(--font-body), sans-serif;
+}
+
+.deal-exp-header { margin-bottom: 14px; }
+.deal-exp-title  {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.3;
+  margin-bottom: 4px;
+}
+.deal-exp-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.deal-exp-meta.dim { color: var(--text-muted); font-size: 11px; }
+
+/* Financials row */
+.deal-exp-financials {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  background: var(--glass);
+  border-radius: 8px;
+  border: 1px solid var(--glass-border);
+}
+.deal-fin-item { text-align: center; }
+.deal-fin-val  { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.deal-fin-lbl  { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+
+/* Score grid */
+.deal-score-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.deal-score-item { text-align: center; background: var(--glass); border-radius: 8px; padding: 8px 4px; border: 1px solid var(--glass-border); }
+.deal-score-val  { font-size: 14px; font-weight: 700; color: var(--x-cyan-50); }
+.deal-score-lbl  { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+
+/* Dimension chips */
+.deal-dims { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.deal-dim-chip {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 99px;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Risk badges */
+.deal-risk-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.risk-flag-badge  {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+.risk-flag-badge.flag-red    { background: rgba(239,68,68,0.18);   color: #f87171; }
+.risk-flag-badge.flag-orange { background: rgba(245,158,11,0.15);  color: #fbbf24; }
+.risk-flag-badge.flag-yellow { background: rgba(250,204,21,0.12);  color: #facc15; }
+
+/* AI note / motivo */
+.deal-ai-note {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 10px 14px;
+  background: var(--x-cyan-bg);
+  border-radius: 8px;
+  border-left: 3px solid var(--x-cyan-50);
+  line-height: 1.5;
+  margin-top: 8px;
+}
+.deal-ai-note strong { color: var(--text-primary); }
+
+/* Word cloud chip — clickable variant */
+.wcloud-item-clickable {
+  cursor: pointer !important;
+  transition: opacity 0.2s, transform 0.1s !important;
+}
+.wcloud-item-clickable:hover {
+  opacity: 1 !important;
+  transform: scale(1.05);
+  text-decoration: underline;
 }

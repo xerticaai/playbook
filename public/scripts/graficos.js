@@ -122,6 +122,10 @@
   };
 
   function openDrilldown(title, items, extraCols) {
+    // Delegate to canonical drilldown module if available
+    if (typeof window.openDrilldown === 'function') {
+      return window.openDrilldown(title, items, extraCols);
+    }
     var m = document.getElementById('chart-drilldown-modal');
     var o = document.getElementById('chart-drilldown-overlay');
     if (!m) return;
