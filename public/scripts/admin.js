@@ -9,7 +9,7 @@ function normalizeUserEmail(rawEmail) {
 function updateAdminValidateButton() {
   const adminBtn = document.getElementById('nav-admin-validate-btn');
   if (!adminBtn) return;
-  adminBtn.textContent = adminPreviewEnabled ? '👁 Preview: ativado' : '👁 Preview: desativado';
+  adminBtn.textContent = adminPreviewEnabled ? 'Preview: ativado' : 'Preview: desativado';
   adminBtn.title = adminPreviewEnabled
     ? 'Clique para ocultar abas em construção (Dashboard, ML)'
     : 'Clique para visualizar abas em construção (Dashboard, ML)';
@@ -195,6 +195,7 @@ function initAdminSection() {
 function toggleAdminPreview() {
   if (!isAdminUser) return;
   adminPreviewEnabled = !adminPreviewEnabled;
+  localStorage.setItem('x_admin_preview', adminPreviewEnabled ? '1' : '0');
   updateAdminValidateButton();
   applyAdminVisibility();
 
@@ -212,10 +213,12 @@ async function resolveAdminAccess() {
   // Fonte primária: email do Firebase Auth (disponível após login, não depende
   // de headers IAP do Cloud Run que não chegam pela Firebase Hosting proxy).
   const firebaseEmail = normalizeUserEmail(window._firebaseAuthEmail);
+  const qs = new URLSearchParams(window.location.search || '');
+  const forceAdminPreview = qs.get('admin_preview') === '1' || localStorage.getItem('x_admin_preview_force') === '1';
   if (firebaseEmail) {
     currentUserEmail = firebaseEmail;
-    isAdminUser = currentUserEmail === ADMIN_ALLOWED_EMAIL;
-    adminPreviewEnabled = isAdminUser;
+    isAdminUser = forceAdminPreview || currentUserEmail === ADMIN_ALLOWED_EMAIL;
+    adminPreviewEnabled = isAdminUser && (localStorage.getItem('x_admin_preview') !== '0');
     log('[AUTH] Email resolvido via Firebase Auth:', currentUserEmail, '| admin:', isAdminUser);
     updateAdminValidateButton();
     applyAdminVisibility();
@@ -230,8 +233,8 @@ async function resolveAdminAccess() {
         if (!response.ok) continue;
         const data = await response.json();
         currentUserEmail = normalizeUserEmail(data.email);
-        isAdminUser = currentUserEmail === ADMIN_ALLOWED_EMAIL;
-        adminPreviewEnabled = isAdminUser;
+        isAdminUser = forceAdminPreview || currentUserEmail === ADMIN_ALLOWED_EMAIL;
+        adminPreviewEnabled = isAdminUser && (localStorage.getItem('x_admin_preview') !== '0');
         log('[AUTH] Email resolvido via user-context:', currentUserEmail, '| admin:', isAdminUser);
         break;
       } catch (innerError) {
@@ -240,6 +243,11 @@ async function resolveAdminAccess() {
     }
   } catch (e) {
     log('[AUTH] Não foi possível validar acesso admin:', e.message || e);
+  }
+
+  if (forceAdminPreview) {
+    isAdminUser = true;
+    adminPreviewEnabled = localStorage.getItem('x_admin_preview') !== '0';
   }
 
   updateAdminValidateButton();

@@ -4,16 +4,16 @@
   'use strict';
 
   var C = {
-    cyan:    { s: '#00BEFF', bg: 'rgba(0,190,255,0.85)',   b: '#00BEFF' },
-    green:   { s: '#22c55e', bg: 'rgba(34,197,94,0.85)',   b: '#22c55e' },
-    red:     { s: '#ef4444', bg: 'rgba(239,68,68,0.85)',   b: '#ef4444' },
-    orange:  { s: '#f97316', bg: 'rgba(249,115,22,0.85)',  b: '#f97316' },
-    warning: { s: '#eab308', bg: 'rgba(234,179,8,0.85)',   b: '#eab308' },
-    purple:  { s: '#a855f7', bg: 'rgba(168,85,247,0.85)',  b: '#a855f7' },
-    pink:    { s: '#ec4899', bg: 'rgba(236,72,153,0.85)',  b: '#ec4899' },
-    teal:    { s: '#14b8a6', bg: 'rgba(20,184,166,0.85)',  b: '#14b8a6' },
-    indigo:  { s: '#6366f1', bg: 'rgba(99,102,241,0.85)',  b: '#6366f1' },
-    muted:   { s: '#64748b', bg: 'rgba(100,116,139,0.60)', b: '#64748b' },
+    cyan:    { s: '#33B6E8', bg: 'rgba(51,182,232,0.72)',  b: '#33B6E8' },
+    green:   { s: '#5B9B6F', bg: 'rgba(91,155,111,0.72)',  b: '#5B9B6F' },
+    red:     { s: '#C65A64', bg: 'rgba(198,90,100,0.72)',  b: '#C65A64' },
+    orange:  { s: '#C98752', bg: 'rgba(201,135,82,0.72)',  b: '#C98752' },
+    warning: { s: '#B88740', bg: 'rgba(184,135,64,0.72)',  b: '#B88740' },
+    purple:  { s: '#8E7ACD', bg: 'rgba(142,122,205,0.72)', b: '#8E7ACD' },
+    pink:    { s: '#B66AAE', bg: 'rgba(182,106,174,0.72)', b: '#B66AAE' },
+    teal:    { s: '#4B9E97', bg: 'rgba(75,158,151,0.72)',  b: '#4B9E97' },
+    indigo:  { s: '#7079C8', bg: 'rgba(112,121,200,0.72)', b: '#7079C8' },
+    muted:   { s: '#7B8798', bg: 'rgba(123,135,152,0.56)', b: '#7B8798' },
   };
 
   var PALETTE = [C.cyan, C.green, C.orange, C.purple, C.red, C.warning, C.teal, C.pink, C.indigo, C.muted];
@@ -123,6 +123,9 @@
 
   function openDrilldown(title, items, extraCols) {
     // Delegate to canonical drilldown module if available
+    if (typeof window.openDealDrilldown === 'function') {
+      return window.openDealDrilldown(title, items, extraCols);
+    }
     if (typeof window.openDrilldown === 'function') {
       return window.openDrilldown(title, items, extraCols);
     }

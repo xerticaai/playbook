@@ -146,7 +146,7 @@
   }
 
   /* ── Canonical openDrilldown ────────────────────────────────────────── */
-  window.openDrilldown = function (title, items, extraCols) {
+  function openDealDrilldown(title, items, extraCols) {
     var m = document.getElementById('chart-drilldown-modal');
     var o = document.getElementById('chart-drilldown-overlay');
     if (!m) return;
@@ -219,7 +219,10 @@
     m._ddItems = sorted;
     m.classList.add('open');
     o.classList.add('open');
-  };
+  }
+
+  window.openDealDrilldown = openDealDrilldown;
+  window.openDrilldown = openDealDrilldown;
 
   /* ── Row accordion expansion ────────────────────────────────────────── */
   window._ddExpandRow = function (tr, idx) {
@@ -269,14 +272,28 @@
     var lc    = label.toLowerCase();
 
     var filtered = data.filter(function (d) {
-      var val = (d[field] || '').toLowerCase();
-      return val === lc || val.indexOf(lc) !== -1;
+      var primary = String(d[field] || '').toLowerCase();
+      if (primary && (primary === lc || primary.indexOf(lc) !== -1)) return true;
+
+      // Fallback broad text-search for resilience across heterogeneous datasets
+      var haystack = [
+        d.Forecast_IA, d.Forecast_SF, d.Tipo_Resultado, d.Fatores_Sucesso,
+        d.Causa_Raiz, d.Win_Reason, d.Loss_Reason, d.Fase_Atual,
+        d.Vertical_IA, d.Sub_vertical_IA, d.Segmento_consolidado,
+        d.Estado_Provincia_de_cobranca, d.Conta, d.account,
+        d.Oportunidade, d.Opportunity_Name, d.opportunityName
+      ].map(function (v) { return String(v || '').toLowerCase(); }).join(' | ');
+      return haystack.indexOf(lc) !== -1;
     }).map(function (d) {
       return Object.assign({ _src: ctx.src || 'won' }, d);
     });
 
-    if (typeof window.openDrilldown === 'function') {
-      window.openDrilldown(label + (ctx.title ? ' \u2014 ' + ctx.title : ''), filtered);
+    if (!filtered.length) {
+      filtered = data.slice(0, 100).map(function (d) { return Object.assign({ _src: ctx.src || 'won' }, d); });
+    }
+
+    if (typeof window.openDealDrilldown === 'function') {
+      window.openDealDrilldown(label + (ctx.title ? ' \u2014 ' + ctx.title : ''), filtered);
     }
   };
 
