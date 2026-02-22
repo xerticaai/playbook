@@ -21,18 +21,20 @@
   // Gradient fill factory — horiz = left→right (indexAxis:'y'), else top→bottom
   function gradBg(color, horiz) {
     return function (context) {
-      var chart = context.chart;
-      var ca    = chart.chartArea;
-      if (!ca) return color.bg;
-      var ctx   = chart.ctx;
-      var m     = color.bg.match(/rgba\((\d+),\s*(\d+),\s*(\d+)/);
-      var rgb   = m ? (m[1]+','+m[2]+','+m[3]) : '128,128,128';
-      var g     = horiz
-        ? ctx.createLinearGradient(ca.left, 0, ca.right, 0)
-        : ctx.createLinearGradient(0, ca.top, 0, ca.bottom);
-      g.addColorStop(0, 'rgba(' + rgb + ',0.92)');
-      g.addColorStop(1, 'rgba(' + rgb + ',0.13)');
-      return g;
+      try {
+        var chart = context.chart;
+        var ca    = chart && chart.chartArea;
+        if (!ca) return color.bg;
+        var ctx   = chart.ctx;
+        var m     = color.bg.match(/rgba\((\d+),\s*(\d+),\s*(\d+)/);
+        var rgb   = m ? (m[1]+','+m[2]+','+m[3]) : '128,128,128';
+        var g     = horiz
+          ? ctx.createLinearGradient(ca.left, 0, ca.right, 0)
+          : ctx.createLinearGradient(0, ca.top, 0, ca.bottom);
+        g.addColorStop(0, 'rgba(' + rgb + ',0.92)');
+        g.addColorStop(1, 'rgba(' + rgb + ',0.13)');
+        return g;
+      } catch(e) { return color.bg; }
     };
   }
 
@@ -858,37 +860,46 @@
   }
 
   // ── Custom Plugins ───────────────────────────────────────────────────
-  // 1. Doughnut center text — shows Gross Total inside the hole
-  if (window.Chart && window.Chart.register) {
-    Chart.register({
-      id: 'doughnutCenter',
-      afterDraw: function (chart) {
-        if (chart.config.type !== 'doughnut') return;
-        var ds = chart.data && chart.data.datasets && chart.data.datasets[0];
-        if (!ds) return;
-        var tot = (ds.data || []).reduce(function (s, v) { return s + (+v || 0); }, 0);
-        if (!tot) return;
-        var ca = chart.chartArea; if (!ca) return;
-        var cx  = ca.left + (ca.right  - ca.left)  / 2;
-        var cy  = ca.top  + (ca.bottom - ca.top)   / 2;
-        var ctx = chart.ctx;
-        ctx.save();
-        ctx.textAlign    = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = isLight() ? '#0f1b2d' : '#e8f2fb';
-        ctx.font      = "700 15px 'Poppins','Roboto',sans-serif";
-        ctx.fillText(fmt(tot), cx, cy - 9);
-        ctx.font      = "10px 'Roboto',sans-serif";
-        ctx.fillStyle = isLight() ? '#6b7f97' : '#7b8fa6';
-        ctx.fillText('Gross Total', cx, cy + 9);
-        ctx.restore();
-      }
-    });
+  // Idempotent register: skip if plugin already registered (prevents crash on script reload)
+  function safeRegister(plugin) {
+    try {
+      if (window.Chart && window.Chart.register) Chart.register(plugin);
+    } catch (e) {
+      // Plugin already registered — safe to ignore
+    }
+  }
 
-    // 2. Bar value/% labels (end of bar for horizontal, top for vertical)
-    Chart.register({
-      id: 'barDatalabels',
-      afterDatasetsDraw: function (chart) {
+  // 1. Doughnut center text — shows Gross Total inside the hole
+  safeRegister({
+    id: 'doughnutCenter',
+    afterDraw: function (chart) {
+      if (chart.config.type !== 'doughnut') return;
+      var ds = chart.data && chart.data.datasets && chart.data.datasets[0];
+      if (!ds) return;
+      var tot = (ds.data || []).reduce(function (s, v) { return s + (+v || 0); }, 0);
+      if (!tot) return;
+      var ca = chart.chartArea; if (!ca) return;
+      var cx  = ca.left + (ca.right  - ca.left)  / 2;
+      var cy  = ca.top  + (ca.bottom - ca.top)   / 2;
+      var ctx = chart.ctx;
+      ctx.save();
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = isLight() ? '#0f1b2d' : '#e8f2fb';
+      ctx.font      = "700 14px 'Poppins','Roboto',sans-serif";
+      ctx.fillText(fmt(tot), cx, cy - 8);
+      ctx.font      = "10px 'Roboto',sans-serif";
+      ctx.fillStyle = isLight() ? '#6b7f97' : '#7b8fa6';
+      ctx.fillText('Gross Total', cx, cy + 9);
+      ctx.restore();
+    }
+  });
+
+  // 2. Bar value/% labels
+  safeRegister({
+    id: 'barDatalabels',
+    afterDatasetsDraw: function (chart) {
+      try {
         var opts = chart.options.plugins && chart.options.plugins.barDatalabels;
         if (!opts || !opts.display) return;
         var horiz = chart.options.indexAxis === 'y';
@@ -897,7 +908,6 @@
           if (dataset.type === 'line') return;
           var meta = chart.getDatasetMeta(i);
           if (!meta || meta.hidden) return;
-          // Compute dataset total for % calc
           var dsTotal = 0;
           (dataset.data || []).forEach(function(v){ dsTotal += (typeof v === 'number' ? v : 0); });
           if (!dsTotal) return;
@@ -905,39 +915,40 @@
             var val = dataset.data[j];
             if (!val || val <= 0) return;
             var pct = (val / dsTotal * 100);
-            if (pct < 1) return; // skip tiny segments
-            var label = opts.formatter
-              ? opts.formatter(val, j, pct)
-              : (pct.toFixed(0) + '%');
-            var ctx = chart.ctx;
-            ctx.save();
-            ctx.font         = "bold 10px 'Roboto',sans-serif";
-            ctx.fillStyle    = t.txt;
-            ctx.globalAlpha  = 0.80;
+            if (pct < 2) return;
+            var label = opts.formatter ? opts.formatter(val, j, pct) : (pct.toFixed(0) + '%');
+            var ctx2 = chart.ctx;
+            ctx2.save();
+            ctx2.font        = "bold 10px 'Roboto',sans-serif";
+            ctx2.fillStyle   = t.txt;
+            ctx2.globalAlpha = 0.78;
             if (horiz) {
-              ctx.textAlign    = 'left';
-              ctx.textBaseline = 'middle';
-              // Only draw if bar wide enough
-              if (bar.x - bar.base > 28) {
-                ctx.fillText(label, bar.x + 4, bar.y);
+              var barW = Math.abs((bar.x || 0) - (bar.base || 0));
+              if (barW > 30) {
+                ctx2.textAlign    = 'left';
+                ctx2.textBaseline = 'middle';
+                ctx2.fillText(label, (bar.x || 0) + 4, bar.y || 0);
               }
             } else {
-              ctx.textAlign    = 'center';
-              ctx.textBaseline = 'bottom';
-              if (bar.base - bar.y > 14) {
-                ctx.fillText(label, bar.x, bar.y - 3);
+              var barH = Math.abs((bar.base || 0) - (bar.y || 0));
+              if (barH > 16) {
+                ctx2.textAlign    = 'center';
+                ctx2.textBaseline = 'bottom';
+                ctx2.fillText(label, bar.x || 0, (bar.y || 0) - 3);
               }
             }
-            ctx.restore();
+            ctx2.restore();
           });
         });
-      }
-    });
+      } catch(e) {}
+    }
+  });
 
-    // 3. Doughnut arc % labels
-    Chart.register({
-      id: 'arcLabels',
-      afterDraw: function (chart) {
+  // 3. Doughnut arc % labels
+  safeRegister({
+    id: 'arcLabels',
+    afterDraw: function (chart) {
+      try {
         var opts = chart.options.plugins && chart.options.plugins.arcLabels;
         if (!opts || !opts.display) return;
         if (chart.config.type !== 'doughnut' && chart.config.type !== 'pie') return;
@@ -949,7 +960,7 @@
         meta.data.forEach(function (arc, i) {
           var val = ds.data[i]; if (!val || val <= 0) return;
           var pct = val / tot * 100;
-          if (pct < 4) return; // skip tiny arcs
+          if (pct < 4) return;
           var midAngle  = (arc.startAngle + arc.endAngle) / 2;
           var midRadius = (arc.innerRadius + arc.outerRadius) * 0.56;
           var tx = arc.x + Math.cos(midAngle) * midRadius;
@@ -957,48 +968,55 @@
           ctx.save();
           ctx.textAlign    = 'center';
           ctx.textBaseline = 'middle';
-          // Shadow for readability
-          ctx.shadowColor   = 'rgba(0,0,0,0.7)';
-          ctx.shadowBlur    = 4;
-          ctx.font          = "bold 11px 'Poppins','Roboto',sans-serif";
-          ctx.fillStyle     = '#ffffff';
+          ctx.shadowColor  = 'rgba(0,0,0,0.7)';
+          ctx.shadowBlur   = 4;
+          ctx.font         = "bold 11px 'Poppins','Roboto',sans-serif";
+          ctx.fillStyle    = '#ffffff';
           ctx.fillText(pct.toFixed(0) + '%', tx, ty);
           ctx.restore();
         });
-      }
-    });
-  }
+      } catch(e) {}
+    }
+  });
+
 
   // ── Public API ───────────────────────────────────────────────────────
+  function safeBuild(fn, name) {
+    try { fn(); } catch(e) { console.warn('[CHART] Erro em ' + name + ':', e); }
+  }
+
   window.initDashboardCharts = function () {
     if (window.Chart && window.Chart.defaults) {
-      Chart.defaults.font.family = "'Roboto', sans-serif";
-      Chart.defaults.font.size   = 12;
-      // Premium tooltip
-      var Td = Chart.defaults.plugins.tooltip;
-      Td.backgroundColor = isLight() ? 'rgba(15,27,45,0.96)' : 'rgba(4,9,18,0.97)';
-      Td.titleColor      = '#f2f6fb';
-      Td.bodyColor       = '#9aafc4';
-      Td.borderColor     = 'rgba(0,190,255,0.24)';
-      Td.borderWidth     = 1;
-      Td.padding         = 12;
-      Td.cornerRadius    = 10;
-      Td.titleFont       = { family: "'Poppins','Roboto',sans-serif", size: 12, weight: '600' };
-      Td.bodyFont        = { family: "'Roboto',sans-serif", size: 11 };
-      Td.boxPadding      = 4;
+      try {
+        Chart.defaults.font.family = "'Roboto', sans-serif";
+        Chart.defaults.font.size   = 12;
+        var Td = Chart.defaults.plugins && Chart.defaults.plugins.tooltip;
+        if (Td) {
+          Td.backgroundColor = isLight() ? 'rgba(15,27,45,0.96)' : 'rgba(4,9,18,0.97)';
+          Td.titleColor      = '#f2f6fb';
+          Td.bodyColor       = '#9aafc4';
+          Td.borderColor     = 'rgba(0,190,255,0.24)';
+          Td.borderWidth     = 1;
+          Td.padding         = 12;
+          Td.cornerRadius    = 10;
+          Td.titleFont       = { family: "'Poppins','Roboto',sans-serif", size: 12, weight: '600' };
+          Td.bodyFont        = { family: "'Roboto',sans-serif", size: 11 };
+          Td.boxPadding      = 4;
+        }
+      } catch(e) { console.warn('[CHART] tooltip defaults:', e); }
     }
-    buildPorFase();
-    buildWinLoss();
-    buildVertical();
-    buildSubVertical();
-    buildPortfolioFDM();
-    buildPortfolioVersao();
-    buildForecastSF();
-    buildWinRateVendedor();
-    buildSegmento();
-    buildEstado();
-    buildCidade();
-    buildMonthly();
+    safeBuild(buildPorFase,       'PorFase');
+    safeBuild(buildWinLoss,       'WinLoss');
+    safeBuild(buildVertical,      'Vertical');
+    safeBuild(buildSubVertical,   'SubVertical');
+    safeBuild(buildPortfolioFDM,  'PortfolioFDM');
+    safeBuild(buildPortfolioVersao,'PortfolioVersao');
+    safeBuild(buildForecastSF,    'ForecastSF');
+    safeBuild(buildWinRateVendedor,'WinRateVendedor');
+    safeBuild(buildSegmento,      'Segmento');
+    safeBuild(buildEstado,        'Estado');
+    safeBuild(buildCidade,        'Cidade');
+    safeBuild(buildMonthly,       'Monthly');
     installChartExpandButtons();
     initChartCategoryToggles();
   };
