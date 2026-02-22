@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
   <base target="_top">
   <meta charset="UTF-8">
@@ -14,11 +14,21 @@
   <link rel="stylesheet" href="estilos/animacoes-carregamento.css">
   <link rel="stylesheet" href="estilos/estilos-principais.css">
 
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
 </head>
 <body>
+<script>
+  // Restaura tema salvo antes de qualquer render
+  (function(){
+    var t = localStorage.getItem('xertica-theme');
+    if (t === 'light') document.documentElement.setAttribute('data-theme','light');
+  })();
+</script>
 
   <!-- ========== AUTH OVERLAY ========== -->
   <div id="auth-overlay">
@@ -252,11 +262,16 @@
   </button>
 
   <div class="main">
-    <div class="header">
-      <div class="timestamp" style="width: 100%; text-align: center;">
+    <div class="header top-header-bar">
+      <div class="timestamp">
         <span id="quarter-label">-</span> | 
         Atualizado: <span id="last-update">-</span>
       </div>
+      <button class="theme-toggle-btn" onclick="toggleTheme()" id="theme-toggle-btn" title="Alternar modo claro/escuro">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" id="theme-icon">
+          <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+      </button>
     </div>
     
     <!-- Botão de Atualizar -->
@@ -543,6 +558,14 @@
 
       <!-- TAB CONTENT: RESUMO -->
       <div class="exec-tab-content active" data-content="resumo">
+
+        <!-- View Toggle -->
+        <div class="view-toggle">
+          <button class="view-btn active" id="view-btn-metricas" onclick="switchMetricView('view-kpi-cards', this)">&#x1F4CA; Métricas</button>
+          <button class="view-btn" id="view-btn-graficos" onclick="switchMetricView('view-graficos', this)">&#x1F4C8; Análise Gráfica</button>
+        </div>
+
+        <div id="view-kpi-cards" class="view-content active">
       <!-- SEÇÃO 1: MÉTRICAS DO QUARTER -->
       <h3>
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1054,6 +1077,47 @@
           </div>
         </div>
       </div>
+
+        </div><!-- /view-kpi-cards -->
+
+        <!-- VISÃO GRÁFICOS (Chart.js) -->
+        <div id="view-graficos" class="view-content">
+          <div class="bento-grid">
+            <div class="card col-8">
+              <div class="card-label">&#x1F4CB; Pipeline por Fase — Gross &amp; Net</div>
+              <div class="chart-wrapper" style="height:260px;"><canvas id="chart-por-fase"></canvas></div>
+            </div>
+            <div class="card col-4 glow-green">
+              <div class="card-label">&#x2696; Ganhos vs Perdidos</div>
+              <div class="chart-wrapper" style="height:260px;"><canvas id="chart-winloss"></canvas></div>
+            </div>
+            <div class="card col-12 glow-cyan">
+              <div class="card-label">&#x1F916; Vertical IA — Comparativo (Pipeline / Ganhos / Perdidos)</div>
+              <div class="chart-wrapper" style="height:300px;"><canvas id="chart-vertical"></canvas></div>
+            </div>
+            <div class="card col-8">
+              <div class="card-label">&#x1F4C8; Receita Mensal (Ganhos Gross &amp; Net vs Perdidos)</div>
+              <div class="chart-wrapper" style="height:260px;"><canvas id="chart-receita-mensal"></canvas></div>
+            </div>
+            <div class="card col-4">
+              <div class="card-label">&#x1F4CA; Resumo Quantitativo</div>
+              <div id="chart-summary-stats" style="display:flex;flex-direction:column;gap:14px;padding-top:12px;">
+                <div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--glass-border);padding-bottom:10px;">
+                  <span class="chart-stat-label">Pipeline Ativo</span>
+                  <span class="card-value sm text-cyan" id="cs-pipeline">—</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--glass-border);padding-bottom:10px;">
+                  <span class="chart-stat-label">Deals Ganhos</span>
+                  <span class="card-value sm text-green" id="cs-won">—</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;">
+                  <span class="chart-stat-label">Deals Perdidos</span>
+                  <span class="card-value sm text-red" id="cs-lost">—</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div><!-- /view-graficos -->
 
       </div><!-- FIM TAB RESUMO -->
 
@@ -2179,9 +2243,66 @@
   <script src="scripts/ml.js"></script>
   <script src="scripts/performance-fsr.js"></script>
   <script src="scripts/inicializacao.js"></script>
+  <script src="scripts/graficos.js"></script>
 
   <!-- Weekly Agenda Enhanced Script (cache-bust) -->
 <script src="scripts/agenda-semanal-weekly.js?v=20260212-0012"></script>
+
+<script>
+  // ── Theme Toggle ──
+  function toggleTheme() {
+    var html = document.documentElement;
+    var isLight = html.getAttribute('data-theme') === 'light';
+    if (isLight) {
+      html.removeAttribute('data-theme');
+      localStorage.setItem('xertica-theme', 'dark');
+    } else {
+      html.setAttribute('data-theme', 'light');
+      localStorage.setItem('xertica-theme', 'light');
+    }
+    // Re-render charts se existir
+    if (typeof window.initDashboardCharts === 'function') {
+      setTimeout(window.initDashboardCharts, 60);
+    }
+  }
+
+  // ── View Switcher (Métricas / Gráficos) ──
+  function switchMetricView(viewId, btn) {
+    var views = document.querySelectorAll('#view-kpi-cards, #view-graficos');
+    views.forEach(function(v) { v.classList.remove('active'); });
+    var btns = document.querySelectorAll('.view-btn');
+    btns.forEach(function(b) { b.classList.remove('active'); });
+    var target = document.getElementById(viewId);
+    if (target) target.classList.add('active');
+    if (btn) btn.classList.add('active');
+    // Init charts on first open
+    if (viewId === 'view-graficos' && typeof window.initDashboardCharts === 'function') {
+      setTimeout(window.initDashboardCharts, 80);
+    }
+  }
+
+  // ── Chart Drilldown ──
+  function closeChartDrilldown() {
+    var overlay = document.getElementById('chart-drilldown-overlay');
+    var modal   = document.getElementById('chart-drilldown-modal');
+    if (overlay) overlay.classList.remove('open');
+    if (modal)   modal.classList.remove('open');
+  }
+  function openChartDrilldown(title, subtitle, bodyHtml) {
+    var overlay = document.getElementById('chart-drilldown-overlay');
+    var modal   = document.getElementById('chart-drilldown-modal');
+    var ttl     = document.getElementById('chart-dd-title');
+    var sub     = document.getElementById('chart-dd-subtitle');
+    var body    = document.getElementById('chart-dd-body');
+    if (ttl)  ttl.textContent  = title    || 'Drill-down';
+    if (sub)  sub.textContent  = subtitle || '';
+    if (body) body.innerHTML   = bodyHtml || '';
+    if (overlay) overlay.classList.add('open');
+    if (modal)   modal.classList.add('open');
+  }
+  window.openChartDrilldown  = openChartDrilldown;
+  window.closeChartDrilldown = closeChartDrilldown;
+</script>
 
   <!-- Xertica Loading Overlay -->
   <div id="xertica-loading-overlay" class="xertica-loading-overlay">
@@ -2198,6 +2319,19 @@
       </div>
     </div>
   </div>
+
+  <!-- Chart Drilldown Panel -->
+  <div id="chart-drilldown-overlay" onclick="closeChartDrilldown()"></div>
+  <aside id="chart-drilldown-modal">
+    <div class="exec-drilldown-header">
+      <div>
+        <div class="exec-drilldown-title" id="chart-dd-title">Drill-down</div>
+        <div style="font-size:11px;color:var(--text-muted);" id="chart-dd-subtitle">Deals correspondentes</div>
+      </div>
+      <button class="exec-dd-btn" onclick="closeChartDrilldown()">Fechar</button>
+    </div>
+    <div class="exec-drilldown-body" id="chart-dd-body" style="padding:20px;overflow-y:auto;"></div>
+  </aside>
 
   <div id="exec-drilldown-backdrop" class="exec-drilldown-backdrop" onclick="closeExecutiveDrilldown()"></div>
   <aside id="exec-drilldown-panel" class="exec-drilldown-panel" aria-hidden="true">
