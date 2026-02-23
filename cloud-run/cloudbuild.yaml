@@ -1,5 +1,20 @@
 steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', 'gcr.io/operaciones-br/sales-intelligence-engine-run', '-f', 'cloud-run/Dockerfile', '.']
+
+  # Restaura acesso público após deploy para evitar 403 (gcloud run deploy
+  # reverte IAM para require-auth se --allow-unauthenticated não for passado)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - run
+      - services
+      - add-iam-policy-binding
+      - sales-intelligence-api
+      - --region=us-central1
+      - --project=operaciones-br
+      - --member=allUsers
+      - --role=roles/run.invoker
+
 images:
   - 'gcr.io/operaciones-br/sales-intelligence-engine-run'

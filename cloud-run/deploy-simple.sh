@@ -30,6 +30,16 @@ gcloud run deploy $SERVICE_NAME \
 echo ""
 echo "✅ Deployment complete!"
 echo ""
+
+# Garantir acesso público (gcloud run deploy pode reverter IAM sem --allow-unauthenticated)
+echo "🔓 Restaurando acesso público ao Cloud Run..."
+gcloud run services add-iam-policy-binding $SERVICE_NAME \
+  --project $PROJECT_ID \
+  --region $REGION \
+  --member="allUsers" \
+  --role="roles/run.invoker" --quiet 2>&1 | grep -E "Updated|Error" || true
+
+echo ""
 echo "Service URL:"
 gcloud run services describe $SERVICE_NAME \
   --project $PROJECT_ID \
