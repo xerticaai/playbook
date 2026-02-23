@@ -4,6 +4,7 @@ from datetime import datetime
 import os
 import time
 from typing import Optional, Dict, Any
+import copy
 
 from fastapi import APIRouter, Query
 from google.cloud import bigquery
@@ -109,6 +110,17 @@ def get_embeddings_freshness(client: bigquery.Client) -> dict:
         return {}
 
 
+def _extend_where(where_clause: str, *extra_conditions: str) -> str:
+    """Append additional SQL conditions to an existing WHERE clause."""
+    conditions = [c.strip() for c in extra_conditions if c and c.strip()]
+    if not conditions:
+        return where_clause
+    extra_sql = " AND ".join(conditions)
+    if where_clause.strip():
+        return where_clause.rstrip() + " AND " + extra_sql
+    return "WHERE " + extra_sql
+
+
 def get_business_highlights(
         client: bigquery.Client,
         *,
@@ -122,6 +134,9 @@ def get_business_highlights(
                 "top_pipeline": [],
                 "top_gain_causes": [],
                 "top_loss_causes": [],
+                "win_tags": [],
+                "win_by_segment": [],
+                "win_by_family": [],
         }
         try:
                 top_wins_query = f"""
@@ -171,10 +186,12 @@ def get_business_highlights(
                     COALESCE(NULLIF(TRIM(Fatores_Sucesso), ''), 'Sem classificação') AS causa,
                     COUNT(*) AS total
                 FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`
-                {won_where}
+                {_extend_where(won_where,
+                    "Fatores_Sucesso IS NOT NULL",
+                    "TRIM(Fatores_Sucesso) NOT IN ('', '-')")}
                 GROUP BY causa
                 ORDER BY total DESC
-                LIMIT 5
+                LIMIT 8
                 """
 
                 top_loss_causes_query = f"""
@@ -182,10 +199,53 @@ def get_business_highlights(
                     COALESCE(NULLIF(TRIM(Causa_Raiz), ''), 'Sem classificação') AS causa,
                     COUNT(*) AS total
                 FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`
-                {lost_where}
+                {_extend_where(lost_where,
+                    "Causa_Raiz IS NOT NULL",
+                    "TRIM(Causa_Raiz) NOT IN ('', '-')")}
                 GROUP BY causa
                 ORDER BY total DESC
-                LIMIT 5
+                LIMIT 8
+                """
+
+                win_tags_query = f"""
+                SELECT
+                    TRIM(tag) AS tag,
+                    COUNT(*) AS cnt
+                FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`,
+                UNNEST(SPLIT(Labels, ', ')) AS tag
+                {_extend_where(won_where,
+                    "Labels IS NOT NULL",
+                    "Labels != ''",
+                    "TRIM(tag) NOT IN ('', '-')")}
+                GROUP BY 1
+                ORDER BY 2 DESC
+                LIMIT 15
+                """
+
+                win_by_segment_query = f"""
+                SELECT
+                    COALESCE(NULLIF(TRIM(Segmento), ''), 'Outros') AS segmento,
+                    COUNT(*) AS cnt,
+                    ROUND(SUM(SAFE_CAST(Gross AS FLOAT64)), 0) AS total_gross
+                FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`
+                {_extend_where(won_where,
+                    "Segmento IS NOT NULL",
+                    "TRIM(Segmento) NOT IN ('', '-')")}
+                GROUP BY 1
+                ORDER BY 2 DESC
+                LIMIT 6
+                """
+
+                win_by_family_query = f"""
+                SELECT
+                    SPLIT(COALESCE(NULLIF(TRIM(Familia_Produto), ''), 'Outros'), ' | ')[OFFSET(0)] AS familia,
+                    COUNT(*) AS cnt,
+                    ROUND(SUM(SAFE_CAST(Gross AS FLOAT64)), 0) AS total_gross
+                FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`
+                {won_where}
+                GROUP BY 1
+                ORDER BY 3 DESC
+                LIMIT 6
                 """
 
                 highlights["top_wins"] = [dict(row) for row in client.query(top_wins_query).result()]
@@ -193,6 +253,9 @@ def get_business_highlights(
                 highlights["top_pipeline"] = [dict(row) for row in client.query(top_pipeline_query).result()]
                 highlights["top_gain_causes"] = [dict(row) for row in client.query(top_gain_causes_query).result()]
                 highlights["top_loss_causes"] = [dict(row) for row in client.query(top_loss_causes_query).result()]
+                highlights["win_tags"] = [dict(row) for row in client.query(win_tags_query).result()]
+                highlights["win_by_segment"] = [dict(row) for row in client.query(win_by_segment_query).result()]
+                highlights["win_by_family"] = [dict(row) for row in client.query(win_by_family_query).result()]
         except Exception:
                 return highlights
 
@@ -234,7 +297,14 @@ async def get_insights_rag(
         )
         cached = _get_cache(cache_key)
         if cached:
-            return cached
+            payload = copy.deepcopy(cached)
+            payload.setdefault("rag", {})
+            payload["rag"]["cache_hit"] = True
+            payload.setdefault("latency_ms", {})
+            payload["latency_ms"]["cache_lookup"] = 1
+            payload["latency_ms"]["served_from_cache"] = True
+            payload["timestamp"] = datetime.utcnow().isoformat()
+            return payload
 
         request_start = time.perf_counter()
         timings_ms = {
@@ -322,9 +392,63 @@ async def get_insights_rag(
         wins_stats = dict(wins_rows[0]) if wins_rows else {"total": 0, "avg_cycle_days": 0}
         losses_stats = dict(losses_rows[0]) if losses_rows else {"total": 0, "avg_cycle_days": 0}
 
+        adaptive_context = {
+            "enabled": False,
+            "reason": "",
+            "mode": "",
+        }
+
+        won_where_for_highlights = won_where
+        lost_where_for_highlights = lost_where
+
+        wins_total = int(float(wins_stats.get("total") or 0))
+        losses_total = int(float(losses_stats.get("total") or 0))
+
+        if (date_start or date_end) and wins_total == 0 and losses_total == 0:
+            fallback_won_where = build_closed_filters(year, quarter, month, None, None, seller, "Data_Fechamento")
+            fallback_lost_where = build_closed_filters(year, quarter, month, None, None, seller, "Data_Fechamento")
+
+            fallback_wins_rows = list(client.query(f"""
+            SELECT
+              COUNT(*) AS total,
+              ROUND(AVG(SAFE_CAST(Ciclo_dias AS FLOAT64)), 1) AS avg_cycle_days
+            FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`
+            {fallback_won_where}
+            """).result())
+
+            fallback_losses_rows = list(client.query(f"""
+            SELECT
+              COUNT(*) AS total,
+              ROUND(AVG(SAFE_CAST(Ciclo_dias AS FLOAT64)), 1) AS avg_cycle_days
+            FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`
+            {fallback_lost_where}
+            """).result())
+
+            fallback_wins_stats = dict(fallback_wins_rows[0]) if fallback_wins_rows else {"total": 0, "avg_cycle_days": 0}
+            fallback_losses_stats = dict(fallback_losses_rows[0]) if fallback_losses_rows else {"total": 0, "avg_cycle_days": 0}
+
+            fallback_wins_total = int(float(fallback_wins_stats.get("total") or 0))
+            fallback_losses_total = int(float(fallback_losses_stats.get("total") or 0))
+
+            if fallback_wins_total > 0 or fallback_losses_total > 0:
+                wins_stats = fallback_wins_stats
+                losses_stats = fallback_losses_stats
+                won_where_for_highlights = fallback_won_where
+                lost_where_for_highlights = fallback_lost_where
+                adaptive_context = {
+                    "enabled": True,
+                    "reason": "No won/lost records in selected date range",
+                    "mode": "expanded_without_date_range",
+                }
+
         stats["pipeline"] = pipeline_stats
         stats["wins_stats"] = wins_stats
         stats["losses_stats"] = losses_stats
+        stats["by_source"] = {
+            "won": int(float(wins_stats.get("total") or 0)),
+            "lost": int(float(losses_stats.get("total") or 0)),
+            "pipeline": int(float(pipeline_stats.get("total") or 0)),
+        }
         for bucket in (stats, wins_stats, losses_stats):
             bucket["top_sellers"] = []
             bucket["top_accounts"] = []
@@ -332,8 +456,8 @@ async def get_insights_rag(
 
         business_highlights = get_business_highlights(
             client,
-            won_where=won_where,
-            lost_where=lost_where,
+            won_where=won_where_for_highlights,
+            lost_where=lost_where_for_highlights,
             pipeline_where=pipeline_where,
         )
 
@@ -383,6 +507,8 @@ async def get_insights_rag(
                 "threshold_relaxed": threshold_relaxed,
                 "freshness": freshness,
                 "cache_ttl_seconds": INSIGHTS_CACHE_TTL_SECONDS,
+                "cache_hit": False,
+                "adaptive": adaptive_context,
             },
             "quality": quality,
             "latency_ms": timings_ms,
@@ -459,6 +585,9 @@ async def get_insights_rag(
                 "top_pipeline": [],
                 "top_gain_causes": [],
                 "top_loss_causes": [],
+                "win_tags": [],
+                "win_by_segment": [],
+                "win_by_family": [],
             },
             "aiInsights": {
                 "status": "unavailable",

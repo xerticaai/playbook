@@ -113,6 +113,24 @@ def _parse_recommendations(text: str) -> List[str]:
     return recommendations[:6]
 
 
+def _compact_highlight_context(items: List[Dict[str, Any]], field: str, limit: int = 3) -> str:
+    if not items:
+        return "sem dados"
+    chunks = []
+    for item in items[:limit]:
+        opp = str(item.get("Oportunidade") or "deal").strip()
+        metric = item.get(field)
+        cause = str(item.get("causa") or item.get("fase") or "-").strip()
+        chunks.append(f"{opp} | {field}:{metric} | causa/fase:{cause}")
+    return " ; ".join(chunks)
+
+
+def _compact_cause_context(items: List[Dict[str, Any]], limit: int = 4) -> str:
+    if not items:
+        return "sem dados"
+    return " ; ".join([f"{str(item.get('causa') or '-')} ({int(item.get('total') or 0)})" for item in items[:limit]])
+
+
 def generate_ai_insights(
     query_text: str,
     deals: List[Dict[str, Any]],
@@ -160,6 +178,12 @@ def generate_ai_insights(
     gain_causes = highlights.get("top_gain_causes") or []
     loss_causes = highlights.get("top_loss_causes") or []
 
+    top_wins_ctx = _compact_highlight_context(top_wins, "gross")
+    top_losses_ctx = _compact_highlight_context(top_losses, "gross")
+    top_pipeline_ctx = _compact_highlight_context(top_pipeline, "idle_dias")
+    gain_causes_ctx = _compact_cause_context(gain_causes)
+    loss_causes_ctx = _compact_cause_context(loss_causes)
+
     prompt = f"""
 Voce e um assistente de inteligencia comercial. Gere insights COMPLETOS e detalhados.
 
@@ -183,12 +207,12 @@ FILTROS APLICADOS NO PAINEL:
 - seller: {filters_ctx.get('seller')}
 - phase: {filters_ctx.get('phase')}
 
-DEALS DE MAIOR VALOR (GANHOS): {top_wins}
-DEALS DE MAIOR VALOR (PERDIDOS): {top_losses}
-DEALS DE MAIOR VALOR (PIPELINE): {top_pipeline}
+DEALS DE MAIOR VALOR (GANHOS): {top_wins_ctx}
+DEALS DE MAIOR VALOR (PERDIDOS): {top_losses_ctx}
+DEALS DE MAIOR VALOR (PIPELINE): {top_pipeline_ctx}
 
-PRINCIPAIS CAUSAS DE GANHO (TOP 5): {gain_causes}
-PRINCIPAIS CAUSAS DE PERDA (TOP 5): {loss_causes}
+PRINCIPAIS CAUSAS DE GANHO (TOP): {gain_causes_ctx}
+PRINCIPAIS CAUSAS DE PERDA (TOP): {loss_causes_ctx}
 
 Instrucoes:
 1. Gere entre 4 e 6 bullets para VITORIAS, entre 4 e 6 bullets para PERDAS e entre 4 e 6 bullets para RECOMENDACOES.

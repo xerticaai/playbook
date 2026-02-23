@@ -10,6 +10,20 @@ def _date_expr(date_field: str) -> str:
     )
 
 
+def _sql_literal(value: str) -> str:
+    return str(value).replace("'", "''")
+
+
+def _build_in_filter(column_name: str, csv_value: Optional[str]) -> Optional[str]:
+    values = [item.strip() for item in str(csv_value or "").split(",") if item and item.strip()]
+    if not values:
+        return None
+    if len(values) == 1:
+        return f"{column_name} = '{_sql_literal(values[0])}'"
+    quoted = "', '".join(_sql_literal(item) for item in values)
+    return f"{column_name} IN ('{quoted}')"
+
+
 def build_filters(
     year: Optional[str],
     quarter: Optional[str],
@@ -26,24 +40,16 @@ def build_filters(
         fiscal_prefix = f"FY{year[-2:]}-"
         conditions.append(f"STARTS_WITH(Fiscal_Q, '{fiscal_prefix}')")
 
-    if seller:
-        sellers = [s.strip() for s in seller.split(",") if s.strip()]
-        if len(sellers) == 1:
-            conditions.append(f"Vendedor = '{sellers[0]}'")
-        elif len(sellers) > 1:
-            sellers_quoted = "', '".join(sellers)
-            conditions.append(f"Vendedor IN ('{sellers_quoted}')")
+    seller_filter = _build_in_filter("Vendedor", seller)
+    if seller_filter:
+        conditions.append(seller_filter)
 
     if source:
-        conditions.append(f"source = '{source}'")
+        conditions.append(f"source = '{_sql_literal(source)}'")
 
-    if phase:
-        phases = [p.strip() for p in phase.split(",") if p.strip()]
-        if len(phases) == 1:
-            conditions.append(f"Fase = '{phases[0]}'")
-        elif len(phases) > 1:
-            phase_quoted = "', '".join(phases)
-            conditions.append(f"Fase IN ('{phase_quoted}')")
+    phase_filter = _build_in_filter("Fase", phase)
+    if phase_filter:
+        conditions.append(phase_filter)
 
     return "WHERE " + " AND ".join(conditions) if conditions else ""
 
@@ -86,22 +92,17 @@ def build_closed_filters(
             )
 
     if date_start:
-        filters.append(f"{parsed_date_expr} >= DATE('{date_start}')")
+        filters.append(f"{parsed_date_expr} >= DATE('{_sql_literal(date_start)}')")
     if date_end:
-        filters.append(f"{parsed_date_expr} <= DATE('{date_end}')")
+        filters.append(f"{parsed_date_expr} <= DATE('{_sql_literal(date_end)}')")
 
-    if seller:
-        sellers = [s.strip() for s in seller.split(",") if s.strip()]
-        if len(sellers) == 1:
-            filters.append(f"Vendedor = '{sellers[0]}'")
-        elif len(sellers) > 1:
-            sellers_quoted = "', '".join(sellers)
-            filters.append(f"Vendedor IN ('{sellers_quoted}')")
+    seller_filter = _build_in_filter("Vendedor", seller)
+    if seller_filter:
+        filters.append(seller_filter)
 
     return "WHERE " + " AND ".join(filters) if filters else ""
 
 
-def build_pipeline_filters(year: Optional[str], quarter: Optional[str], seller: Optional[str]) -> str:
 def build_pipeline_filters(
     year: Optional[str],
     quarter: Optional[str],
@@ -140,24 +141,16 @@ def build_pipeline_filters(
             )
 
     if date_start:
-        filters.append(f"{parsed_date_expr} >= DATE('{date_start}')")
+        filters.append(f"{parsed_date_expr} >= DATE('{_sql_literal(date_start)}')")
     if date_end:
-        filters.append(f"{parsed_date_expr} <= DATE('{date_end}')")
+        filters.append(f"{parsed_date_expr} <= DATE('{_sql_literal(date_end)}')")
 
-    if seller:
-        sellers = [s.strip() for s in seller.split(",") if s.strip()]
-        if len(sellers) == 1:
-            filters.append(f"Vendedor = '{sellers[0]}'")
-        elif len(sellers) > 1:
-            sellers_quoted = "', '".join(sellers)
-            filters.append(f"Vendedor IN ('{sellers_quoted}')")
+    seller_filter = _build_in_filter("Vendedor", seller)
+    if seller_filter:
+        filters.append(seller_filter)
 
-    if phase:
-        phases = [p.strip() for p in phase.split(",") if p.strip()]
-        if len(phases) == 1:
-            filters.append(f"Fase_Atual = '{phases[0]}'")
-        elif len(phases) > 1:
-            phase_quoted = "', '".join(phases)
-            filters.append(f"Fase_Atual IN ('{phase_quoted}')")
+    phase_filter = _build_in_filter("Fase_Atual", phase)
+    if phase_filter:
+        filters.append(phase_filter)
 
     return "WHERE " + " AND ".join(filters) if filters else ""

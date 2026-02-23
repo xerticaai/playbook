@@ -1468,59 +1468,112 @@
 
     <!-- SEÇÃO: APRENDIZADOS -->
     <div id="aprendizados" class="section">
-      <h3>
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <use href="#icon-sparkles"/>
-        </svg>
-        Aprendizados das Vitórias
-      </h3>
-      <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-bottom: 20px;">
-        <div class="kpi-card" style="border-left: 4px solid var(--success);">
-          <div class="kpi-title">Vitórias</div>
-          <div class="kpi-value val-green" id="insights-wins-count">-</div>
-          <div class="kpi-subtitle" id="insights-wins-avg">-</div>
-        </div>
-        <div class="kpi-card" style="border-left: 4px solid var(--danger);">
-          <div class="kpi-title">Perdas</div>
-          <div class="kpi-value val-red" id="insights-losses-count">-</div>
-          <div class="kpi-subtitle" id="insights-losses-avg">-</div>
-        </div>
-        <div class="kpi-card" style="border-left: 4px solid var(--primary-cyan);">
-          <div class="kpi-title">Pipeline</div>
-          <div class="kpi-value val-cyan" id="insights-pipeline-count">-</div>
-          <div class="kpi-subtitle" id="insights-total-count">-</div>
-        </div>
-      </div>
-      <div class="ai-card">
-        <div id="wins-insights-content" class="ai-content">
-          <div class="loading">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite;">
-              <use href="#icon-refresh"/>
-            </svg>
-            Analisando padrões de sucesso...
+      <style>
+        #aprendizados .apr-shell { display:flex; flex-direction:column; gap:20px; padding:18px; border:1px solid var(--ui-border-soft); border-radius:16px; background:linear-gradient(180deg, var(--ui-bg-surface-1), var(--ui-bg-surface-2)); }
+        #aprendizados .apr-header { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+        #aprendizados .apr-title { margin:0; display:flex; align-items:center; gap:10px; color:var(--ui-text-1); }
+        #aprendizados .apr-sub { margin:6px 0 0; color:var(--ui-text-2); font-size:12px; max-width:760px; }
+        #aprendizados .apr-meta { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+        #aprendizados .apr-meta-badge { padding:5px 10px; border-radius:999px; border:1px solid var(--ui-border-soft); background:var(--ui-bg-surface-2); color:var(--ui-text-2); font-size:11px; font-weight:700; letter-spacing:0.02em; }
+        #aprendizados .apr-refresh { display:flex; align-items:center; gap:6px; padding:8px 14px; border-radius:999px; border:1px solid var(--ui-border-soft); background:var(--ui-bg-surface-1); color:var(--ui-text-2); font-size:12px; font-weight:700; cursor:pointer; transition:all .18s ease; }
+        #aprendizados .apr-refresh:hover { color:var(--ui-text-1); border-color:var(--ui-border-strong); background:var(--ui-bg-surface-hover); }
+        #aprendizados .apr-kpis { grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); margin-bottom:2px; }
+        #aprendizados .apr-kpis .kpi-card { background:var(--ui-bg-surface-2); }
+        #aprendizados .apr-divider { position:relative; margin:8px 0 4px; border-top:1px solid var(--ui-border-soft); }
+        #aprendizados .apr-divider span { position:relative; top:-10px; display:inline-flex; align-items:center; padding:2px 10px; border-radius:999px; border:1px solid var(--ui-border-soft); background:var(--ui-bg-surface-2); color:var(--ui-text-2); font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+        #aprendizados .apr-grid-2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+        #aprendizados .apr-cell { min-height:120px; }
+        #aprendizados .apr-insight-card { min-height:240px; }
+        #aprendizados .apr-grid-2 > .ai-card { padding:14px 16px; }
+        #aprendizados .apr-loading-skeleton { position:relative; overflow:hidden; border:1px solid var(--ui-border-soft); border-radius:12px; background:var(--ui-bg-surface-2); padding:14px; }
+        #aprendizados .apr-loading-skeleton::after { content:''; position:absolute; inset:0; transform:translateX(-100%); background:linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent); animation:aprShimmer 1.35s infinite; }
+        #aprendizados .apr-s-line { height:10px; border-radius:999px; background:rgba(128,156,182,.25); margin-bottom:10px; }
+        #aprendizados .apr-s-line:last-child { margin-bottom:0; }
+        #aprendizados .apr-s-line.w70 { width:70%; }
+        #aprendizados .apr-s-line.w55 { width:55%; }
+        #aprendizados .apr-s-line.w90 { width:90%; }
+        #aprendizados .apr-s-line.w40 { width:40%; }
+        #aprendizados .apr-s-line.w80 { width:80%; }
+        #aprendizados .apr-tag-pill:hover { transform:translateY(-1px); border-color:var(--ui-border-strong) !important; }
+        #aprendizados .apr-topdeal:hover { border-color:var(--ui-border-strong) !important; }
+        @keyframes aprShimmer { 100% { transform:translateX(100%); } }
+        @media (max-width: 767px) {
+          #aprendizados .apr-grid-2 { grid-template-columns:1fr; }
+          #aprendizados .apr-header { align-items:stretch; }
+          #aprendizados .apr-refresh { width:100%; justify-content:center; }
+          #aprendizados .apr-shell { padding:14px; gap:16px; }
+          #aprendizados .apr-kpis { grid-template-columns:1fr; }
+          #aprendizados .apr-grid-2 > .ai-card { padding:12px 13px; }
+        }
+      </style>
+
+      <div class="apr-shell">
+        <div class="apr-header">
+          <div>
+            <h3 class="apr-title">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-sparkles"/></svg>
+              Inteligência de Vendas
+            </h3>
+            <p class="apr-sub">Leituras táticas com IA para acelerar ganhos, reduzir perdas e priorizar pipeline.</p>
+            <div id="insights-meta-badges" class="apr-meta">
+              <span class="apr-meta-badge" id="insights-updated-at">Aguardando atualização...</span>
+            </div>
           </div>
+          <button class="apr-refresh" onclick="loadAprendizados()">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            Atualizar
+          </button>
+        </div>
+
+        <div class="kpi-grid apr-kpis">
+          <div class="kpi-card" style="border-left:4px solid var(--ui-cyan);">
+            <div class="kpi-title">Taxa de Vitória</div>
+            <div class="kpi-value" id="insights-win-rate">-</div>
+            <div class="kpi-subtitle" id="insights-win-rate-sub">-</div>
+          </div>
+          <div class="kpi-card" style="border-left:4px solid var(--ui-green);">
+            <div class="kpi-title">Vitórias</div>
+            <div class="kpi-value" id="insights-wins-count">-</div>
+            <div class="kpi-subtitle" id="insights-wins-avg">-</div>
+          </div>
+          <div class="kpi-card" style="border-left:4px solid var(--ui-red);">
+            <div class="kpi-title">Perdas</div>
+            <div class="kpi-value" id="insights-losses-count">-</div>
+            <div class="kpi-subtitle" id="insights-losses-avg">-</div>
+          </div>
+          <div class="kpi-card" style="border-left:4px solid var(--ui-violet);">
+            <div class="kpi-title">Pipeline Ativo</div>
+            <div class="kpi-value" id="insights-pipeline-count">-</div>
+            <div class="kpi-subtitle" id="insights-total-count">-</div>
+          </div>
+        </div>
+
+        <div class="apr-divider"><span>DNA das vitórias</span></div>
+        <div id="insights-win-dna" class="apr-cell"></div>
+
+        <div class="apr-divider"><span>Leitura da IA</span></div>
+        <div class="apr-grid-2">
+          <div class="ai-card apr-insight-card"><div id="wins-insights-content" class="ai-content"></div></div>
+          <div class="ai-card apr-insight-card"><div id="loss-insights-content" class="ai-content"></div></div>
+        </div>
+
+        <div class="apr-divider"><span>Plano recomendado</span></div>
+        <div id="insights-recommendations" class="apr-cell"></div>
+
+        <div class="apr-divider"><span>Top deals por valor</span></div>
+        <div class="apr-grid-2">
+          <div class="ai-card apr-cell"><div class="ai-content" id="insights-top-wins"></div></div>
+          <div class="ai-card apr-cell"><div class="ai-content" id="insights-top-losses"></div></div>
+        </div>
+
+        <div class="apr-divider"><span>Causas raiz</span></div>
+        <div class="apr-grid-2">
+          <div class="ai-card apr-cell"><div class="ai-content" id="insights-top-causes-win"></div></div>
+          <div class="ai-card apr-cell"><div class="ai-content" id="insights-top-causes-loss"></div></div>
         </div>
       </div>
 
-      <h3 style="margin-top: 40px;">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <use href="#icon-alert"/>
-        </svg>
-        Insights de Melhorias (Perdas)
-      </h3>
-      <div class="ai-card">
-        <div id="loss-insights-content" class="ai-content">
-          <div class="loading">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite;">
-              <use href="#icon-refresh"/>
-            </svg>
-            Analisando causas de perda...
-          </div>
-        </div>
-      </div>
-
-      <h4 style="margin-top: 30px;">Recomendações</h4>
-      <div id="insights-recommendations"></div>
+      <div id="aprendizados-transparency" style="display:none;"></div>
     </div>
 
     <!-- SEÇÃO 2: PERFORMANCE FSR -->

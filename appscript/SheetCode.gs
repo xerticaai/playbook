@@ -2530,9 +2530,7 @@ function setupAnalysisSheet(mode, preserve) {
   
   if (!preserve) s.clear();
   
-  const h = mode === 'OPEN' ? [
-    ["Run ID", "Oportunidade", "Conta", "Perfil", "Produtos", "Vendedor", "Gross", "Net", "Fase Atual", "Forecast SF", "Fiscal Q", "Data Prevista", "Data de criação", "Ciclo (dias)", "Dias Funil", "Atividades", "Atividades (Peso)", "Mix Atividades", "Idle (Dias)", "Qualidade Engajamento", "Forecast IA", "Confiança (%)", "Motivo Confiança", "MEDDIC Score", "MEDDIC Gaps", "MEDDIC Evidências", "BANT Score", "BANT Gaps", "BANT Evidências", "Justificativa IA", "Regras Aplicadas", "Incoerência Detectada", "Perguntas de Auditoria IA", "Flags de Risco", "Gaps Identificados", "Cód Ação", "Ação Sugerida", "Risco Principal", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "🚨 Anomalias Detectadas", "Velocity Predição", "Velocity Detalhes", "Território Correto?", "Vendedor Designado", "Estado/Cidade Detectado", "Fonte Detecção", "Calendário Faturação", "Valor Reconhecido Q1", "Valor Reconhecido Q2", "Valor Reconhecido Q3", "Valor Reconhecido Q4", "Subsegmento de mercado", "Segmento Consolidado", "Portfólio", "Portfolio FDM", "Owner Preventa", "Cidade de cobrança", "Estado/Província de cobrança", "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "Evidência Citada IA", "Avaliação Personas IA", "Tipo Oportunidade", "Processo", "🕐 Última Atualização"]
-  ] : mode === 'WON' ? [
+  const h = mode === 'OPEN' ? [getOpenAnalysisHeaders_()] : mode === 'WON' ? [
     ["Run ID", "Oportunidade", "Conta", "Perfil Cliente", "Vendedor", "Gross", "Net", "Portfólio", "Segmento", "Família Produto", "Status", "Fiscal Q", "Data Fechamento", "Ciclo (dias)", "Produtos", "📝 Resumo Análise", "🎯 Causa Raiz", "✨ Fatores Sucesso", "Tipo Resultado", "Qualidade Engajamento", "Gestão Oportunidade", "-", "💡 Lições Aprendidas", "# Atividades", "Ativ. 7d", "Ativ. 30d", "Distribuição Tipos", "Período Pico", "Cadência Média (dias)", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "Campos + Alterados", "Padrão Mudanças", "Freq. Mudanças", "# Editores", "🏷️ Labels", "Owner Preventa", "Cidade de cobrança", "Estado/Província de cobrança", "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "🕐 Última Atualização"]
   ] : [
     ["Run ID", "Oportunidade", "Conta", "Perfil Cliente", "Vendedor", "Gross", "Net", "Portfólio", "Segmento", "Família Produto", "Status", "Fiscal Q", "Data Fechamento", "Ciclo (dias)", "Produtos", "📝 Resumo Análise", "🎯 Causa Raiz", "⚠️ Causas Secundárias", "Tipo Resultado", "Evitável?", "🚨 Sinais Alerta", "Momento Crítico", "💡 Lições Aprendidas", "# Atividades", "Ativ. 7d", "Ativ. 30d", "Distribuição Tipos", "Período Pico", "Cadência Média (dias)", "# Total Mudanças", "# Mudanças Críticas", "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "Campos + Alterados", "Padrão Mudanças", "Freq. Mudanças", "# Editores", "🏷️ Labels", "Owner Preventa", "Cidade de cobrança", "Estado/Província de cobrança", "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "🕐 Última Atualização"]
@@ -2559,6 +2557,115 @@ function setupAnalysisSheet(mode, preserve) {
     s.setColumnWidth(27, 200);  // Distribuição Tipos
     s.setColumnWidth(35, 200);  // Campos + Alterados
   }
+}
+
+function getOpenAnalysisHeaders_() {
+  return [
+    "Run ID", "Oportunidade", "Conta", "Perfil", "Produtos", "Vendedor", "Gross", "Net", "Fase Atual", "Forecast SF", "Fiscal Q",
+    "Data Prevista", "Data de criação", "Ciclo (dias)", "Dias Funil", "Atividades", "Atividades (Peso)", "Mix Atividades", "Idle (Dias)",
+    "Qualidade Engajamento", "Forecast IA", "Confiança (%)", "Motivo Confiança", "MEDDIC Score", "MEDDIC Gaps", "MEDDIC Evidências",
+    "BANT Score", "BANT Gaps", "BANT Evidências", "Justificativa IA", "Regras Aplicadas", "Incoerência Detectada", "Perguntas de Auditoria IA",
+    "Flags de Risco", "Gaps Identificados", "Cód Ação", "Ação Sugerida", "Risco Principal", "# Total Mudanças", "# Mudanças Críticas",
+    "Mudanças Close Date", "Mudanças Stage", "Mudanças Valor", "🚨 Anomalias Detectadas", "Velocity Predição", "Velocity Detalhes",
+    "Território Correto?", "Vendedor Designado", "Estado/Cidade Detectado", "Fonte Detecção", "Calendário Faturação",
+    "Valor Reconhecido Q1", "Valor Reconhecido Q2", "Valor Reconhecido Q3", "Valor Reconhecido Q4", "Subsegmento de mercado",
+    "Segmento Consolidado", "Portfólio", "Portfolio FDM", "Owner Preventa", "Cidade de cobrança", "Estado/Província de cobrança",
+    "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "Evidência Citada IA", "Avaliação Personas IA", "Tipo Oportunidade", "Processo", "🕐 Última Atualização"
+  ];
+}
+
+function configurarCabecalhoOpenParaAutoSync() {
+  const ui = SpreadsheetApp.getUi();
+  const resp = ui.alert(
+    '🧩 Ajustar Cabeçalho OPEN',
+    'Esta ação reorganiza a aba OPEN para o layout oficial (remove Produtos (Base), mantém dados e coloca Data de criação ao lado de Data Prevista).\n\nContinuar?',
+    ui.ButtonSet.YES_NO
+  );
+  if (resp !== ui.Button.YES) return;
+
+  const result = configurarCabecalhoOpenParaAutoSync_();
+  ui.alert(
+    '✅ Cabeçalho OPEN ajustado',
+    `Colunas finais: ${result.totalColumns}\nLinhas migradas: ${result.rowsMigrated}\nAba: ${result.sheetName}`,
+    ui.ButtonSet.OK
+  );
+}
+
+function configurarCabecalhoOpenParaAutoSync_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetName = (typeof SHEETS !== 'undefined' && SHEETS.RESULTADO_PIPELINE) ? SHEETS.RESULTADO_PIPELINE : '🎯 Análise Forecast IA';
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) throw new Error(`Aba não encontrada: ${sheetName}`);
+
+  const targetHeaders = getOpenAnalysisHeaders_();
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+
+  const sourceData = (lastRow > 0 && lastCol > 0)
+    ? sheet.getRange(1, 1, lastRow, lastCol).getValues()
+    : [targetHeaders];
+  const sourceHeaders = (sourceData[0] || []).map(h => String(h || '').trim());
+  const sourceRows = sourceData.slice(1);
+
+  const norm = (v) => normText_(String(v || '').trim());
+  const sourceIndexByNorm = new Map();
+  sourceHeaders.forEach((h, idx) => {
+    const key = norm(h);
+    if (!key) return;
+    if (!sourceIndexByNorm.has(key)) sourceIndexByNorm.set(key, idx);
+  });
+
+  const aliases = {
+    'DATA DE CRIACAO': ['DATA DE CRIACAO', 'DATA DE CRIACAO DE ONDE PEGAR', 'CREATED DATE', 'DATE CREATED', 'DATA_DE_CRIACAO', 'DATA_DE_CRIACAO_DE_ONDE_PEGAR'],
+    'PROCESSO': ['PROCESSO', 'PROCESSO IA', 'PROCESSO_IA'],
+    'ULTIMA ATUALIZACAO': ['ULTIMA ATUALIZACAO', '🕐 ULTIMA ATUALIZACAO'],
+    'CONFIANCA': ['CONFIANCA', 'CONFIANCA %', 'CONFIANCA (%)']
+  };
+
+  const findSourceIndex_ = (targetHeader) => {
+    const targetNorm = norm(targetHeader);
+    if (sourceIndexByNorm.has(targetNorm)) return sourceIndexByNorm.get(targetNorm);
+
+    const key = targetNorm;
+    const aliasList = aliases[key] || [];
+    for (let i = 0; i < aliasList.length; i++) {
+      const idx = sourceIndexByNorm.get(norm(aliasList[i]));
+      if (idx !== undefined) return idx;
+    }
+    return -1;
+  };
+
+  const remappedRows = sourceRows.map((row) => {
+    return targetHeaders.map((targetHeader) => {
+      const srcIdx = findSourceIndex_(targetHeader);
+      if (srcIdx === -1) return '';
+      return row[srcIdx];
+    });
+  });
+
+  sheet.clear();
+  sheet.getRange(1, 1, 1, targetHeaders.length).setValues([targetHeaders])
+    .setBackground('#134f5c').setFontColor('white').setFontWeight('bold').setWrap(true);
+  sheet.setFrozenRows(1);
+
+  if (remappedRows.length > 0) {
+    sheet.getRange(2, 1, remappedRows.length, targetHeaders.length).setValues(remappedRows);
+  }
+
+  if (sheet.getMaxColumns() > targetHeaders.length) {
+    sheet.deleteColumns(targetHeaders.length + 1, sheet.getMaxColumns() - targetHeaders.length);
+  }
+
+  sheet.setColumnWidth(1, 160);
+  sheet.setColumnWidth(2, 200);
+  sheet.setColumnWidth(3, 180);
+  applyConditionalFormatting_(sheet, 'OPEN');
+
+  return {
+    sheetName,
+    totalColumns: targetHeaders.length,
+    rowsMigrated: remappedRows.length
+  };
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════

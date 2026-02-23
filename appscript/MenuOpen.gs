@@ -85,7 +85,8 @@ function onOpen() {
       // ══════════════════════════════════════════════════════════════
       .addSeparator()
       .addSubMenu(ui.createMenu('🔧 Ferramentas & Diagnóstico')
-        .addItem('📋 Auditoria: Base vs Análise', 'auditarBaseVsAnalise'))
+        .addItem('📋 Auditoria: Base vs Análise', 'auditarBaseVsAnalise')
+        .addItem('🧩 Ajustar Cabeçalho OPEN (1x)', 'configurarCabecalhoOpenParaAutoSync'))
       
       // ══════════════════════════════════════════════════════════════
       // SEÇÃO 5: BIGQUERY (Nova integração)
