@@ -1265,7 +1265,7 @@ function renderDashboard() {
       const rawCycle = deal.Ciclo_dias || deal.ciclo_dias || deal.Ciclo || deal.cycle;
       const rawActivities = deal.Atividades ?? deal.activities ?? deal.atividades;
       const rawMeddic = deal.MEDDIC ?? deal.meddic ?? deal.Meddic ?? deal.Score_Meddic;
-      const rawAvoidable = deal.Evitavel ?? deal.evitavel ?? deal.Evitável ?? '';
+      const rawAvoidable = deal.Evitavel ?? deal.evitavel ?? '';
       const cycle = (rawCycle === '' || rawCycle == null) ? null : Number(rawCycle);
       const activities = (rawActivities === '' || rawActivities == null) ? null : Number(rawActivities);
       const meddic = (rawMeddic === '' || rawMeddic == null) ? null : Number(rawMeddic);

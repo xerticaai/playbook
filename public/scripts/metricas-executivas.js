@@ -49,7 +49,8 @@ function updateExecutiveMetricsFromAPI(metrics) {
   // PREVISÃO PONDERADA IA
   if (metrics.pipeline_filtered) {
     const pipelineGross = metrics.pipeline_filtered.gross || 0;
-    const avgConf = metrics.pipeline_filtered.avg_meddic || 0; // Usar avg_meddic como proxy de confiança
+    // Usa avg_confidence (0-100) que é o campo correto para confiança média do pipeline
+    const avgConf = metrics.pipeline_filtered.avg_confidence || 0;
     const forecastWeighted = pipelineGross * (avgConf / 100);
     const forecastNet = (metrics.pipeline_filtered.net || 0) * (avgConf / 100);
     
@@ -145,27 +146,19 @@ function updateExecutiveMetricsFromAPI(metrics) {
     }
   }
   
-  // MEDDIC SCORE - CORREÇÃO: Deve vir de closed_won (deals ganhos), não de pipeline
-  // Pipeline pode ter deals futuros que ainda não aconteceram
+  // MEDDIC SCORE
+  // avg_meddic de closed_won não existe ainda na API — usar pipeline_filtered como aproximação
   if (metrics.closed_won && metrics.closed_won.deals_count > 0) {
-    // Tenta pegar avg_meddic de closed_won (se API adicionar no futuro)
-    const avgMeddicWon = metrics.closed_won.avg_meddic;
-    
-    if (avgMeddicWon !== null && avgMeddicWon !== undefined) {
-      setTextSafe('exec-won-meddic', Math.round(avgMeddicWon));
-      setTextSafe('exec-won-meddic-detail', `${Math.round(avgMeddicWon)}/100 score de qualificação`);
-      log('[MEDDIC SCORE] ✓ Atualizado da API (closed_won):', avgMeddicWon);
+    const avgMeddicPipeline = metrics.pipeline_filtered?.avg_meddic;
+    if (avgMeddicPipeline !== null && avgMeddicPipeline !== undefined) {
+      setTextSafe('exec-won-meddic', Math.round(avgMeddicPipeline));
+      setTextSafe('exec-won-meddic-detail', `${Math.round(avgMeddicPipeline)}/100 score de qualificação`);
+      log('[MEDDIC SCORE] ✓ Usando pipeline_filtered.avg_meddic:', avgMeddicPipeline);
     } else {
-      // Fallback: usa pipeline_filtered apenas se houver deals ganhos no período
-      const avgMeddicPipeline = metrics.pipeline_filtered?.avg_meddic;
-      if (avgMeddicPipeline !== null && avgMeddicPipeline !== undefined) {
-        setTextSafe('exec-won-meddic', Math.round(avgMeddicPipeline));
-        setTextSafe('exec-won-meddic-detail', `${Math.round(avgMeddicPipeline)}/100 score de qualificação`);
-        log('[MEDDIC SCORE] ⚠ Usando pipeline (fallback):', avgMeddicPipeline);
-      }
+      setTextSafe('exec-won-meddic', '0');
+      setTextSafe('exec-won-meddic-detail', 'Sem dados de MEDDIC');
     }
   } else {
-    // Se não há deals ganhos, mostrar N/A ou 0
     setTextSafe('exec-won-meddic', '0');
     setTextSafe('exec-won-meddic-detail', 'Sem dados de MEDDIC');
     log('[MEDDIC SCORE] ⚠ Nenhum deal ganho no período');

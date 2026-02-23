@@ -33,7 +33,12 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://x-gtm.web.app",
+        "https://x-gtm.firebaseapp.com",
+        "http://localhost:3000",
+        "http://localhost:5000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -59,6 +64,15 @@ app.include_router(ml_predictions_router, prefix="/api", tags=["ML Predictions"]
 # BigQuery
 PROJECT_ID = os.getenv("GCP_PROJECT", "operaciones-br").strip().rstrip("\\/")
 DATASET_ID = os.getenv("BQ_DATASET", "sales_intelligence")
+
+# Singleton BQ client (reused across requests within the same Cloud Run instance)
+_BQ_CLIENT: Optional[bigquery.Client] = None
+
+def get_bq_client() -> bigquery.Client:
+    global _BQ_CLIENT
+    if _BQ_CLIENT is None:
+        _BQ_CLIENT = bigquery.Client(project=PROJECT_ID)
+    return _BQ_CLIENT
 
 # Gemini Configuration (optional)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -134,9 +148,6 @@ def _extract_request_email(request: Request) -> Optional[str]:
         if normalized:
             return normalized
     return None
-
-def get_bq_client():
-    return bigquery.Client(project=PROJECT_ID)
 
 def query_to_dict(query: str) -> List[Dict[str, Any]]:
     client = get_bq_client()
@@ -899,6 +910,7 @@ def get_pipeline(
         query = f"""
         SELECT 
             Oportunidade, Vendedor, Fase_Atual,
+            Fiscal_Q,
             Conta, Idle_Dias, SAFE_CAST(Ciclo_dias AS FLOAT64) as Ciclo_dias, Atividades,
             Data_Prevista, SAFE_CAST(Confianca AS FLOAT64) as Confianca,
             Gross, Net, Forecast_SF, Forecast_IA,
@@ -1241,6 +1253,7 @@ def get_actions(
     limit: int = 50,
     year: Optional[int] = None,
     quarter: Optional[int] = None,
+    seller: Optional[str] = None,
     nocache: bool = False
 ):
     """Retorna ações sugeridas (baseado em pipeline)
@@ -1249,10 +1262,11 @@ def get_actions(
     - urgencia: ALTA (confiança < 30), MÉDIA (30-50), ou todas se None
     - year: filtro por ano fiscal
     - quarter: filtro por quarter (1-4)
+    - seller: nome do vendedor (suporta múltiplos separados por vírgula)
     """
     cache_key = build_cache_key(
         "/api/actions",
-        {"urgencia": urgencia, "limit": limit, "year": year, "quarter": quarter}
+        {"urgencia": urgencia, "limit": limit, "year": year, "quarter": quarter, "seller": seller}
     )
     if not nocache:
         cached = get_cached_response(cache_key)
@@ -1264,6 +1278,12 @@ def get_actions(
         # Filtro de urgência
         if urgencia == "ALTA":
             filters.append("SAFE_CAST(Confianca AS FLOAT64) < 30")
+        
+        # Filtro de vendedor
+        if seller:
+            seller_filter = build_seller_filter(seller)
+            if seller_filter:
+                filters.append(seller_filter)
         
         # Filtro de período (year + quarter)
         if year and quarter:
@@ -1364,22 +1384,68 @@ def get_sales_specialist(
         raise HTTPException(status_code=500, detail=f"Sales Specialist error: {str(e)}")
 
 @app.get("/api/priorities")
-def get_priorities(limit: int = 100, nocache: bool = False):
-    """Retorna deals prioritários (high confidence + high value)"""
-    cache_key = build_cache_key("/api/priorities", {"limit": limit})
+def get_priorities(
+    limit: int = 100,
+    year: Optional[int] = None,
+    quarter: Optional[int] = None,
+    month: Optional[int] = None,
+    seller: Optional[str] = None,
+    phase: Optional[str] = None,
+    owner_preventa: Optional[str] = None,
+    vertical_ia: Optional[str] = None,
+    sub_vertical_ia: Optional[str] = None,
+    segmento_consolidado: Optional[str] = None,
+    portfolio_fdm: Optional[str] = None,
+    nocache: bool = False
+):
+    """Retorna deals prioritários (high confidence + high value) com suporte a filtros."""
+    cache_key = build_cache_key("/api/priorities", {
+        "limit": limit, "year": year, "quarter": quarter, "month": month,
+        "seller": seller, "phase": phase, "owner_preventa": owner_preventa,
+        "vertical_ia": vertical_ia, "sub_vertical_ia": sub_vertical_ia,
+        "segmento_consolidado": segmento_consolidado, "portfolio_fdm": portfolio_fdm
+    })
     if not nocache:
         cached = get_cached_response(cache_key)
         if cached is not None:
             return cached
     try:
+        filters = ["SAFE_CAST(Confianca AS FLOAT64) >= 50"]
+        if year:
+            if quarter:
+                fiscal_q = f"FY{str(year)[2:]}-Q{quarter}"
+                filters.append(f"(EXTRACT(YEAR FROM SAFE.PARSE_DATE('%Y-%m-%d', Data_Prevista)) = {year} OR Fiscal_Q = '{fiscal_q}')")
+            else:
+                filters.append(f"EXTRACT(YEAR FROM SAFE.PARSE_DATE('%Y-%m-%d', Data_Prevista)) = {year}")
+        if seller:
+            sf = build_seller_filter(seller)
+            if sf:
+                filters.append(sf)
+        if phase:
+            pf = build_in_filter("Fase_Atual", phase)
+            if pf:
+                filters.append(pf)
+        if owner_preventa:
+            opf = build_in_filter("Owner_Preventa", owner_preventa)
+            if opf:
+                filters.append(opf)
+        if vertical_ia:
+            vf = build_in_filter("Vertical_IA", vertical_ia)
+            if vf:
+                filters.append(vf)
+        if portfolio_fdm:
+            pff = build_in_filter("CAST(Portfolio_FDM AS STRING)", portfolio_fdm)
+            if pff:
+                filters.append(pff)
+        where_clause = "WHERE " + " AND ".join(filters)
         query = f"""
         SELECT 
-            Oportunidade, Vendedor, Fase_Atual,
+            Oportunidade, Vendedor, Fase_Atual, Fiscal_Q,
             Data_Prevista, SAFE_CAST(Confianca AS FLOAT64) as Confianca,
             Gross, Net, Forecast_SF,
             (SAFE_CAST(Confianca AS FLOAT64) * Gross / 100) as prioridade_score
         FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
-        WHERE SAFE_CAST(Confianca AS FLOAT64) >= 50
+        {where_clause}
         ORDER BY prioridade_score DESC
         LIMIT {limit}
         """

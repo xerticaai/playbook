@@ -62,9 +62,13 @@ function clearDataCache() {
   log('[CACHE] 🗑️ Cache limpo (' + keys.length + ' itens)');
 }
 
-async function loadDashboardData() {
+async function loadDashboardData(forceRefresh = false) {
   try {
     log('[DASHBOARD] ========== INÍCIO DO CARREGAMENTO ==========');
+    if (forceRefresh) {
+      clearDataCache();
+      log('[DASHBOARD] 🗑️ Force refresh: cache limpo');
+    }
     showLoading('Carregando dashboard');
     
     // Pega filtros atuais
@@ -136,20 +140,22 @@ async function loadDashboardData() {
     
     const needsTopOppsFallback = !!queryString;
     const insightsRagPromise = Promise.resolve({ aiInsights: { status: 'disabled', wins: '', losses: '', recommendations: [] }, deals: [] });
+    // Se for forçar refresh, adicionar nocache=true para bypassar o cache do servidor (TTL 120s)
+    const noCacheParam = forceRefresh ? '&nocache=true' : '';
 
     const ts = Date.now();
     const sep = queryString ? '&' : '?';
     const [metrics, pipelineData, prioritiesData, actionsData, wonDataCached, lostDataCached, patternsData, salesSpecialistData, insightsRagData, fallbackPipelineData, fallbackWonData, fallbackLostData] = await Promise.all([
-      fetchJsonNoCache(`${API_BASE_URL}/api/metrics${queryString}${sep}_ts=${ts}`),
-      fetchJsonNoCache(`${API_BASE_URL}/api/pipeline?limit=500${queryString ? '&' + params.toString() : ''}&_ts=${ts}`),
-      fetchJsonNoCache(`${API_BASE_URL}/api/priorities?limit=100${queryString ? '&' + params.toString() : ''}&_ts=${ts}`),
-      fetchJsonNoCache(`${API_BASE_URL}/api/actions?urgencia=ALTA&limit=50${queryString ? '&' + params.toString() : ''}&_ts=${ts}`),
-      fetchWithCache(wonUrl, `cache_won_${cacheKey}`, queryString ? 1 : 2),
-      fetchWithCache(lostUrl, `cache_lost_${cacheKey}`, queryString ? 1 : 2),
-      fetchJsonNoCache(`${API_BASE_URL}/api/analyze-patterns${queryString}${sep}_ts=${ts}`),
-      fetchJsonNoCache(`${API_BASE_URL}/api/sales-specialist${queryString}${sep}_ts=${ts}`),
+      fetchJsonNoCache(`${API_BASE_URL}/api/metrics${queryString}${sep}_ts=${ts}${noCacheParam}`),
+      fetchJsonNoCache(`${API_BASE_URL}/api/pipeline?limit=500${queryString ? '&' + params.toString() : ''}&_ts=${ts}${noCacheParam}`),
+      fetchJsonNoCache(`${API_BASE_URL}/api/priorities?limit=100${queryString ? '&' + params.toString() : ''}&_ts=${ts}${noCacheParam}`),
+      fetchJsonNoCache(`${API_BASE_URL}/api/actions?urgencia=ALTA&limit=50${queryString ? '&' + params.toString() : ''}&_ts=${ts}${noCacheParam}`),
+      fetchWithCache(wonUrl + (forceRefresh ? (wonUrl.includes('?') ? '&' : '?') + 'nocache=true' : ''), `cache_won_${cacheKey}`, queryString ? 1 : 2),
+      fetchWithCache(lostUrl + (forceRefresh ? (lostUrl.includes('?') ? '&' : '?') + 'nocache=true' : ''), `cache_lost_${cacheKey}`, queryString ? 1 : 2),
+      fetchJsonNoCache(`${API_BASE_URL}/api/analyze-patterns${queryString}${sep}_ts=${ts}${noCacheParam}`),
+      fetchJsonNoCache(`${API_BASE_URL}/api/sales-specialist${queryString}${sep}_ts=${ts}${noCacheParam}`),
       insightsRagPromise,
-      needsTopOppsFallback ? fetchJsonNoCache(`${API_BASE_URL}/api/pipeline?limit=500&_ts=${ts}`) : Promise.resolve([]),
+      needsTopOppsFallback ? fetchJsonNoCache(`${API_BASE_URL}/api/pipeline?limit=500&_ts=${ts}${noCacheParam}`) : Promise.resolve([]),
       needsTopOppsFallback ? fetchWithCache(`${API_BASE_URL}/api/closed/won?limit=5000`, 'cache_won_all', 2) : Promise.resolve([]),
       needsTopOppsFallback ? fetchWithCache(`${API_BASE_URL}/api/closed/lost?limit=5000`, 'cache_lost_all', 2) : Promise.resolve([])
     ]);
@@ -698,6 +704,10 @@ function normalizeCloudResponse(raw) {
     quarterLabel: 'FY26-Q1'
   };
 
+  // Dados de prioridades e ações (do backend, preservados no result)
+  result.priorities = cloud?.priorities || [];
+  result.actions = cloud?.actions || [];
+
   // Insights do backend (nao misturar com wordcloud)
   result.insights = cloud?.insights || { topWinFactors: [], topLossCauses: [] };
   
@@ -711,7 +721,8 @@ function normalizeCloudResponse(raw) {
   
   salesSpecialistDeals.forEach(deal => {
     // Usa forecast_status (segunda coluna Status da planilha: UPSIDE/COMMIT)
-    const status = (deal.forecast_status || deal.Status || 'UPSIDE').toUpperCase();
+    // Fallback: opportunity_status (campo correto do backend) — deal.Status não existe na resposta
+    const status = (deal.forecast_status || deal.opportunity_status || 'UPSIDE').toUpperCase();
     const gross = parseFloat(deal.booking_total_gross) || 0;
     const net = parseFloat(deal.booking_total_net) || 0;
     const vendedor = deal.vendedor || 'Unknown';

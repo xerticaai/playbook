@@ -33,7 +33,13 @@ function showError(message) {
 
 // Não há cache no frontend Firebase; apenas recarrega a página.
 function clearDashboardCache() {
-  refreshDashboard();
+  // Limpa o cache local (localStorage) + força bypass do cache do servidor
+  if (typeof clearDataCache === 'function') clearDataCache();
+  if (typeof loadDashboardData === 'function') {
+    loadDashboardData(true);
+  } else {
+    refreshDashboard();
+  }
 }
 
 // Função para mostrar tempo desde última atualização
@@ -71,11 +77,7 @@ function updateTimeSinceUpdate() {
 setInterval(updateTimeSinceUpdate, 30000);
 
 // ========== LOADER FUNCTIONS ==========
-const USE_MINIMAL_LOADER = false;
 const loaderOverlay = document.getElementById('loading-overlay');
-if (loaderOverlay && USE_MINIMAL_LOADER) {
-  loaderOverlay.classList.add('loader-minimal');
-}
 
 let initialLoaderHidden = false;
 function hideInitialLoader() {
@@ -115,9 +117,12 @@ let filterDebounceTimer;
 function debounceFilter(func, delay = 300) {
   clearTimeout(filterDebounceTimer);
   showFilterLoader();
-  filterDebounceTimer = setTimeout(() => {
-    func();
-    hideFilterLoader();
+  filterDebounceTimer = setTimeout(async () => {
+    try {
+      await func();
+    } finally {
+      hideFilterLoader();
+    }
   }, delay);
 }
 

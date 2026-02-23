@@ -173,6 +173,7 @@ async function createAdminVacation() {
 }
 
 async function deleteAdminVacation(vacationId) {
+  if (!confirm('Confirmar exclusão desta ausência? Esta ação não pode ser desfeita.')) return;
   if (!isAdminUser || !vacationId) return;
   const feedback = document.getElementById('admin-vac-feedback');
 

@@ -13,8 +13,8 @@
 | 🟡 Incoerências estruturais importantes | 11 |
 | 🟢 Melhorias de UX / usabilidade | 8 |
 | 🔵 Dívida técnica / code quality | 18 |
-| ⚫ Backend / API / cross-reference | 7 |
-| **Total** | **52** |
+| ⚫ Backend / API / CORS / cross-reference | 16 |
+| **Total** | **61** |
 
 > **Arquivos auditados em profundidade:** `utilitarios.js` (240L), `admin.js` (288L), `vendedores.js` (143L),  
 > `autenticacao.js` (95L), `api-dados.js` (918L), `dashboard.js` (2263L — assinaturas),  
@@ -755,6 +755,181 @@ form.notes.value = '';
 ## ⚫ BACKEND / API / CROSS-REFERENCE
 
 > Findings do audit de `simple_api.py` (2059L), `performance.py` (1047L), `weekly_agenda.py` (1927L), e demais endpoints.
+
+---
+
+### XREF-01 — `/api/pipeline` não retorna `Fiscal_Q` → sempre usa fallback hardcoded `'FY26-Q1'`
+
+**Arquivos:** `simple_api.py` (L~900 SELECT pipeline), `api-dados.js` (L~329–330)
+
+**Problema:** O SELECT do endpoint `/api/pipeline` não inclui o campo `Fiscal_Q`:
+```python
+SELECT Oportunidade, Vendedor, Fase_Atual, Conta, Idle_Dias, ..., Gross, Net, Forecast_SF, Forecast_IA, ...
+-- ↑ Fiscal_Q ausente
+FROM `sales_intelligence.pipeline`
+```
+O frontend lê `deal.Fiscal_Q` de cada deal de pipeline (linha 330 do api-dados.js) e ao receber `undefined` cai no fallback:
+```js
+const quarter = deal.Fiscal_Q || deriveFiscalQuarter(deal.Data_Prevista) || 'FY26-Q1';
+//                       ↑ sempre undefined para pipeline deals
+```
+O fy26Breakdown (distribuição por trimestre) é baseado nesse campo — todos os deals de pipeline ficam em 'FY26-Q1' se `Data_Prevista` também não resolver.
+
+**Solução:** Adicionar `Fiscal_Q` ao SELECT do `/api/pipeline`:
+```python
+SELECT Oportunidade, Vendedor, Fase_Atual, Fiscal_Q, Conta, ...
+FROM `sales_intelligence.pipeline`
+```
+
+---
+
+### XREF-02 — `/api/priorities` ignora todos os filtros (ano, quarter, vendedor, etc.)
+
+**Arquivos:** `simple_api.py` (L~1366), `api-dados.js` (L~145)
+
+**Problema:** O endpoint aceita apenas `limit` e `nocache`:
+```python
+@app.get("/api/priorities")
+def get_priorities(limit: int = 100, nocache: bool = False):
+    # year, quarter, month, seller — todos ignorados
+```
+Mas o frontend o chama com os filtros completos ativos:
+```js
+fetchJsonNoCache(`${API_BASE_URL}/api/priorities?limit=100&year=2026&quarter=1&seller=Joao&...`)
+```
+Resultado: o painel de prioridades **sempre mostra os top 100 do dataset inteiro**, independente do filtro de vendedor ou período selecionado. Filtrar por vendedor não afeta as prioridades exibidas.
+
+**Solução:** Adicionar `year`, `quarter`, `month`, `seller` e demais parâmetros ao endpoint `get_priorities` e aplicar os mesmos filtros do pipeline.
+
+---
+
+### XREF-03 — `priorities` e `actions` são buscados mas NUNCA renderizados
+
+**Arquivo:** `api-dados.js` (normalizeCloudResponse) — ausência de `result.priorities` e `result.actions`
+
+**Problema:** São feitas 2 chamadas de API por carregamento para buscar prioridades e ações (`/api/priorities`, `/api/actions`). Os dados são colocados em `raw.priorities` e `raw.actions` e passados para `normalizeCloudResponse`. Dentro da função, no objeto `result` retornado, **nenhum dos dois campos existe**:
+```js
+const result = {
+  l10: {}, executive: {}, fsrScorecard: ..., wordClouds: ...,
+  // NÃO tem result.priorities
+  // NÃO tem result.actions
+};
+return result;
+```
+`DATA.priorities` e `DATA.actions` são sempre `undefined`. Os dados buscados via rede são silenciosamente descartados. As 2 chamadas de API são desperdício de rede a cada carregamento.
+
+**Solução imediata:** Adicionar ao `result` em `normalizeCloudResponse`:
+```js
+result.priorities = cloud?.priorities || [];
+result.actions = cloud?.actions || [];
+```
+E renderizar esses dados em algum painel (ex: "Top Oportunidades", "Ações Urgentes").
+
+---
+
+### XREF-04 — `metrics.closed_won.avg_meddic` não existe; `metricas-executivas.js` lê silenciosamente undefined
+
+**Arquivo:** `metricas-executivas.js` (L~151–152), `simple_api.py` (L~637–639, GET /api/metrics)
+
+**Problema:** A seção de métricas executivas tenta ler:
+```js
+const avgMeddicWon = metrics.closed_won.avg_meddic;
+// → undefined, pois o backend retorna only: deals_count, gross, net, avg_cycle_days, avg_activities
+```
+O comentário no código reconhece isso: `// Tenta pegar avg_meddic de closed_won (se API adicionar no futuro)`. A variável fica `undefined` e qualquer operação matemática com ela produz `NaN`, que pode aparecer na UI como `NaN%`.
+
+**Solução:** Adicionar `avg_meddic` ao `closed_won` e `closed_lost` na query e no result de `/api/metrics`. Ou simplesmente remover a leitura inválida em `metricas-executivas.js` enquanto o campo não existe.
+
+---
+
+### XREF-05 — `avg_meddic` exibido como "Qualidade de Qualificação" (proxy incorreto)
+
+**Arquivo:** `metricas-executivas.js` (L~52)
+
+**Problema:**
+```js
+const avgConf = metrics.pipeline_filtered.avg_meddic || 0; // Usar avg_meddic como proxy de confiança
+```
+O campo `avg_meddic` (score MEDDIC 0-100) é usado como proxy de confiança e exibido em algum KPI card como "qualidade de qualificação" ou similar. MEDDIC ≠ Confiança — são métricas distintas. Um deal pode ter MEDDIC alto mas confiança baixa (operação pública com licitação, ex). Isso induz o usuário a uma leitura errada.
+
+**Solução:** Usar `metrics.pipeline_filtered.avg_confidence` (que existe e está correto) para KPIs de confiança, e `avg_meddic` apenas onde for explicitamente sobre qualificação MEDDIC.
+
+---
+
+### XREF-06 — `deal.Evitável` (com acento) nunca faz match — backend retorna `Evitavel`
+
+**Arquivo:** `dashboard.js` (L~1268)
+
+**Problema:**
+```js
+const rawAvoidable = deal.Evitavel ?? deal.evitavel ?? deal.Evitável ?? '';
+//                                                            ↑ acento — não existe no JSON
+```
+O BigQuery retorna o campo como `Evitavel` (sem acento, sem cedilha). O frontend tenta três variações, mas a terceira (`Evitável` com acento) nunca faz match de qualquer forma. A segunda (`deal.evitavel` lowercase) também não faz match porque o JSON retorna `Evitavel` com E maiúsculo. 
+
+Resultado: `rawAvoidable` sempre pega `deal.Evitavel` (a primeira) que sim existe, MAS se por algum motivo a response mudar ou adicionar novo campo, a lógica de fallback está errada.
+
+**Solução:** Remover as variações incorretas:
+```js
+const rawAvoidable = deal.Evitavel || '';
+```
+
+---
+
+### XREF-07 — `/api/sales-specialist` retorna `opportunity_status`, frontend tenta `deal.Status`
+
+**Arquivo:** `api-dados.js` (L~714), `simple_api.py` (L~1361)
+
+**Problema:** O backend retorna:
+```json
+{ "opportunity_status": "Won", "forecast_status": "COMMIT", ... }
+```
+O frontend faz:
+```js
+const status = (deal.forecast_status || deal.Status || 'UPSIDE').toUpperCase();
+//                                              ↑ será undefined — campo é opportunity_status
+```
+O fallback `|| deal.Status` nunca funciona. Isso não causa erro visível porque `deal.forecast_status` existe e é lido primeiro, mas a intenção do fallback está quebrada — se `forecast_status` vier vazio, cai em `'UPSIDE'` direto ao invés de `opportunity_status`.
+
+**Solução:** Corrigir o fallback:
+```js
+const status = (deal.forecast_status || deal.opportunity_status || 'UPSIDE').toUpperCase();
+```
+
+---
+
+### XREF-08 — `/api/actions` não aceita filtro `seller` — ações mostradas ignoram vendedor selecionado
+
+**Arquivo:** `simple_api.py` (L~1239), `api-dados.js` (L~146)
+
+**Problema:** O endpoint `/api/actions` aceita `urgencia`, `year`, `quarter` mas **não aceita `seller`**:
+```python
+def get_actions(urgencia, limit, year, quarter, nocache):
+    # sem seller param no WHERE
+```
+Mas o frontend envia todos os filtros na queryString incluindo `seller`. O parâmetro `seller` é silenciosamente ignorado pelo FastAPI. Resultado: se o usuário filtra por "João", as ações urgentes exibidas incluem ações de **todos os vendedores**.
+
+**Solução:** Adicionar `seller: Optional[str] = None` ao endpoint e aplicar `build_seller_filter(seller)` no WHERE.
+
+---
+
+### XREF-09 — Refresh manual do dashboard não passa `nocache=true` → backend serve dados stale
+
+**Arquivo:** `api-dados.js` (função `loadDashboardData` chamada por `clearDashboardCache`/`refreshDashboard`)
+
+**Problema:** O frontend tem `clearDataCache()` que limpa o cache `localStorage`. Mas ao re-chamar `loadDashboardData()`, as URLs geradas não incluem `nocache=true`. O backend in-memory cache (TTL 120s) ainda está quente. Resultado: o usuário clica "Atualizar" e age recebe os mesmos dados do cache de servidor por até 2 minutos.
+
+Todos os endpoints suportam `?nocache=true` mas nunca é enviado.
+
+**Solução:** Em `loadDashboardData`, aceitar um parâmetro `forceRefresh`:
+```js
+async function loadDashboardData(forceRefresh = false) {
+  if (forceRefresh) clearDataCache();
+  const noCacheParam = forceRefresh ? '&nocache=true' : '';
+  // ... append noCacheParam to all fetch URLs
+}
+```
+E `clearDashboardCache` chamar `loadDashboardData(true)`.
 
 ---
 
