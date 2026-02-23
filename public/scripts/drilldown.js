@@ -39,10 +39,22 @@
       confidence: item?.Confianca != null ? Number(item.Confianca) : item?.confidence != null ? Number(item.confidence) : null,
       idleDays: item?.Idle_Dias != null ? Number(item.Idle_Dias) : item?.idleDays != null ? Number(item.idleDays) : null,
       activities: item?.Atividades != null ? Number(item.Atividades) : item?.activities != null ? Number(item.activities) : null,
-      cycle: item?.Ciclo_dias != null ? Number(item.Ciclo_dias) : item?.cycle != null ? Number(item.cycle) : null,
+      cycle: (function() {
+        var raw = (item?.Ciclo_dias != null && item?.Ciclo_dias !== '') ? item.Ciclo_dias : item?.cycle;
+        if (raw == null || raw === '') return null;
+        var n = Number(raw);
+        return isNaN(n) ? null : n;
+      })(),
       bant: item?.BANT_Score != null ? Number(item.BANT_Score) : item?.bant != null ? Number(item.bant) : null,
       riskScore: item?.Risco_Score != null ? Number(item.Risco_Score) : item?.riskScore != null ? Number(item.riskScore) : null,
-      meddic: item?.MEDDIC_Score != null ? Number(item.MEDDIC_Score) : item?.meddic != null ? Number(item.meddic) : null,
+      meddic: (function() {
+        var raw = item?.MEDDIC_Score != null ? item.MEDDIC_Score : item?.meddic;
+        if (raw == null || raw === '') return null;
+        var n = parseFloat(String(raw));
+        if (isNaN(n) || n < 0) return null;
+        // BQ retorna MEDDIC_Score como percentual 0-100; converter para escala de blocos 0-6
+        return n <= 6 ? Math.round(n) : Math.round(n / 100 * 6);
+      })(),
       forecastStatus: item?.Forecast_IA || item?.Forecast_SF || item?.forecastStatus || '',
       vertical: item?.Vertical_IA || item?.vertical || '',
       subVertical: item?.Sub_vertical_IA || item?.subVertical || '',
@@ -50,7 +62,7 @@
       state: item?.Estado_Provincia_de_cobranca || item?.state || '',
       portfolio: item?.Portfolio_FDM || item?.portfolio || '',
       resultType: item?.Tipo_Resultado || item?.resultType || '',
-      reason: item?.Fatores_Sucesso || item?.Win_Reason || item?.Causa_Raiz || item?.Loss_Reason || item?.reason || '',
+      reason: item?.Justificativa_IA || item?.Fatores_Sucesso || item?.Win_Reason || item?.Causa_Raiz || item?.Loss_Reason || item?.reason || '',
       closeDate: item?.Data_Fechamento || item?.Data_Prevista || item?.closeDate || '',
       avoidable: !!(item?.Evitavel || item?.avoidable)
     };

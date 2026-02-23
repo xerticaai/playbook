@@ -1256,7 +1256,22 @@ function renderDashboard() {
         state: deal.Estado_Provincia_de_cobranca || deal.state || '',
         city: deal.Cidade_de_cobranca || deal.city || '',
         portfolio: deal.Portfolio_FDM || deal.portfolio || '',
-        quarter: quarter || 'Quarter N/A'
+        quarter: quarter || 'Quarter N/A',
+        // Campos para detail panel do drilldown
+        closeDate: deal.closeDate || deal.closed || deal.Data_Prevista || '',
+        cycle: (function() {
+          var n = parseFloat(deal.Ciclo_dias || deal.ciclo_dias || deal.cycle || '');
+          return isNaN(n) || n < 0 ? null : n;
+        })(),
+        meddic: (function() {
+          var raw = deal.MEDDIC_Score || deal.meddic_score || deal.meddic;
+          if (raw == null || raw === '') return null;
+          var n = parseFloat(String(raw));
+          if (isNaN(n) || n < 0) return null;
+          // BQ retorna 0-100 (percentual); converter para escala 0-6 de blocos
+          return n <= 6 ? n : Math.round(n / 100 * 6);
+        })(),
+        reason: deal.Justificativa_IA || deal.justificativa_ia || deal.Motivo_Confianca || deal.insight || ''
       };
     };
 

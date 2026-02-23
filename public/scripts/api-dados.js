@@ -371,7 +371,15 @@ function normalizeCloudResponse(raw) {
       products: deal.Produtos
       ,
       Acao_Sugerida: deal.Acao_Sugerida || deal.Acao_Recomendada || deal.acao_recomendada || deal.recomendacao_acao || deal.proxima_acao || '',
-      acao_recomendada: deal.acao_recomendada || deal.recomendacao_acao || deal.Acao_Recomendada || deal.Acao_Sugerida || deal.proxima_acao || ''
+      acao_recomendada: deal.acao_recomendada || deal.recomendacao_acao || deal.Acao_Recomendada || deal.Acao_Sugerida || deal.proxima_acao || '',
+      // Campos para drilldown — detail panel
+      Ciclo_dias: deal.Ciclo_dias || deal.ciclo_dias || '',
+      MEDDIC_Score: deal.MEDDIC_Score || deal.meddic_score || '',
+      BANT_Score: deal.BANT_Score || deal.bant_score || '',
+      Justificativa_IA: deal.Justificativa_IA || deal.justificativa_ia || '',
+      Motivo_Confianca: deal.Motivo_Confianca || deal.motivo_confianca || '',
+      Risco_Principal: deal.Risco_Principal || deal.risco_principal || '',
+      Gaps_Identificados: deal.Gaps_Identificados || deal.gaps_identificados || ''
     };
     
     // Debug opcional: manter silencioso em producao
