@@ -1111,41 +1111,21 @@ def get_closed_won(
         
         where_clause = f"WHERE {' AND '.join(closed_filters)}" if closed_filters else ""
 
-        # Try extended query with dimensional fields; fall back to simple query if columns missing
-        try:
-            query = f"""
-            SELECT
-                Oportunidade, Vendedor, Status, Conta,
-                Fiscal_Q,
-                Data_Fechamento, SAFE_CAST(Ciclo_dias AS FLOAT64) as Ciclo_dias,
-                Gross, Net, Tipo_Resultado, Fatores_Sucesso, Atividades,
-                COALESCE(CAST(Vertical_IA AS STRING), '') as Vertical_IA,
-                COALESCE(CAST(Sub_vertical_IA AS STRING), '') as Sub_vertical_IA,
-                COALESCE(CAST(Sub_sub_vertical_IA AS STRING), '') as Sub_sub_vertical_IA,
-                COALESCE(CAST(Portfolio_FDM AS STRING), '') as Portfolio_FDM,
-                COALESCE(CAST(Segmento_consolidado AS STRING), '') as Segmento_consolidado,
-                COALESCE(CAST(Subsegmento_de_mercado AS STRING), '') as Subsegmento_de_mercado,
-                COALESCE(CAST(Cidade_de_cobranca AS STRING), '') as Cidade_de_cobranca,
-                COALESCE(CAST(Estado_Provincia_de_cobranca AS STRING), '') as Estado_Provincia_de_cobranca
-            FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`
-            {where_clause}
-            ORDER BY Gross DESC
-            LIMIT {limit}
-            """
-            result = query_to_dict(query)
-        except Exception:
-            query = f"""
-            SELECT
-                Oportunidade, Vendedor, Status, Conta,
-                Fiscal_Q,
-                Data_Fechamento, SAFE_CAST(Ciclo_dias AS FLOAT64) as Ciclo_dias,
-                Gross, Net, Tipo_Resultado, Fatores_Sucesso, Atividades
-            FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`
-            {where_clause}
-            ORDER BY Gross DESC
-            LIMIT {limit}
-            """
-            result = query_to_dict(query)
+        # closed_deals_won tem schema menor — sem campos dimensionais (Vertical_IA etc.)
+        query = f"""
+        SELECT
+            Oportunidade, Vendedor, Status, Conta,
+            Fiscal_Q,
+            Data_Fechamento, SAFE_CAST(Ciclo_dias AS FLOAT64) as Ciclo_dias,
+            Gross, Net, Tipo_Resultado, Fatores_Sucesso, Causa_Raiz, Atividades,
+            COALESCE(Produtos, '') as Produtos,
+            COALESCE(Perfil_Cliente, '') as Perfil_Cliente
+        FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`
+        {where_clause}
+        ORDER BY Gross DESC
+        LIMIT {limit}
+        """
+        result = query_to_dict(query)
         set_cached_response(cache_key, result)
         return result
     except Exception as e:
@@ -1207,41 +1187,30 @@ def get_closed_lost(
         
         where_clause = f"WHERE {' AND '.join(closed_filters)}" if closed_filters else ""
 
-        # Try extended query with dimensional fields; fall back to simple query if columns missing
-        try:
-            query = f"""
-            SELECT
-                Oportunidade, Vendedor, Status, Conta,
-                Fiscal_Q,
-                Data_Fechamento, SAFE_CAST(Ciclo_dias AS FLOAT64) as Ciclo_dias,
-                Gross, Net, Tipo_Resultado, Causa_Raiz, Atividades,
-                COALESCE(CAST(Vertical_IA AS STRING), '') as Vertical_IA,
-                COALESCE(CAST(Sub_vertical_IA AS STRING), '') as Sub_vertical_IA,
-                COALESCE(CAST(Sub_sub_vertical_IA AS STRING), '') as Sub_sub_vertical_IA,
-                COALESCE(CAST(Portfolio_FDM AS STRING), '') as Portfolio_FDM,
-                COALESCE(CAST(Segmento_consolidado AS STRING), '') as Segmento_consolidado,
-                COALESCE(CAST(Subsegmento_de_mercado AS STRING), '') as Subsegmento_de_mercado,
-                COALESCE(CAST(Cidade_de_cobranca AS STRING), '') as Cidade_de_cobranca,
-                COALESCE(CAST(Estado_Provincia_de_cobranca AS STRING), '') as Estado_Provincia_de_cobranca
-            FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`
-            {where_clause}
-            ORDER BY Gross DESC
-            LIMIT {limit}
-            """
-            result = query_to_dict(query)
-        except Exception:
-            query = f"""
-            SELECT
-                Oportunidade, Vendedor, Status, Conta,
-                Fiscal_Q,
-                Data_Fechamento, SAFE_CAST(Ciclo_dias AS FLOAT64) as Ciclo_dias,
-                Gross, Net, Tipo_Resultado, Causa_Raiz, Atividades
-            FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`
-            {where_clause}
-            ORDER BY Gross DESC
-            LIMIT {limit}
-            """
-            result = query_to_dict(query)
+        # closed_deals_lost tem schema completo com campos dimensionais e IA
+        query = f"""
+        SELECT
+            Oportunidade, Vendedor, Status, Conta,
+            Fiscal_Q,
+            Data_Fechamento, SAFE_CAST(Ciclo_dias AS FLOAT64) as Ciclo_dias,
+            Gross, Net, Tipo_Resultado, Causa_Raiz, Fatores_Sucesso, Atividades,
+            COALESCE(CAST(Evitavel AS STRING), '') as Evitavel,
+            COALESCE(Justificativa_IA, '') as Justificativa_IA,
+            COALESCE(Owner_Preventa, '') as Owner_Preventa,
+            COALESCE(CAST(Vertical_IA AS STRING), '') as Vertical_IA,
+            COALESCE(CAST(Sub_vertical_IA AS STRING), '') as Sub_vertical_IA,
+            COALESCE(CAST(Sub_sub_vertical_IA AS STRING), '') as Sub_sub_vertical_IA,
+            COALESCE(CAST(Portfolio_FDM AS STRING), '') as Portfolio_FDM,
+            COALESCE(CAST(Segmento_consolidado AS STRING), '') as Segmento_consolidado,
+            COALESCE(CAST(Subsegmento_de_mercado AS STRING), '') as Subsegmento_de_mercado,
+            COALESCE(CAST(Cidade_de_cobranca AS STRING), '') as Cidade_de_cobranca,
+            COALESCE(CAST(Estado_Provincia_de_cobranca AS STRING), '') as Estado_Provincia_de_cobranca
+        FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`
+        {where_clause}
+        ORDER BY Gross DESC
+        LIMIT {limit}
+        """
+        result = query_to_dict(query)
         set_cached_response(cache_key, result)
         return result
     except Exception as e:
