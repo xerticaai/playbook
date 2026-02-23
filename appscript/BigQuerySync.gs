@@ -813,6 +813,42 @@ function loadToBigQuery(tableId, records, writeDisposition, sourceSheetName) {
   }
 }
 
+function insertLoadJobWithRetry_(projectId, jobConfig, blob, options) {
+  const maxAttempts = (options && options.maxAttempts) || 3;
+  const baseSleepMs = (options && options.baseSleepMs) || 1500;
+
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return BigQuery.Jobs.insert(jobConfig, projectId, blob);
+    } catch (error) {
+      lastError = error;
+      const message = String((error && error.message) || error || '');
+      const isRetryable = /empty response|timeout|temporar|backend|internal/i.test(message);
+
+      if (!isRetryable || attempt === maxAttempts) {
+        throw error;
+      }
+
+      const waitMs = baseSleepMs * attempt;
+      console.warn(`⚠️ Tentativa ${attempt}/${maxAttempts} do load job falhou (${message}). Retry em ${waitMs}ms...`);
+      Utilities.sleep(waitMs);
+    }
+  }
+
+  throw lastError || new Error('Falha desconhecida ao inserir load job no BigQuery');
+}
+
+function truncateTableForFallback_(projectId, datasetId, tableName) {
+  const query = `TRUNCATE TABLE \`${projectId}.${datasetId}.${tableName}\``;
+  const request = {
+    query: query,
+    useLegacySql: false,
+    timeoutMs: 60000
+  };
+  BigQuery.Jobs.query(request, projectId);
+}
+
 function normalizeSheetHeadersForBQ_(headers) {
   const normalizedHeaders = (headers || []).map((h, idx) => {
     let normalized = String(h)
@@ -848,6 +884,8 @@ function inferFieldTypeForBQ_(fieldName) {
   const key = String(fieldName || '').trim();
   if (!key) return 'STRING';
 
+  if (isIntegerFieldForBQ_(key)) return 'INTEGER';
+
   const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Data', 'Fecha_', 'fecha_', 'created_date', 'closed_date'];
   const excludeDateFields = ['Mudancas_', 'Total_', 'Ativ_', 'Distribuicao_'];
   const isDateField = (key === 'Data') || (
@@ -858,6 +896,49 @@ function inferFieldTypeForBQ_(fieldName) {
   if (isDateField) return 'DATE';
   if (isNumericFieldForBQ_(key)) return 'FLOAT';
   return 'STRING';
+}
+
+function isIntegerFieldForBQ_(key) {
+  const lowerKey = String(key || '').toLowerCase();
+  if (!lowerKey) return false;
+
+  const integerPatterns = [
+    'mudancas',
+    'total_mudancas',
+    'mudancas_criticas',
+    'mudancas_close_date',
+    'mudancas_stage',
+    'mudancas_valor',
+    'editores',
+    'atividades',
+    'ativ_7d',
+    'ativ_30d',
+    'ciclo_dias',
+    'dias_funil',
+    'idle_dias',
+    'dias_idle',
+    'confianca',
+    'meddic_score',
+    'bant_score'
+  ];
+
+  if (integerPatterns.some(pattern => lowerKey.includes(pattern))) {
+    return true;
+  }
+
+  const explicitIntegerFields = new Set([
+    'mes',
+    'ano_oportunidade'
+  ]);
+
+  return explicitIntegerFields.has(lowerKey);
+}
+
+function toIntegerForBQ_(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = parseNumberForBQ(value);
+  if (numeric === null || !isFinite(numeric)) return null;
+  return numeric < 0 ? Math.ceil(numeric) : Math.floor(numeric);
 }
 
 function ensureEnrichmentColumnsForTable_(projectId, datasetId, tableName, sourceSheetName) {
@@ -902,6 +983,7 @@ function ensureEnrichmentColumnsForTable_(projectId, datasetId, tableName, sourc
       ? table.schema.fields
       : [];
     const existing = new Set(schema.map(f => String(f.name || '').trim()));
+    const existingLower = new Set(schema.map(f => String(f.name || '').trim().toLowerCase()));
 
     const allRequiredFields = requiredFields.concat(dynamicSheetFields);
     const dedupedRequired = [];
@@ -913,7 +995,10 @@ function ensureEnrichmentColumnsForTable_(projectId, datasetId, tableName, sourc
       dedupedRequired.push(f);
     });
 
-    const missing = dedupedRequired.filter(f => !existing.has(f.name));
+    const missing = dedupedRequired.filter(f => {
+      const name = String(f.name || '').trim();
+      return name && !existing.has(name) && !existingLower.has(name.toLowerCase());
+    });
     if (missing.length === 0) {
       return;
     }
@@ -1064,6 +1149,7 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
         
         // Detectar se o campo deve ser numérico baseado no nome
         const isNumericField = isNumericFieldForBQ_(key);
+        const isIntegerField = isIntegerFieldForBQ_(key);
         
         // Detectar se o campo é de data baseado no nome
         // EXCLUSÕES: Mudancas_Close_Date, Mudancas_Stage, etc são INTEGER
@@ -1108,8 +1194,7 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
             sanitized[key] = null;
           } else if (isNumericField) {
             // Para campos numéricos, tentar converter; se falhar, usar NULL
-            const numVal = parseNumberForBQ(strVal);
-            sanitized[key] = numVal;
+            sanitized[key] = isIntegerField ? toIntegerForBQ_(strVal) : parseNumberForBQ(strVal);
           } else {
             sanitized[key] = strVal || null;
           }
@@ -1119,8 +1204,12 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
             if (!isFinite(value)) {
               sanitized[key] = null;
             } else {
-              // Arredondar para 2 casas decimais para evitar problemas de precisão float
-              sanitized[key] = Math.round(value * 100) / 100;
+              if (isIntegerField) {
+                sanitized[key] = value < 0 ? Math.ceil(value) : Math.floor(value);
+              } else {
+                // Arredondar para 2 casas decimais para evitar problemas de precisão float
+                sanitized[key] = Math.round(value * 100) / 100;
+              }
             }
           } else {
             sanitized[key] = value;
@@ -1210,9 +1299,12 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
       }
     };
     
-    // Enviar dados via load job
+    // Enviar dados via load job com retry para erros transitórios (ex: Empty response)
     const blob = Utilities.newBlob(ndjson, 'application/json');
-    const jobResult = BigQuery.Jobs.insert(job, projectId, blob);
+    const jobResult = insertLoadJobWithRetry_(projectId, job, blob, {
+      maxAttempts: 4,
+      baseSleepMs: 2000
+    });
     const jobId = jobResult.jobReference.jobId;
     const location = jobResult.jobReference.location || 'US'; // Capturar location do job
     
@@ -1298,8 +1390,28 @@ function loadUsingJob(projectId, datasetId, tableName, records, runId) {
     };
     
   } catch (error) {
-    console.error(`❌ Erro no load job: ${error.message}`);
-    throw new Error(`Falha ao carregar ${tableName}: ${error.message}`);
+    const errMsg = String((error && error.message) || error || 'Erro desconhecido');
+    console.error(`❌ Erro no load job: ${errMsg}`);
+
+    // Fallback específico para meta: evita derrubar o sync inteiro por flutuação da API de load job.
+    if (tableName === 'meta' && /empty response/i.test(errMsg)) {
+      try {
+        console.warn('⚠️ Ativando fallback para meta: TRUNCATE + streaming insert...');
+        truncateTableForFallback_(projectId, datasetId, tableName);
+        const fallback = loadUsingStreamingInsert(projectId, datasetId, tableName, records, runId);
+        return {
+          rowsInserted: fallback.rowsInserted || 0,
+          jobId: null,
+          status: fallback.status || 'FALLBACK_SUCCESS',
+          fallback: true
+        };
+      } catch (fallbackError) {
+        const fallbackMsg = String((fallbackError && fallbackError.message) || fallbackError || 'Erro desconhecido no fallback');
+        console.error(`❌ Fallback meta também falhou: ${fallbackMsg}`);
+      }
+    }
+
+    throw new Error(`Falha ao carregar ${tableName}: ${errMsg}`);
   }
 }
 
@@ -1318,6 +1430,7 @@ function loadUsingStreamingInsert(projectId, datasetId, tableName, records, runI
       const value = normalizedRecord[key];
       
       const isNumericField = isNumericFieldForBQ_(key);
+      const isIntegerField = isIntegerFieldForBQ_(key);
       const dateFields = ['Data_', 'Date_', 'data_', 'date_', '_Date', '_Data', 'Fecha_', 'fecha_', 'closed_date', 'created_date'];
       const excludeFields = ['Mudancas_', 'Total_', 'Ativ_', 'Distribuicao_'];
       const isDateField = (key === 'Data') || (
@@ -1339,10 +1452,19 @@ function loadUsingStreamingInsert(projectId, datasetId, tableName, records, runI
         if (isDateField) {
           sanitized[key] = parseDateForBQ(strVal);
         } else if (isNumericField) {
-          const numVal = parseNumberForBQ(strVal);
-          sanitized[key] = numVal;
+          sanitized[key] = isIntegerField ? toIntegerForBQ_(strVal) : parseNumberForBQ(strVal);
         } else {
           sanitized[key] = strVal || null;
+        }
+      } else if (typeof value === 'number') {
+        if (!isFinite(value)) {
+          sanitized[key] = null;
+        } else if (isNumericField && isIntegerField) {
+          sanitized[key] = value < 0 ? Math.ceil(value) : Math.floor(value);
+        } else if (isNumericField) {
+          sanitized[key] = Math.round(value * 100) / 100;
+        } else {
+          sanitized[key] = value;
         }
       } else {
         sanitized[key] = value;

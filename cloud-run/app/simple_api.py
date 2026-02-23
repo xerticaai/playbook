@@ -1415,6 +1415,9 @@ def get_priorities(
             if quarter:
                 fiscal_q = f"FY{str(year)[2:]}-Q{quarter}"
                 filters.append(f"(EXTRACT(YEAR FROM SAFE.PARSE_DATE('%Y-%m-%d', Data_Prevista)) = {year} OR Fiscal_Q = '{fiscal_q}')")
+            elif month:
+                filters.append(f"EXTRACT(YEAR FROM SAFE.PARSE_DATE('%Y-%m-%d', Data_Prevista)) = {year}")
+                filters.append(f"EXTRACT(MONTH FROM SAFE.PARSE_DATE('%Y-%m-%d', Data_Prevista)) = {month}")
             else:
                 filters.append(f"EXTRACT(YEAR FROM SAFE.PARSE_DATE('%Y-%m-%d', Data_Prevista)) = {year}")
         if seller:
@@ -1433,8 +1436,16 @@ def get_priorities(
             vf = build_in_filter("Vertical_IA", vertical_ia)
             if vf:
                 filters.append(vf)
+        if sub_vertical_ia:
+            svf = build_in_filter("Sub_vertical_IA", sub_vertical_ia)
+            if svf:
+                filters.append(svf)
+        if segmento_consolidado:
+            scf = build_in_filter("Segmento_consolidado", segmento_consolidado)
+            if scf:
+                filters.append(scf)
         if portfolio_fdm:
-            pff = build_in_filter("CAST(Portfolio_FDM AS STRING)", portfolio_fdm)
+            pff = build_in_filter("Portfolio_FDM", portfolio_fdm)
             if pff:
                 filters.append(pff)
         where_clause = "WHERE " + " AND ".join(filters)
