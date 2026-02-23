@@ -1300,23 +1300,28 @@ function renderDashboard() {
     };
 
     const normalizeSalesSpecialistDeal = (deal) => {
-      const gross = Number(deal.booking_total_gross || deal.gross || deal.Gross || 0);
-      const net = Number(deal.booking_total_net || deal.net || deal.Net || 0);
-      const status = String(deal.forecast_status || deal.Status || '').toUpperCase();
-      const closeDate = deal.close_date || deal.closeDate || deal.Data_Fechamento || '';
+      // Backend SELECT retorna snake_case: opportunity_name, account_name, vendedor,
+      // fiscal_quarter, opportunity_status, forecast_status, booking_total_gross,
+      // booking_total_net, gtm_2026, closed_date
+      const gross = Number(deal.booking_total_gross || deal.Gross || deal.gross || 0);
+      const net = Number(deal.booking_total_net || deal.Net || deal.net || 0);
+      // opportunity_status = 'Aberta'/'Fechada' etc; forecast_status = COMMIT/UPSIDE/etc
+      const status = String(deal.opportunity_status || deal.forecast_status || deal.Status || '').toUpperCase();
+      const forecastStatus = String(deal.forecast_status || deal.opportunity_status || deal.Status || '').toUpperCase();
+      const closeDate = deal.closed_date || deal.close_date || deal.closeDate || deal.Data_Fechamento || '';
       return {
-        name: deal.oportunidade || deal.Oportunidade || deal.opportunity || deal.name || 'Deal sem nome',
-        account: deal.conta || deal.Conta || deal.account || deal.account_name || 'Conta nao informada',
+        name: deal.opportunity_name || deal.Oportunidade || deal.oportunidade || deal.name || 'Deal sem nome',
+        account: deal.account_name || deal.Conta || deal.conta || deal.account || 'Conta nao informada',
         owner: deal.vendedor || deal.Vendedor || deal.owner || 'N/A',
         value: Number.isNaN(gross) ? 0 : gross,
         grossValue: Number.isNaN(gross) ? 0 : gross,
         netValue: Number.isNaN(net) ? 0 : net,
-        stage: status || 'FORECAST_SPECIALIST',
-        quarter: deal.fiscalQ || deal.Fiscal_Q || deriveQuarterLabel(closeDate) || 'Quarter N/A',
+        stage: forecastStatus || status || 'FORECAST_SPECIALIST',
+        quarter: deal.fiscal_quarter || deal.Fiscal_Q || deal.fiscalQ || deriveQuarterLabel(closeDate) || 'Quarter N/A',
         closeDate,
         source: 'ss',
-        forecastStatus: status || ''
-        ,
+        forecastStatus,
+        gtm2026: deal.gtm_2026 || '',
         suggestedAction: deal.acao_recomendada || deal.Acao_Sugerida || deal.Acao_Recomendada || deal.recomendacao_acao || deal.proxima_acao || ''
       };
     };
