@@ -279,3 +279,38 @@ SELECT
 FROM meta_mensal m
 FULL OUTER JOIN realizado_mensal r
   ON m.mes_inicio = r.mes_inicio;
+
+
+-- ============================================================
+-- 4. v_revenue_semanal
+--    Camada de compatibilidade para /api/revenue/weekly.
+--    Expõe v_faturamento_semanal_consolidado com aliases
+--    normalizados que a API espera:
+--      gross_revenue          ← gross_revenue_saneado
+--      net_revenue_saneado    (já existe — mantido)
+--      squad                  ← squad_canonico
+--      fiscal_q_derivado      (já existe — mantido)
+--      portfolio_fat_canonico (já existe — mantido)
+-- ============================================================
+CREATE OR REPLACE VIEW `operaciones-br.mart_l10.v_revenue_semanal` AS
+SELECT
+  semana_inicio,
+  mes_inicio,
+  quarter_inicio,
+  fiscal_q_derivado,
+  vendedor_canonico,
+  squad_canonico                AS squad,
+  portfolio_fat_canonico,
+  estado_pagamento_saneado,
+  gross_revenue_saneado         AS gross_revenue,
+  net_revenue_saneado,
+  -- flags de qualidade de dados
+  flag_fecha_factura_invalida,
+  flag_net_revenue_nulo,
+  flag_estado_pagamento_nulo,
+  flag_id_oportunidade_nulo,
+  flag_billing_id_nulo,
+  vendedor_match_source,
+  Run_ID,
+  data_carga
+FROM `operaciones-br.mart_l10.v_faturamento_semanal_consolidado`;

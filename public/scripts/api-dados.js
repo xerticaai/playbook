@@ -974,13 +974,15 @@ function renderErpKpiCards(rev, att) {
   const mode = window.execDisplayMode || 'gross';
   const isNet = (mode === 'net');
 
-  // Escolhe total baseado no modo
+  // API só tem net_pago / net_pendente — pago/pendente sempre em net
   const totais = rev?.totais || {};
-  const total  = isNet ? (totais.net_total   || 0) : (totais.gross_total   || 0);
-  const pago   = isNet ? (totais.net_pago    || 0) : (totais.gross_pago    || 0);
-  const pend   = isNet ? (totais.net_pendente|| 0) : (totais.gross_pendente|| 0);
+  const total  = isNet ? (totais.net_revenue  || 0) : (totais.gross_revenue  || 0);
+  const pago   = totais.net_pago     || 0;   // sem breakdown gross de pago na API
+  const pend   = totais.net_pendente || 0;
 
-  const attPct = att?.resumo?.attainment_pct ?? rev?.totais?.attainment_pct ?? null;
+  // attainment: API retorna percentual (ex: 87.4), modo-aware
+  const attKey = isNet ? 'attainment_net_pct' : 'attainment_gross_pct';
+  const attPct = att?.resumo?.[attKey] ?? rev?.attainment?.[attKey] ?? null;
 
   const fmt = (v) => typeof formatMoney === 'function' ? formatMoney(v) : ('$' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits:0}));
   const setEl = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
@@ -990,7 +992,7 @@ function renderErpKpiCards(rev, att) {
   setEl('erp-pendente', fmt(pend));
 
   if (attPct !== null) {
-    const pct = Math.round(Number(attPct) * (Number(attPct) <= 1 ? 100 : 1));
+    const pct = Math.round(Number(attPct)); // já é percentual (87.4 etc)
     setEl('erp-attainment-pct', pct + '%');
     setEl('erp-attainment-label', 'meta ' + (document.getElementById('erp-quarter-filter')?.value || 'quarter'));
     const bar = document.getElementById('erp-attainment-bar');
@@ -1009,10 +1011,18 @@ function renderErpCharts(rev) {
   const mode  = window.execDisplayMode || 'gross';
   const isNet = (mode === 'net');
 
+  // helper: formata 'YYYY-MM-DD' → '01/jan'
+  const fmtDate = (d) => {
+    if (!d) return '';
+    const dt = new Date(d + 'T00:00:00Z');
+    const mo = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][dt.getUTCMonth()];
+    return ('0' + dt.getUTCDate()).slice(-2) + '/' + mo;
+  };
+
   // ── Semanal (line) ──
   const semanas = (rev?.por_semana || []);
-  const labSem  = semanas.map(s => s.semana || s.week || '');
-  const datSem  = semanas.map(s => isNet ? (s.net_total || 0) : (s.gross_total || 0));
+  const labSem  = semanas.map(s => fmtDate(s.semana_inicio));
+  const datSem  = semanas.map(s => isNet ? (s.net_revenue || 0) : (s.gross_revenue || 0));
 
   const ctxSem = document.getElementById('erp-chart-semanal');
   if (ctxSem) {
@@ -1045,10 +1055,11 @@ function renderErpCharts(rev) {
   }
 
   // ── Mensal pago × pendente (stacked bar) ──
+  // API retorna apenas net_pago/net_pendente (classificação de pagamento é sempre em net)
   const meses  = (rev?.por_mes || []);
-  const labMes = meses.map(m => m.mes || m.month || '');
-  const datPago= meses.map(m => isNet ? (m.net_pago || 0)     : (m.gross_pago || 0));
-  const datPend= meses.map(m => isNet ? (m.net_pendente || 0) : (m.gross_pendente || 0));
+  const labMes = meses.map(m => fmtDate(m.mes_inicio));
+  const datPago= meses.map(m => m.net_pago     || 0);
+  const datPend= meses.map(m => m.net_pendente || 0);
 
   const ctxMes = document.getElementById('erp-chart-mensal');
   if (ctxMes) {
