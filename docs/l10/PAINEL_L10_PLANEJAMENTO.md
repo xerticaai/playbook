@@ -1563,6 +1563,135 @@ B1 → D5
 
 ---
 
+### SPRINT E — Toggle 4 modos (Booking Gross · Booking Net · Gross · Net) 🔲 PLANEJADO
+
+> **Objetivo:** expandir o toggle de 2 botões (GROSS / NET) para 4 modos, integrando os dados do ERP (`/api/revenue/weekly`) diretamente no `index.html`. Quando o modo é `GROSS` ou `NET` (ERP), a UI oculta filtros irrelevantes de pipeline e exibe os filtros de faturamento.
+
+---
+
+#### Visão geral dos 4 modos
+
+| Modo | Label | Fonte de dados | API |
+|---|---|---|---|
+| `booking_gross` | BOOKING GROSS | Salesforce pipeline/booking | `/api/pipeline`, `/api/booking` |
+| `booking_net` | BOOKING NET | Salesforce pipeline/booking | idem — troca valores Gross↔Net |
+| `gross` | GROSS | ERP faturamento | `/api/revenue/weekly` |
+| `net` | NET | ERP faturamento | `/api/revenue/weekly` |
+
+Default mantido: `booking_gross` (compatível com comportamento atual de `gross`).
+
+---
+
+#### E1 · `public/index.html`
+
+**Onde:** bloco `<!-- Chaveamento Gross / Net -->` (~linha 311)
+
+**Mudança:** substituir os 2 botões por 4:
+```html
+<button id="btn-mode-booking-gross" … onclick="setExecDisplayMode('booking_gross')">BOOKING GROSS</button>
+<button id="btn-mode-booking-net"   … onclick="setExecDisplayMode('booking_net')">BOOKING NET</button>
+<button id="btn-mode-gross"         … onclick="setExecDisplayMode('gross')">GROSS</button>
+<button id="btn-mode-net"           … onclick="setExecDisplayMode('net')">NET</button>
+```
+
+**Adicionar** seção de cards ERP logo após os cards de booking existentes, com `id="erp-kpi-section"` e `display:none` por padrão:
+- Card: Net Revenue total (`id="erp-net-total"`)
+- Card: Net Pago (`id="erp-net-pago"`)
+- Card: Net Pendente (`id="erp-net-pend"`)
+- Card: Attainment vs Meta (`id="erp-att-pct"`)
+
+**Adicionar** grupo de filtros ERP dentro do `global-filters-panel`, com `id="filters-group-erp"` e `display:none` por padrão:
+- Select `id="erp-quarter-filter"` (FY26-Q1…Q4)
+- Select `id="erp-portfolio-filter"` (Workspace / GCP / MSP)
+- Select `id="erp-squad-filter"` (Mensurável: Contas Nomeadas / GTM / CS / SS)
+
+---
+
+#### E2 · `public/scripts/utilitarios.js`
+
+**Onde:** função `setExecDisplayMode` e `updateExecutiveHighlightToggleUI` (~linha 169)
+
+**Mudanças:**
+1. Alterar `window.execDisplayMode = 'gross'` → `window.execDisplayMode = 'booking_gross'`
+2. Expandir `updateExecutiveHighlightToggleUI(mode)` para ativar/desativar os 4 botões pelo id
+3. Expandir `setExecDisplayMode(mode)` para:
+   - Chamar `updateExecutiveHighlightToggleUI(mode)`
+   - Chamar `applyExecDisplayMode(mode)` (lógica booking permanece para `booking_gross`/`booking_net`)
+   - Chamar `toggleErpSection(mode)` — nova função que mostra/oculta `erp-kpi-section`
+   - Chamar `loadErpData()` quando mode é `gross` ou `net`
+
+**Adicionar** `toggleErpSection(mode)`:
+```js
+function toggleErpSection(mode) {
+  const erpSection = document.getElementById('erp-kpi-section');
+  const bookingSection = document.getElementById('exec-kpi-section'); // seção atual
+  const isErp = mode === 'gross' || mode === 'net';
+  if (erpSection)     erpSection.style.display    = isErp ? '' : 'none';
+  if (bookingSection) bookingSection.style.display = isErp ? 'none' : '';
+}
+```
+
+---
+
+#### E3 · `public/scripts/filtros.js`
+
+**Onde:** `updateGlobalFiltersPanelUI` (~linha 340) e `countActiveGlobalFilters` (~linha 236)
+
+**Mudanças:**
+1. Em `updateGlobalFiltersPanelUI`: ao detectar modo ERP, ocultar os `filters-group-card` de "Comercial" (Fase, Tipo, Pré-venda, Vendedor) e "Oportunidade", e exibir `filters-group-erp`; reverter quando voltar para booking
+2. Em `countActiveGlobalFilters`: incluir contagem dos filtros ERP quando modo for `gross`/`net`
+3. Em `updateFiltersSummaryChip`: mostrar `Visão Gross ERP` / `Visão Net ERP` no chip de status conforme modo
+
+---
+
+#### E4 · `public/scripts/api-dados.js`
+
+**Adicionar** função `loadErpData()`:
+```js
+async function loadErpData() {
+  const fiscalQ   = document.getElementById('erp-quarter-filter')?.value || '';
+  const portfolio = document.getElementById('erp-portfolio-filter')?.value || '';
+  const squad     = document.getElementById('erp-squad-filter')?.value || '';
+  const params    = new URLSearchParams();
+  if (fiscalQ)   params.set('fiscal_q', fiscalQ);
+  if (portfolio) params.set('portfolio', portfolio);
+  if (squad)     params.set('squad', squad);
+
+  const [rev, att] = await Promise.all([
+    fetch(`/api/revenue/weekly?${params}`).then(r => r.json()),
+    fetch(`/api/attainment?${params}`).then(r => r.json()),
+  ]);
+  renderErpKpiCards(rev, att);
+}
+```
+
+**Adicionar** `renderErpKpiCards(rev, att)` — preenche os 4 cards ERP com `setTextSafe` / `formatMoney`.
+
+Chamar `loadErpData()` dentro de `reloadDashboard()` quando `window.execDisplayMode === 'gross' || 'net'`.
+
+---
+
+#### Ordem de execução das subtarefas
+
+```
+E1 (HTML: botões + seções) → E2 (utilitarios.js: toggle) → E3 (filtros.js: hide/show) → E4 (api-dados.js: load ERP)
+```
+
+Cada subtarefa é independente o suficiente para ser entregue e testada individualmente.
+
+---
+
+#### Impacto em arquivos existentes
+
+| Arquivo | Tipo de mudança | Risco |
+|---|---|---|
+| `public/index.html` | Additive: novos botões + seção ERP + grupo filtros | Baixo — não remove nada existente |
+| `public/scripts/utilitarios.js` | Modify: `setExecDisplayMode` expandido + nova `toggleErpSection` | Médio — cobre os 2 modos antigos com os 4 novos |
+| `public/scripts/filtros.js` | Modify: `updateGlobalFiltersPanelUI` + `countActiveGlobalFilters` | Médio — lógica de contagem/display |
+| `public/scripts/api-dados.js` | Additive: `loadErpData` + `renderErpKpiCards` | Baixo — não toca código booking |
+
+---
+
 ### O que **não** está neste backlog (decisão explícita)
 
 | Item | Motivo |
