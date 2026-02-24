@@ -2619,6 +2619,7 @@ def get_attainment(
 @app.get("/api/revenue/top")
 def get_revenue_top(
     fiscal_q: Optional[str] = None,
+    squad: Optional[str] = None,
     portfolio: Optional[str] = None,
     mode: str = "net",
     limit: int = 20,
@@ -2630,6 +2631,7 @@ def get_revenue_top(
 
     Params:
       fiscal_q  — ex: "FY26-Q1" (opcional)
+      squad     — squad_canonico, virgula-separado
       portfolio — portfolio_fat_canonico, virgula-separado
       mode      — "net" (default) ou "gross" (define ordenação)
       limit     — max 100, default 20
@@ -2638,7 +2640,7 @@ def get_revenue_top(
       items: [{ cliente, portfolio, oportunidades, produtos,
                 gross_revenue, net_revenue, pago, pendente }]
     """
-    params = {"fiscal_q": fiscal_q, "portfolio": portfolio, "mode": mode, "limit": limit}
+    params = {"fiscal_q": fiscal_q, "squad": squad, "portfolio": portfolio, "mode": mode, "limit": limit}
     cache_key = build_cache_key("/api/revenue/top", params)
     if not nocache:
         cached = get_cached_response(cache_key)
@@ -2656,6 +2658,10 @@ def get_revenue_top(
                 filters.append(f"fiscal_q_derivado = {fqs[0]}")
             else:
                 filters.append(f"fiscal_q_derivado IN ({', '.join(fqs)})")
+        if squad:
+            f = build_in_filter("squad_canonico", squad)
+            if f:
+                filters.append(f)
         if portfolio:
             f = build_in_filter("portfolio_fat_canonico", portfolio)
             if f:
