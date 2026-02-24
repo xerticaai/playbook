@@ -319,8 +319,8 @@ function updateFiltersSummaryChip() {
   const modeLabels = {
     booking_gross: 'Booking Gross',
     booking_net:   'Booking Net',
-    gross:         'Gross ERP',
-    net:           'Net ERP',
+    gross:         'Gross Revenue',
+    net:           'Net Revenue',
   };
   const mode = modeLabels[modeKey] || 'Booking Gross';
   const activeCount = countActiveGlobalFilters();

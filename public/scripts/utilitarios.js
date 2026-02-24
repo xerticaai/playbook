@@ -174,9 +174,7 @@ window.execDisplayMode = 'booking_gross'; // default
 var EXEC_KPI_PAIRS = [
   ['exec-pipeline-year-total', 'exec-pipeline-year-net'],
   ['exec-pipeline-total',      'exec-pipeline-net'],
-  ['exec-forecast-total',      'exec-forecast-net'],
   ['exec-forecast-weighted',   'exec-forecast-net'],
-  ['exec-above50-total',       'exec-above50-net'],
   ['exec-above50-value',       'exec-above50-net'],
   ['exec-closed-total',        'exec-closed-net'],
   ['exec-lost-total',          'exec-lost-net'],
