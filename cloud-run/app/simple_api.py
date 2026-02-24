@@ -64,6 +64,7 @@ app.include_router(ml_predictions_router, prefix="/api", tags=["ML Predictions"]
 # BigQuery
 PROJECT_ID = os.getenv("GCP_PROJECT", "operaciones-br").strip().rstrip("\\/")
 DATASET_ID = os.getenv("BQ_DATASET", "sales_intelligence")
+MART_L10_DATASET = "mart_l10"  # dataset curado — views B1–B5
 
 # Singleton BQ client (reused across requests within the same Cloud Run instance)
 _BQ_CLIENT: Optional[bigquery.Client] = None
@@ -2316,6 +2317,299 @@ Deals perdidos: {lost_deals} (${lost_gross:,.0f})
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Dashboard error: {str(e)}")
+
+# =============================================
+# MART L10 — REVENUE & ATTAINMENT (Sprint D)
+# =============================================
+
+@app.get("/api/revenue/weekly")
+def get_revenue_weekly(
+    fiscal_q: Optional[str] = None,
+    seller: Optional[str] = None,
+    squad: Optional[str] = None,
+    portfolio: Optional[str] = None,
+    nocache: bool = False,
+):
+    """
+    D1 — Revenue semanal do ERP.
+    Fonte: mart_l10.v_revenue_semanal (cadeia ERP → v_faturamento_semanal_consolidado → v_revenue_semanal).
+
+    Params:
+      fiscal_q  — ex: "FY26-Q1" (opcional; sem filtro retorna todos os períodos)
+      seller    — vendedor_canonico, virgula-separado
+      squad     — squad, virgula-separado
+      portfolio — portfolio_fat_canonico, virgula-separado
+
+    Retorna:
+      totais: { gross_revenue, net_revenue, net_pago, net_pendente, net_anulado, linhas }
+      attainment: { meta_gross, meta_net, attainment_gross_pct, attainment_net_pct, gap_gross, gap_net }
+      por_semana: [{ semana_inicio, gross_revenue, net_revenue, net_pago, net_pendente }]
+      por_mes:    [{ mes_inicio, gross_revenue, net_revenue, net_pago, net_pendente }]
+      por_portfolio: [{ portfolio_fat_canonico, gross_revenue, net_revenue, linhas }]
+      por_squad:     [{ squad, gross_revenue, net_revenue, linhas }]
+    """
+    params = {"fiscal_q": fiscal_q, "seller": seller, "squad": squad, "portfolio": portfolio}
+    cache_key = build_cache_key("/api/revenue/weekly", params)
+    if not nocache:
+        cached = get_cached_response(cache_key)
+        if cached is not None:
+            return cached
+
+    try:
+        client = get_bq_client()
+        mart = f"{PROJECT_ID}.{MART_L10_DATASET}"
+
+        # --- build WHERE clauses ---
+        filters: List[str] = []
+        if fiscal_q:
+            fqs = [f"'{sql_literal(q.strip())}'" for q in fiscal_q.split(",") if q.strip()]
+            if len(fqs) == 1:
+                filters.append(f"fiscal_q_derivado = {fqs[0]}")
+            else:
+                filters.append(f"fiscal_q_derivado IN ({', '.join(fqs)})")
+        if seller:
+            f = build_in_filter("vendedor_canonico", seller)
+            if f:
+                filters.append(f)
+        if squad:
+            f = build_in_filter("squad", squad)
+            if f:
+                filters.append(f)
+        if portfolio:
+            f = build_in_filter("portfolio_fat_canonico", portfolio)
+            if f:
+                filters.append(f)
+
+        where = ("WHERE " + " AND ".join(filters)) if filters else ""
+
+        # --- pago / pendente / anulado classification ---
+        _pago_expr = "CASE WHEN estado_pagamento_saneado IN ('Pagada','Intercompañia') THEN net_revenue_saneado ELSE 0 END"
+        _pendente_expr = "CASE WHEN estado_pagamento_saneado IN ('Pendiente','NAO_INFORMADO') THEN net_revenue_saneado ELSE 0 END"
+        _anulado_expr = "CASE WHEN estado_pagamento_saneado = 'Anulada' THEN ABS(net_revenue_saneado) ELSE 0 END"
+
+        # totais
+        q_totais = f"""
+        SELECT
+          ROUND(SUM(gross_revenue), 2)            AS gross_revenue,
+          ROUND(SUM(net_revenue_saneado), 2)      AS net_revenue,
+          ROUND(SUM({_pago_expr}), 2)             AS net_pago,
+          ROUND(SUM({_pendente_expr}), 2)         AS net_pendente,
+          ROUND(SUM({_anulado_expr}), 2)          AS net_anulado,
+          COUNT(*)                                AS linhas
+        FROM `{mart}.v_revenue_semanal`
+        {where}
+        """
+
+        # attainment — filtra pelo mesmo fiscal_q se fornecido
+        att_where = ""
+        if fiscal_q:
+            fqs_att = [f"'{sql_literal(q.strip())}'" for q in fiscal_q.split(",") if q.strip()]
+            if len(fqs_att) == 1:
+                att_where = f"WHERE fiscal_q = {fqs_att[0]}"
+            else:
+                att_where = f"WHERE fiscal_q IN ({', '.join(fqs_att)})"
+
+        q_attainment = f"""
+        SELECT
+          ROUND(SUM(meta_gross), 2)               AS meta_gross,
+          ROUND(SUM(meta_net), 2)                 AS meta_net,
+          ROUND(SUM(gross_realizado), 2)          AS gross_realizado,
+          ROUND(SUM(net_realizado), 2)            AS net_realizado,
+          ROUND(SAFE_DIVIDE(SUM(gross_realizado), NULLIF(SUM(meta_gross),0)) * 100, 1) AS attainment_gross_pct,
+          ROUND(SAFE_DIVIDE(SUM(net_realizado),   NULLIF(SUM(meta_net),  0)) * 100, 1) AS attainment_net_pct,
+          ROUND(SUM(meta_gross) - SUM(gross_realizado), 2) AS gap_gross,
+          ROUND(SUM(meta_net)   - SUM(net_realizado),   2) AS gap_net
+        FROM `{mart}.v_attainment`
+        {att_where}
+        """
+
+        # por semana
+        q_semanal = f"""
+        SELECT
+          CAST(semana_inicio AS STRING)           AS semana_inicio,
+          ROUND(SUM(gross_revenue), 2)            AS gross_revenue,
+          ROUND(SUM(net_revenue_saneado), 2)      AS net_revenue,
+          ROUND(SUM({_pago_expr}), 2)             AS net_pago,
+          ROUND(SUM({_pendente_expr}), 2)         AS net_pendente
+        FROM `{mart}.v_revenue_semanal`
+        {where}
+        GROUP BY 1
+        ORDER BY 1
+        """
+
+        # por mês (para gráfico empilhado)
+        q_mensal = f"""
+        SELECT
+          CAST(mes_inicio AS STRING)              AS mes_inicio,
+          ROUND(SUM(gross_revenue), 2)            AS gross_revenue,
+          ROUND(SUM(net_revenue_saneado), 2)      AS net_revenue,
+          ROUND(SUM({_pago_expr}), 2)             AS net_pago,
+          ROUND(SUM({_pendente_expr}), 2)         AS net_pendente
+        FROM `{mart}.v_revenue_semanal`
+        {where}
+        GROUP BY 1
+        ORDER BY 1
+        """
+
+        # por portfolio
+        q_portfolio = f"""
+        SELECT
+          COALESCE(portfolio_fat_canonico, 'Outros') AS portfolio,
+          ROUND(SUM(gross_revenue), 2)               AS gross_revenue,
+          ROUND(SUM(net_revenue_saneado), 2)         AS net_revenue,
+          COUNT(*)                                   AS linhas
+        FROM `{mart}.v_revenue_semanal`
+        {where}
+        GROUP BY 1
+        ORDER BY net_revenue DESC
+        """
+
+        # por squad
+        q_squad = f"""
+        SELECT
+          COALESCE(squad, 'PENDENTE')             AS squad,
+          ROUND(SUM(gross_revenue), 2)            AS gross_revenue,
+          ROUND(SUM(net_revenue_saneado), 2)      AS net_revenue,
+          COUNT(*)                                AS linhas
+        FROM `{mart}.v_revenue_semanal`
+        {where}
+        GROUP BY 1
+        ORDER BY net_revenue DESC
+        """
+
+        totais_rows    = query_to_dict(q_totais)
+        attainment_row = query_to_dict(q_attainment)
+        semanal_rows   = query_to_dict(q_semanal)
+        mensal_rows    = query_to_dict(q_mensal)
+        portfolio_rows = query_to_dict(q_portfolio)
+        squad_rows     = query_to_dict(q_squad)
+
+        totais    = totais_rows[0] if totais_rows else {}
+        att       = attainment_row[0] if attainment_row else {}
+
+        result = {
+            "filtros": {
+                "fiscal_q": fiscal_q,
+                "seller": seller,
+                "squad": squad,
+                "portfolio": portfolio,
+            },
+            "totais": {
+                "gross_revenue":  float(totais.get("gross_revenue") or 0),
+                "net_revenue":    float(totais.get("net_revenue")   or 0),
+                "net_pago":       float(totais.get("net_pago")      or 0),
+                "net_pendente":   float(totais.get("net_pendente")  or 0),
+                "net_anulado":    float(totais.get("net_anulado")   or 0),
+                "linhas":         int(totais.get("linhas")          or 0),
+            },
+            "attainment": {
+                "meta_gross":          float(att.get("meta_gross")          or 0),
+                "meta_net":            float(att.get("meta_net")            or 0),
+                "gross_realizado":     float(att.get("gross_realizado")     or 0),
+                "net_realizado":       float(att.get("net_realizado")       or 0),
+                "attainment_gross_pct": att.get("attainment_gross_pct"),
+                "attainment_net_pct":   att.get("attainment_net_pct"),
+                "gap_gross":           float(att.get("gap_gross")           or 0),
+                "gap_net":             float(att.get("gap_net")             or 0),
+            },
+            "por_semana":    semanal_rows,
+            "por_mes":       mensal_rows,
+            "por_portfolio": portfolio_rows,
+            "por_squad":     squad_rows,
+        }
+
+        set_cached_response(cache_key, result)
+        return result
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Revenue weekly error: {str(e)}")
+
+
+@app.get("/api/attainment")
+def get_attainment(
+    fiscal_q: Optional[str] = None,
+    nocache: bool = False,
+):
+    """
+    D2 — Attainment mensal: realizado vs meta.
+    Fonte: mart_l10.v_attainment (cadeia v_revenue_semanal × sales_intelligence.meta).
+
+    Params:
+      fiscal_q — ex: "FY26-Q1" (opcional; sem filtro retorna todos os 12 meses FY26)
+
+    Retorna:
+      resumo:  { meta_gross, meta_net, gross_realizado, net_realizado, attainment_gross_pct, attainment_net_pct }
+      por_mes: [{ mes_inicio, fiscal_q, mes_ano_label, meta_gross, meta_net,
+                  gross_realizado, net_realizado, attainment_gross_pct, attainment_net_pct,
+                  gap_gross, gap_net }]
+    """
+    params = {"fiscal_q": fiscal_q}
+    cache_key = build_cache_key("/api/attainment", params)
+    if not nocache:
+        cached = get_cached_response(cache_key)
+        if cached is not None:
+            return cached
+
+    try:
+        mart = f"{PROJECT_ID}.{MART_L10_DATASET}"
+        filters: List[str] = []
+        if fiscal_q:
+            fqs = [f"'{sql_literal(q.strip())}'" for q in fiscal_q.split(",") if q.strip()]
+            if len(fqs) == 1:
+                filters.append(f"fiscal_q = {fqs[0]}")
+            else:
+                filters.append(f"fiscal_q IN ({', '.join(fqs)})")
+        where = ("WHERE " + " AND ".join(filters)) if filters else ""
+
+        q_meses = f"""
+        SELECT
+          CAST(mes_inicio AS STRING)       AS mes_inicio,
+          fiscal_q,
+          mes_ano_label,
+          ROUND(meta_gross, 2)             AS meta_gross,
+          ROUND(meta_net, 2)               AS meta_net,
+          ROUND(gross_realizado, 2)        AS gross_realizado,
+          ROUND(net_realizado, 2)          AS net_realizado,
+          ROUND(attainment_gross_pct * 100, 1) AS attainment_gross_pct,
+          ROUND(attainment_net_pct   * 100, 1) AS attainment_net_pct,
+          ROUND(gap_gross, 2)              AS gap_gross,
+          ROUND(gap_net, 2)               AS gap_net
+        FROM `{mart}.v_attainment`
+        {where}
+        ORDER BY mes_inicio
+        """
+
+        meses = query_to_dict(q_meses)
+
+        # resumo agregado
+        meta_gross_total     = sum(float(r.get("meta_gross")     or 0) for r in meses)
+        meta_net_total       = sum(float(r.get("meta_net")       or 0) for r in meses)
+        gross_real_total     = sum(float(r.get("gross_realizado") or 0) for r in meses)
+        net_real_total       = sum(float(r.get("net_realizado")   or 0) for r in meses)
+
+        resumo = {
+            "meta_gross":          round(meta_gross_total, 2),
+            "meta_net":            round(meta_net_total, 2),
+            "gross_realizado":     round(gross_real_total, 2),
+            "net_realizado":       round(net_real_total, 2),
+            "attainment_gross_pct": round(gross_real_total / meta_gross_total * 100, 1) if meta_gross_total else None,
+            "attainment_net_pct":   round(net_real_total   / meta_net_total   * 100, 1) if meta_net_total   else None,
+            "gap_gross":           round(meta_gross_total - gross_real_total, 2),
+            "gap_net":             round(meta_net_total   - net_real_total,   2),
+        }
+
+        result = {
+            "filtros": {"fiscal_q": fiscal_q},
+            "resumo":  resumo,
+            "por_mes": meses,
+        }
+
+        set_cached_response(cache_key, result)
+        return result
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Attainment error: {str(e)}")
+
 
 # =============================================
 # RUN
