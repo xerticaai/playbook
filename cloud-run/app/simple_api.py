@@ -403,23 +403,6 @@ def build_seller_filter(seller: Optional[str], column_name: str = "Vendedor") ->
         return f"{column_name} IN ('{sellers_quoted}')"
 
 
-def build_squad_vendor_filter(squad: Optional[str], column_name: str = "Vendedor") -> Optional[str]:
-    """
-    Translates a squad name (or list) into a Vendedor IN subquery via mart_l10.dim_vendedor.
-    Example: squad="Contas Nomeadas" ->
-      Vendedor IN (SELECT vendedor_canonico FROM mart_l10.dim_vendedor WHERE squad IN ('Contas Nomeadas') AND ativo = TRUE)
-    """
-    values = parse_csv_values(squad)
-    if not values:
-        return None
-    squads_quoted = ", ".join(f"'{sql_literal(v)}'" for v in values)
-    return (
-        f"{column_name} IN ("
-        f"SELECT vendedor_canonico "
-        f"FROM `{PROJECT_ID}.mart_l10.dim_vendedor` "
-        f"WHERE squad IN ({squads_quoted}) AND ativo = TRUE)"
-    )
-
 # =============================================
 # HEALTH & ROOT
 # =============================================
