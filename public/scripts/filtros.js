@@ -234,6 +234,17 @@ function clearGenericFilterOptions(selectId) {
 }
 
 function countActiveGlobalFilters() {
+  const mode = window.execDisplayMode || 'booking_gross';
+  const isErp = (mode === 'gross' || mode === 'net');
+
+  if (isErp) {
+    let total = 0;
+    if (document.getElementById('erp-quarter-filter')?.value)   total++;
+    if (document.getElementById('erp-squad-filter')?.value)     total++;
+    if (document.getElementById('erp-portfolio-filter')?.value) total++;
+    return total;
+  }
+
   const f = getAdvancedFiltersFromUI();
   const year = document.getElementById('year-filter')?.value || '';
   const quarter = document.getElementById('quarter-filter')?.value || '';
@@ -304,7 +315,14 @@ function updateFiltersSummaryChip() {
   if (!summaryChip) return;
 
   const periodLabel = getPeriodSummaryLabel();
-  const mode = (window.execDisplayMode || 'gross') === 'net' ? 'Net Revenue' : 'Gross Revenue';
+  const modeKey = window.execDisplayMode || 'booking_gross';
+  const modeLabels = {
+    booking_gross: 'Booking Gross',
+    booking_net:   'Booking Net',
+    gross:         'Gross ERP',
+    net:           'Net ERP',
+  };
+  const mode = modeLabels[modeKey] || 'Booking Gross';
   const activeCount = countActiveGlobalFilters();
   const sellersCount = Array.isArray(window.selectedSellers) ? window.selectedSellers.length : 0;
   const sellersLabel = sellersCount > 0 ? ` · ${sellersCount} vendedores` : '';

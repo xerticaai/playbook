@@ -166,7 +166,7 @@ const escapeHtml = (value) => {
 };
 
 // ── Gross / Net display mode toggle ──────────────────────────────────────────
-window.execDisplayMode = 'gross'; // default
+window.execDisplayMode = 'booking_gross'; // default
 
 // KPI card pairs: [mainValueId, subtitleId]
 // Render functions always write Gross as main, "Net: $X" as subtitle.
@@ -189,20 +189,31 @@ var EXEC_KPI_PAIRS = [
 ];
 
 function updateExecutiveHighlightToggleUI(mode) {
-  var btnGross = document.getElementById('btn-highlight-gross');
-  var btnNet   = document.getElementById('btn-highlight-net');
-  if (!btnGross || !btnNet) return;
-  if (mode === 'net') {
-    btnNet.classList.add('highlight-active');
-    btnGross.classList.remove('highlight-active');
-  } else {
-    btnGross.classList.add('highlight-active');
-    btnNet.classList.remove('highlight-active');
-  }
-  btnGross.style.removeProperty('background');
-  btnGross.style.removeProperty('color');
-  btnNet.style.removeProperty('background');
-  btnNet.style.removeProperty('color');
+  var modes = ['booking_gross', 'booking_net', 'gross', 'net'];
+  modes.forEach(function(m) {
+    var btn = document.getElementById('btn-mode-' + m.replace('_', '-'));
+    if (!btn) return;
+    if (m === mode) {
+      btn.classList.add('highlight-active');
+    } else {
+      btn.classList.remove('highlight-active');
+    }
+    btn.style.removeProperty('background');
+    btn.style.removeProperty('color');
+  });
+}
+
+function toggleErpSection(mode) {
+  var isErp = (mode === 'gross' || mode === 'net');
+  var erpSection   = document.getElementById('erp-kpi-section');
+  var bookingWrap  = document.getElementById('booking-sections');
+  var erpFilters   = document.getElementById('filters-group-erp');
+  if (erpSection)  erpSection.style.display  = isErp ? '' : 'none';
+  if (bookingWrap) bookingWrap.style.display  = isErp ? 'none' : '';
+  if (erpFilters)  erpFilters.style.display   = isErp ? '' : 'none';
+  // Update ERP mode label card
+  var modeLabel = document.getElementById('erp-mode-label');
+  if (modeLabel) modeLabel.textContent = mode === 'gross' ? 'Gross Revenue' : 'Net Revenue';
 }
 
 function applyExecDisplayMode(mode) {
@@ -232,7 +243,15 @@ function applyExecDisplayMode(mode) {
 function setExecDisplayMode(mode) {
   window.execDisplayMode = mode;
   updateExecutiveHighlightToggleUI(mode);
-  applyExecDisplayMode(mode);
+  toggleErpSection(mode);
+  // applyExecDisplayMode only applies to booking modes (gross/net DOM swap)
+  if (mode === 'booking_gross' || mode === 'booking_net') {
+    applyExecDisplayMode(mode === 'booking_net' ? 'net' : 'gross');
+  }
+  // Carregar dados ERP ao entrar nos modos gross / net
+  if ((mode === 'gross' || mode === 'net') && typeof loadErpData === 'function') {
+    loadErpData();
+  }
   if (typeof window.switchTopOppsTab === 'function') {
     const activeTab = (window.topOppsState && window.topOppsState.tab) ? window.topOppsState.tab : 'open';
     window.switchTopOppsTab(activeTab);

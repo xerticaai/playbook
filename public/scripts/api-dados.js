@@ -259,11 +259,15 @@ async function loadDashboardData(forceRefresh = false) {
 
     // Restaura o estado do toggle Gross/Net após re-render
     // Render always writes Gross-first; re-apply Net mode if active
-    if (window.execDisplayMode === 'net' && typeof applyExecDisplayMode === 'function') {
+    if (window.execDisplayMode === 'booking_net' && typeof applyExecDisplayMode === 'function') {
       setTimeout(function() { applyExecDisplayMode('net'); }, 80);
     }
     if (typeof updateExecutiveHighlightToggleUI === 'function') {
-      updateExecutiveHighlightToggleUI(window.execDisplayMode || 'gross');
+      updateExecutiveHighlightToggleUI(window.execDisplayMode || 'booking_gross');
+    }
+    // Carregar dados ERP se modo ativo for gross ou net
+    if (window.execDisplayMode === 'gross' || window.execDisplayMode === 'net') {
+      loadErpData();
     }
 
     // Se a aba de gráficos está ativa, atualiza os gráficos com os novos dados filtrados
@@ -938,3 +942,135 @@ function processWordClouds(wonDeals, lostDeals, pipelineDeals) {
   };
 }
 
+// ── Sprint E: ERP Revenue (Gross / Net mode) ─────────────────────────────────
+
+let _erpChartSemanal = null;
+let _erpChartMensal  = null;
+
+async function loadErpData() {
+  const fiscalQ   = document.getElementById('erp-quarter-filter')?.value  || '';
+  const squad     = document.getElementById('erp-squad-filter')?.value    || '';
+  const portfolio = document.getElementById('erp-portfolio-filter')?.value || '';
+
+  const params = new URLSearchParams();
+  if (fiscalQ)   params.set('fiscal_q', fiscalQ);
+  if (squad)     params.set('squad', squad);
+  if (portfolio) params.set('portfolio', portfolio);
+
+  try {
+    const qs = params.toString() ? '?' + params.toString() : '';
+    const [rev, att] = await Promise.all([
+      fetchJsonNoCache(`${API_BASE_URL}/api/revenue/weekly${qs}`),
+      fetchJsonNoCache(`${API_BASE_URL}/api/attainment${qs}`)
+    ]);
+    renderErpKpiCards(rev, att);
+    renderErpCharts(rev);
+  } catch (e) {
+    log('[ERP] Erro ao carregar dados ERP:', e);
+  }
+}
+
+function renderErpKpiCards(rev, att) {
+  const mode = window.execDisplayMode || 'gross';
+  const isNet = (mode === 'net');
+
+  // Escolhe total baseado no modo
+  const totais = rev?.totais || {};
+  const total  = isNet ? (totais.net_total   || 0) : (totais.gross_total   || 0);
+  const pago   = isNet ? (totais.net_pago    || 0) : (totais.gross_pago    || 0);
+  const pend   = isNet ? (totais.net_pendente|| 0) : (totais.gross_pendente|| 0);
+
+  const attPct = att?.resumo?.attainment_pct ?? rev?.totais?.attainment_pct ?? null;
+
+  const fmt = (v) => typeof formatMoney === 'function' ? formatMoney(v) : ('$' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits:0}));
+  const setEl = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+
+  setEl('erp-total',    fmt(total));
+  setEl('erp-pago',     fmt(pago));
+  setEl('erp-pendente', fmt(pend));
+
+  if (attPct !== null) {
+    const pct = Math.round(Number(attPct) * (Number(attPct) <= 1 ? 100 : 1));
+    setEl('erp-attainment-pct', pct + '%');
+    setEl('erp-attainment-label', 'meta ' + (document.getElementById('erp-quarter-filter')?.value || 'quarter'));
+    const bar = document.getElementById('erp-attainment-bar');
+    if (bar) {
+      bar.style.width = Math.min(pct, 100) + '%';
+      bar.style.background = pct >= 100 ? '#22c55e' : pct >= 70 ? 'var(--primary-cyan,#00BEFF)' : '#ef4444';
+    }
+  } else {
+    setEl('erp-attainment-pct', '-');
+  }
+}
+
+function renderErpCharts(rev) {
+  if (typeof Chart === 'undefined') return;
+
+  const mode  = window.execDisplayMode || 'gross';
+  const isNet = (mode === 'net');
+
+  // ── Semanal (line) ──
+  const semanas = (rev?.por_semana || []);
+  const labSem  = semanas.map(s => s.semana || s.week || '');
+  const datSem  = semanas.map(s => isNet ? (s.net_total || 0) : (s.gross_total || 0));
+
+  const ctxSem = document.getElementById('erp-chart-semanal');
+  if (ctxSem) {
+    if (_erpChartSemanal) _erpChartSemanal.destroy();
+    _erpChartSemanal = new Chart(ctxSem, {
+      type: 'line',
+      data: {
+        labels: labSem,
+        datasets: [{
+          label: isNet ? 'Net' : 'Gross',
+          data: datSem,
+          borderColor: '#00BEFF',
+          backgroundColor: 'rgba(0,190,255,0.12)',
+          tension: 0.4,
+          fill: true,
+          pointRadius: 3,
+          pointHoverRadius: 5
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { font: { size: 10 }, color: '#8899aa', maxRotation: 45 }, grid: { color: 'rgba(255,255,255,.05)' } },
+          y: { ticks: { font: { size: 10 }, color: '#8899aa', callback: v => '$' + (v/1e6).toFixed(1) + 'M' }, grid: { color: 'rgba(255,255,255,.06)' } }
+        }
+      }
+    });
+  }
+
+  // ── Mensal pago × pendente (stacked bar) ──
+  const meses  = (rev?.por_mes || []);
+  const labMes = meses.map(m => m.mes || m.month || '');
+  const datPago= meses.map(m => isNet ? (m.net_pago || 0)     : (m.gross_pago || 0));
+  const datPend= meses.map(m => isNet ? (m.net_pendente || 0) : (m.gross_pendente || 0));
+
+  const ctxMes = document.getElementById('erp-chart-mensal');
+  if (ctxMes) {
+    if (_erpChartMensal) _erpChartMensal.destroy();
+    _erpChartMensal = new Chart(ctxMes, {
+      type: 'bar',
+      data: {
+        labels: labMes,
+        datasets: [
+          { label: 'Pago',     data: datPago, backgroundColor: 'rgba(0,190,255,0.7)',  borderRadius: 3 },
+          { label: 'Pendente', data: datPend, backgroundColor: 'rgba(245,158,11,0.55)', borderRadius: 3 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { font: { size: 10 }, color: '#ccc', boxWidth: 10, padding: 8 } } },
+        scales: {
+          x: { stacked: true, ticks: { font: { size: 10 }, color: '#8899aa' }, grid: { color: 'rgba(255,255,255,.05)' } },
+          y: { stacked: true, ticks: { font: { size: 10 }, color: '#8899aa', callback: v => '$' + (v/1e6).toFixed(1) + 'M' }, grid: { color: 'rgba(255,255,255,.06)' } }
+        }
+      }
+    });
+  }
+}

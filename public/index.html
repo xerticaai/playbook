@@ -307,13 +307,15 @@
         <button class="filter-pill pill-red" onclick="clearAllFilters()">&#x2715; Limpar</button>
       </div>
 
-      <!-- Chaveamento Gross / Net -->
+      <!-- Chaveamento 4 modos: Booking Gross / Booking Net / Gross ERP / Net ERP -->
       <div class="filter-quick-bar">
         <span class="filter-label">Exibir:</span>
-        <button id="btn-highlight-gross" class="highlight-btn highlight-active" onclick="setExecDisplayMode('gross')">GROSS</button>
-        <button id="btn-highlight-net" class="highlight-btn" onclick="setExecDisplayMode('net')">NET</button>
+        <button id="btn-mode-booking-gross" class="highlight-btn highlight-active" onclick="setExecDisplayMode('booking_gross')">BOOKING GROSS</button>
+        <button id="btn-mode-booking-net"   class="highlight-btn" onclick="setExecDisplayMode('booking_net')">BOOKING NET</button>
+        <button id="btn-mode-gross"         class="highlight-btn" onclick="setExecDisplayMode('gross')">GROSS</button>
+        <button id="btn-mode-net"           class="highlight-btn" onclick="setExecDisplayMode('net')">NET</button>
         <div class="filters-inline-timestamp"><span id="quarter-label">-</span> | Atualizado: <span id="last-update">-</span></div>
-        <div id="filters-active-summary" class="filters-status-chip" aria-live="polite">Período: Todos · Visão Gross Revenue · 0 filtros ativos</div>
+        <div id="filters-active-summary" class="filters-status-chip" aria-live="polite">Período: Todos · Visão Booking Gross · 0 filtros ativos</div>
       </div>
 
       <div class="filters-actions-row">
@@ -503,6 +505,47 @@
             </div>
           </div>
         </div>
+
+        <!-- GRUPO ERP — visível apenas nos modos GROSS / NET -->
+        <div class="filters-group-card" id="filters-group-erp" style="display:none;">
+          <div class="filters-group-title" style="color:var(--primary-cyan,#00BEFF);">Revenue (ERP)</div>
+          <div class="filters-fields-row">
+            <div class="filters-field">
+              <span class="filters-field-label">Quarter Fiscal:</span>
+              <select id="erp-quarter-filter" onchange="loadErpData()">
+                <option value="" selected>Todos</option>
+                <option value="FY26-Q1">FY26-Q1 (Jan–Mar 2026)</option>
+                <option value="FY26-Q2">FY26-Q2 (Abr–Jun 2026)</option>
+                <option value="FY26-Q3">FY26-Q3 (Jul–Set 2026)</option>
+                <option value="FY26-Q4">FY26-Q4 (Out–Dez 2026)</option>
+                <option value="FY25-Q1">FY25-Q1 (Jan–Mar 2025)</option>
+                <option value="FY25-Q2">FY25-Q2 (Abr–Jun 2025)</option>
+                <option value="FY25-Q3">FY25-Q3 (Jul–Set 2025)</option>
+                <option value="FY25-Q4">FY25-Q4 (Out–Dez 2025)</option>
+              </select>
+            </div>
+            <div class="filters-field">
+              <span class="filters-field-label">Mensurável:</span>
+              <select id="erp-squad-filter" onchange="loadErpData()">
+                <option value="" selected>Todos</option>
+                <option value="Contas Nomeadas">Contas Nomeadas</option>
+                <option value="Sales Outras GTM">GTM</option>
+                <option value="CS">Customer Success</option>
+                <option value="SS">Sales Specialist</option>
+              </select>
+            </div>
+            <div class="filters-field">
+              <span class="filters-field-label">Portfólio:</span>
+              <select id="erp-portfolio-filter" onchange="loadErpData()">
+                <option value="" selected>Todos</option>
+                <option value="Workspace">Workspace</option>
+                <option value="GCP">GCP</option>
+                <option value="MSP">MSP</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
     </div>
@@ -558,8 +601,80 @@
         </div>
 
         <div id="view-kpi-cards" class="view-content active">
+
+      <!-- ======================================================= -->
+      <!-- SEÇÃO ERP: GROSS / NET ERP (Revenue do ERP)            -->
+      <!-- Visível apenas quando mode = 'gross' ou 'net'           -->
+      <!-- ======================================================= -->
+      <div id="erp-kpi-section" style="display:none;">
+        <!-- KPI Cards ERP -->
+        <div class="kpi-grid exec-kpi-grid" style="--kpi-cols:4;">
+          <!-- Attainment — ocupa 2 colunas -->
+          <div class="kpi-card exec-kpi-card--cyan" style="grid-column:span 2;">
+            <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+            </svg>
+            <div class="kpi-title exec-kpi-title--cyan">Attainment</div>
+            <div class="kpi-value exec-kpi-value-lg" id="erp-attainment-pct">-%</div>
+            <div class="kpi-subtitle exec-kpi-subtle" id="erp-attainment-label">meta do quarter</div>
+            <div style="margin-top:10px;height:6px;border-radius:4px;background:var(--bg-elevated,#1a2030);overflow:hidden;">
+              <div id="erp-attainment-bar" style="height:100%;width:0%;border-radius:4px;background:var(--primary-cyan,#00BEFF);transition:width .6s ease;"></div>
+            </div>
+          </div>
+          <!-- Net Total -->
+          <div class="kpi-card exec-kpi-card--green">
+            <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="1" x2="12" y2="23"/>
+              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+            <div class="kpi-title exec-kpi-title--green" id="erp-mode-label">Net Revenue</div>
+            <div class="kpi-value exec-kpi-value-lg" id="erp-total">-</div>
+            <div class="kpi-subtitle exec-kpi-subtle" id="erp-total-label">realizado no quarter</div>
+          </div>
+          <!-- Net Pago -->
+          <div class="kpi-card exec-kpi-card--violet">
+            <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 12 20 22 4 22 4 12"/>
+              <rect x="2" y="7" width="20" height="5"/>
+              <line x1="12" y1="22" x2="12" y2="7"/>
+              <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+              <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
+            </svg>
+            <div class="kpi-title exec-kpi-title--violet">Pago</div>
+            <div class="kpi-value exec-kpi-value-lg" id="erp-pago">-</div>
+            <div class="kpi-subtitle exec-kpi-subtle">Pagada + Intercompañia</div>
+          </div>
+          <!-- Net Pendente -->
+          <div class="kpi-card exec-kpi-card--warning">
+            <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <div class="kpi-title exec-kpi-title--warning">Pendente</div>
+            <div class="kpi-value exec-kpi-value-lg" id="erp-pendente">-</div>
+            <div class="kpi-subtitle exec-kpi-subtle">Pendiente + Não informado</div>
+          </div>
+        </div>
+
+        <!-- Gráficos ERP -->
+        <div class="exec-charts-row" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px;">
+          <div class="chart-card" style="padding:16px;">
+            <div class="chart-title" style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted,#8899aa);margin-bottom:12px;">Evolução Semanal</div>
+            <canvas id="erp-chart-semanal" height="160"></canvas>
+          </div>
+          <div class="chart-card" style="padding:16px;">
+            <div class="chart-title" style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted,#8899aa);margin-bottom:12px;">Mensal · Pago × Pendente</div>
+            <canvas id="erp-chart-mensal" height="160"></canvas>
+          </div>
+        </div>
+
+        <!-- Separador -->
+        <hr style="border:none;border-top:1px solid var(--border-subtle,rgba(255,255,255,.08));margin:24px 0 8px;">
+      </div><!-- /erp-kpi-section -->
+
       <!-- SEÇÃO 1: MÉTRICAS DO QUARTER -->
-      
+      <div id="booking-sections">
       
       <!-- ========================================================================== -->
       <!-- SEÇÃO 1: PIPELINE ABERTO (Oportunidades em Andamento) -->
@@ -1078,6 +1193,8 @@
       <!-- ======================================================= -->
       <!-- ANÁLISE ESTRATÉGICA (IA) — slide panel trigger slot     -->
       <!-- ======================================================= -->
+
+      </div><!-- /booking-sections -->
 
         </div><!-- /view-kpi-cards -->
 
