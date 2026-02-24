@@ -11,7 +11,7 @@ SELECT
   Net,
   Vendedor,
   Fiscal_Q,
-  CAST(Confiana AS FLOAT64) AS confidence,
+  CAST(Confianca AS FLOAT64) AS confidence,
   CAST(MEDDIC_Score AS FLOAT64) AS meddic,
   CAST(BANT_Score AS FLOAT64) AS bant,
   Atividades,
@@ -33,7 +33,7 @@ SELECT
   Fiscal_Q AS Fiscal_Quarter,
   
   -- Features disponíveis
-  SAFE_CAST(Confiana AS FLOAT64) AS confidence_num,
+  SAFE_CAST(Confianca AS FLOAT64) AS confidence_num,
   SAFE_CAST(MEDDIC_Score AS FLOAT64) AS meddic_score,
   SAFE_CAST(BANT_Score AS FLOAT64) AS bant_score,
   SAFE_CAST(Atividades AS INT64) AS atividades,
@@ -113,12 +113,12 @@ JOIN ML.PREDICT(
       Net AS Net_Value,
       Vendedor,
       Fiscal_Q AS Fiscal_Quarter,
-      SAFE_CAST(Confiana AS FLOAT64) AS confidence_num,
+      SAFE_CAST(Confianca AS FLOAT64) AS confidence_num,
       SAFE_CAST(MEDDIC_Score AS FLOAT64) AS meddic_score,
       SAFE_CAST(BANT_Score AS FLOAT64) AS bant_score,
       SAFE_CAST(Atividades_Peso AS INT64) AS atividades
     FROM `operaciones-br.sales_intelligence.pipeline`
-    WHERE Confiana IS NOT NULL AND MEDDIC_Score IS NOT NULL
+    WHERE Confianca IS NOT NULL AND MEDDIC_Score IS NOT NULL
   )
 ) pred
 ON TRUE;

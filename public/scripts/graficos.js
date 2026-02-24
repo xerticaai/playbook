@@ -170,7 +170,7 @@
     });
   }
 
-  window.chartCategoryState = window.chartCategoryState || { fase: true, seg: true, port: true, geo: true };
+  window.chartCategoryState = window.chartCategoryState || { fase: true, opty: true, seg: true, port: true, geo: true };
 
   function applyCategoryState(cat) {
     var expanded = window.chartCategoryState[cat] !== false;
@@ -190,7 +190,7 @@
   };
 
   function initChartCategoryToggles() {
-    ['fase', 'seg', 'port', 'geo'].forEach(applyCategoryState);
+    ['fase', 'opty', 'seg', 'port', 'geo'].forEach(applyCategoryState);
   }
 
   // ── Active filter label ────────────────────────────────────────────────
@@ -313,10 +313,53 @@
     };
   }
 
-  // ── 1. Pipeline por Fase (Pipeline + Won + Lost) ──────────────────────────────────────────────
+  // ── 1. Pipeline por Fase (somente Pipeline) ───────────────────────────────────────────────────
   function buildPorFase() {
-    tripleBar('chart-por-fase', 'por-fase',
-      function(d){ return d.Fase_Atual || d.stage || ''; }, 14);
+    var canvas = document.getElementById('chart-por-fase'); if (!canvas) return;
+    kill('por-fase');
+
+    var pipe = window.pipelineDataRaw || [];
+    var mP = groupBy(pipe, function(d){ return d.Fase_Atual || d.stage || ''; });
+    var labels = topKeys(mP, 14);
+    if (!labels.length) { showEmpty(canvas, 'Sem dados de pipeline por fase'); return; }
+
+    var totP = labels.reduce(function(s,l){ return s + (mP[l] ? mP[l].gross : 0); }, 0);
+
+    instances['por-fase'] = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Pipeline (' + pipe.length + ')',
+          data: labels.map(function(l){ return (mP[l] || {gross:0}).gross; }),
+          backgroundColor: gradBg(C.cyan, true),
+          borderColor: C.cyan.b,
+          borderWidth: 1.5,
+          borderRadius: 5
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: leg(),
+          tooltip: richTip([mP], [totP]),
+          barDatalabels: { display: true }
+        },
+        scales: scalesH(),
+        onClick: function(evt, elements, chart) {
+          if (!elements || !elements.length) return;
+          var label = chart.data.labels[elements[0].index];
+          if (!label) return;
+          var norm = label.toString().trim();
+          var items = (pipe || []).filter(function(d){
+            return ((d.Fase_Atual || d.stage || '').trim() === norm);
+          }).map(function(d){ return Object.assign({_src:'pipe'}, d); });
+          openDrilldown('Pipeline por Fase: ' + norm + _drillFilterLabel(), _applyDrillFilter(items));
+        }
+      }
+    });
   }
 
   // ── 2. Win vs Loss ────────────────────────────────────────────────────
@@ -381,17 +424,38 @@
     var totP = labels.reduce(function(s,l){return s+(mP[l]?mP[l].gross:0);},0);
     var totW = labels.reduce(function(s,l){return s+(mW[l]?mW[l].gross:0);},0);
     var totL = labels.reduce(function(s,l){return s+(mL[l]?mL[l].gross:0);},0);
+    var datasets = [];
+    var countMaps = [];
+    var totals = [];
+
+    if (totP > 0) {
+      datasets.push({ label:'Pipeline ('+pipe.length+')', data:labels.map(function(l){return (mP[l]||{gross:0}).gross;}), backgroundColor:gradBg(cs[0],true), borderColor:cs[0].b, borderWidth:1.5, borderRadius:5 });
+      countMaps.push(mP);
+      totals.push(totP);
+    }
+    if (totW > 0) {
+      datasets.push({ label:'Won ('+won.length+')', data:labels.map(function(l){return (mW[l]||{gross:0}).gross;}), backgroundColor:gradBg(cs[1],true), borderColor:cs[1].b, borderWidth:1.5, borderRadius:5 });
+      countMaps.push(mW);
+      totals.push(totW);
+    }
+    if (totL > 0) {
+      datasets.push({ label:'Lost ('+lost.length+')', data:labels.map(function(l){return (mL[l]||{gross:0}).gross;}), backgroundColor:gradBg(cs[2],true), borderColor:cs[2].b, borderWidth:1.5, borderRadius:5 });
+      countMaps.push(mL);
+      totals.push(totL);
+    }
+
+    if (!datasets.length) {
+      showEmpty(canvas, 'Sem dados para as séries no período');
+      return;
+    }
+
     instances[instKey] = new Chart(canvas, {
       type: 'bar',
-      data: { labels: labels, datasets: [
-        { label:'Pipeline ('+pipe.length+')', data:labels.map(function(l){return (mP[l]||{gross:0}).gross;}), backgroundColor:gradBg(cs[0],true), borderColor:cs[0].b, borderWidth:1.5, borderRadius:5 },
-        { label:'Won ('    +won.length  +')', data:labels.map(function(l){return (mW[l]||{gross:0}).gross;}), backgroundColor:gradBg(cs[1],true), borderColor:cs[1].b, borderWidth:1.5, borderRadius:5 },
-        { label:'Lost ('   +lost.length +')', data:labels.map(function(l){return (mL[l]||{gross:0}).gross;}), backgroundColor:gradBg(cs[2],true), borderColor:cs[2].b, borderWidth:1.5, borderRadius:5 }
-      ]},
+      data: { labels: labels, datasets: datasets },
       options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
         plugins: {
           legend: leg(),
-          tooltip: richTip([mP,mW,mL],[totP,totW,totL]),
+          tooltip: richTip(countMaps, totals),
           barDatalabels: { display: true }
         },
         scales: scalesH(),
@@ -404,6 +468,18 @@
   function buildVertical() {
     tripleBar('chart-vertical','vertical',
       function(d){return d.Vertical_IA||d.vertical||'';}, 12);
+  }
+
+  // ── 3b. Tipo de Oportunidade ─────────────────────────────────────────
+  function buildTipoOportunidade() {
+    tripleBar('chart-tipo-oportunidade', 'tipo-oportunidade',
+      function(d){ return d.Tipo_Oportunidade || d.tipo_oportunidade || ''; }, 12, [C.orange, C.green, C.red]);
+  }
+
+  // ── 3c. Processo ─────────────────────────────────────────────────────
+  function buildProcesso() {
+    tripleBar('chart-processo', 'processo',
+      function(d){ return d.Processo || d.processo || ''; }, 12, [C.warning, C.green, C.red]);
   }
 
   // ── 4. Sub-Vertical IA ───────────────────────────────────────────────
@@ -949,6 +1025,8 @@
     safeBuild(buildPorFase,        'PorFase');
     safeBuild(buildWinLoss,        'WinLoss');
     safeBuild(buildVertical,       'Vertical');
+    safeBuild(buildTipoOportunidade,'TipoOportunidade');
+    safeBuild(buildProcesso,       'Processo');
     safeBuild(buildSubVertical,    'SubVertical');
     safeBuild(buildSegmento,       'Segmento');
     safeBuild(buildPortfolioFDM,   'PortfolioFDM');

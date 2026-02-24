@@ -163,6 +163,8 @@ CLOSED_LOST = _ClosedLost()
 # Valor = nome da coluna BQ
 FILTER_PARAM_TO_COLUMN = {
     "phase":              "Fase_Atual",           # apenas pipeline
+    "tipo_oportunidade":  "Tipo_Oportunidade",
+    "processo":           "Processo",
     "seller":             "Vendedor",
     "owner_preventa":     "Owner_Preventa",
     "vertical_ia":        "Vertical_IA",

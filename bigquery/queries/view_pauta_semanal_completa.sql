@@ -23,7 +23,7 @@ WITH pipeline_ativo AS (
     p.Ultima_Atualizacao,
     p.Ciclo_dias,
     p.Atividades,
-    p.Confiana as Confianca,
+    p.Confianca as Confianca,
     p.Forecast_SF,
     p.Dias_Funil,
     p.Territorio,

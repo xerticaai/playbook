@@ -264,22 +264,29 @@
   box-shadow: var(--ui-shadow-md) !important;
 }
 
+#view-graficos .card:not(.chart-category-card) {
+  border-radius: 12px !important;
+  overflow: hidden;
+}
+
 /* ─── Chart card label: uppercase editorial style ────────────── */
 #view-graficos .card:not(.chart-category-card) > .card-label,
 #view-graficos .card:not(.chart-category-card) > [id$="-label"] {
-  font-size: 10px !important;
+  font-size: 11px !important;
   font-weight: 700 !important;
   text-transform: uppercase !important;
-  letter-spacing: 0.09em !important;
+  letter-spacing: 0.08em !important;
   color: var(--ui-text-3) !important;
-  padding: 14px 16px 4px 16px !important;
+  padding: 14px 16px 8px 16px !important;
   line-height: 1.4 !important;
 }
 
 /* ─── chart-wrapper: radial ambient glow ────────────────────── */
 #view-graficos .chart-wrapper {
   background: radial-gradient(ellipse at 20% 80%, rgba(0,190,255,0.045) 0%, transparent 60%) !important;
-  border-radius: 8px !important;
+  border-radius: 10px !important;
+  border: 1px solid var(--ui-border-soft) !important;
+  padding: 8px 10px 10px;
 }
 
 /* ─── Category section header improvements ──────────────────── */

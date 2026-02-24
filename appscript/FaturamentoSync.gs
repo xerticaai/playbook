@@ -11,12 +11,15 @@
 // ==================== CONFIGURAÇÕES ====================
 
 const FAT_SOURCE_SPREADSHEET_ID = '18uYGqmkmsclVuZcONqi4fqqk2a7_D-NkwtG2r6JcY3k';
+const FAT_WEEKLY_SOURCE_SPREADSHEET_ID = '18PDjdprqBZCQsJxA8Jc7xQNX7iLsfpPWQ-AuBDF4OgQ';
 
 const FAT_2025_SOURCE_SHEET_NAME = 'FATURAMENTO_2025';
 const FAT_2026_SOURCE_SHEET_NAME = 'FATURAMENTO_2026';
+const FAT_WEEKLY_Q1_2026_SOURCE_SHEET_NAME = 'Q1 2026';
 
 const FAT_2025_DEST_SHEET_NAME = 'FATURAMENTO_2025';
 const FAT_2026_DEST_SHEET_NAME = 'FATURAMENTO_2026';
+const FAT_WEEKLY_DEST_SHEET_NAME = 'Faturamento_Week';
 
 const FAT_TRIGGER_HANDLER_GERAL = 'migrarTodoFaturamento';
 
@@ -92,7 +95,7 @@ const FAT_ALIAS_MAP = {
 // ==================== FUNÇÕES PRINCIPAIS ====================
 
 /**
- * Migração geral: FATURAMENTO_2025 + FATURAMENTO_2026.
+ * Migração geral: FATURAMENTO_2025 + FATURAMENTO_2026 + Faturamento_Week (Q1 2026).
  */
 function migrarFaturamento() {
   migrarTodoFaturamento();
@@ -106,14 +109,32 @@ function migrarFaturamento2026() {
 }
 
 /**
- * Migra as duas abas (2025 + 2026).
+ * Migra a aba semanal Q1 2026 para Faturamento_Week.
+ */
+function migrarFaturamentoSemanal() {
+  migrarAbaFaturamentoComOrigem_(
+    FAT_WEEKLY_SOURCE_SPREADSHEET_ID,
+    FAT_WEEKLY_Q1_2026_SOURCE_SHEET_NAME,
+    FAT_WEEKLY_DEST_SHEET_NAME,
+    'FaturamentoSemanalQ1_2026'
+  );
+}
+
+/**
+ * Migra as três abas (2025 + 2026 + semanal Q1 2026).
  */
 function migrarTodoFaturamento() {
   const inicio = new Date();
   console.log(`🚀 [FaturamentoSync] Iniciando migração completa em ${inicio.toLocaleString('pt-BR')}`);
 
-  migrarAbaFaturamento_(FAT_2025_SOURCE_SHEET_NAME, FAT_2025_DEST_SHEET_NAME, 'Faturamento2025');
+  migrarAbaFaturamentoComOrigem_(
+    FAT_SOURCE_SPREADSHEET_ID,
+    FAT_2025_SOURCE_SHEET_NAME,
+    FAT_2025_DEST_SHEET_NAME,
+    'Faturamento2025'
+  );
   migrarFaturamento2026();
+  migrarFaturamentoSemanal();
 
   const duracao = ((new Date() - inicio) / 1000).toFixed(1);
   console.log(`✅ [FaturamentoSync] Migração completa concluída em ${duracao}s`);
@@ -134,7 +155,7 @@ function instalarTriggerFaturamento12h() {
   try {
     SpreadsheetApp.getUi().alert(
       '⏰ Trigger geral instalado!\n\n' +
-      'A migração das abas FATURAMENTO_2025 e FATURAMENTO_2026 será executada a cada 12 horas.\n\n' +
+      'A migração das abas FATURAMENTO_2025, FATURAMENTO_2026 e Faturamento_Week será executada a cada 12 horas.\n\n' +
       'Para remover, use: removerTriggerFaturamento()'
     );
   } catch (_) {}
@@ -193,17 +214,24 @@ function statusTriggerFaturamento2026() {
  * Migra uma aba de faturamento de origem para destino, normalizando cabeçalhos.
  */
 function migrarAbaFaturamento_(sourceSheetName, destSheetName, logTag) {
+  migrarAbaFaturamentoComOrigem_(FAT_SOURCE_SPREADSHEET_ID, sourceSheetName, destSheetName, logTag);
+}
+
+/**
+ * Migra uma aba de faturamento de uma planilha de origem para destino, normalizando cabeçalhos.
+ */
+function migrarAbaFaturamentoComOrigem_(sourceSpreadsheetId, sourceSheetName, destSheetName, logTag) {
   const inicio = new Date();
   console.log(`🚀 [${logTag}] Iniciando migração em ${inicio.toLocaleString('pt-BR')}`);
 
   try {
-    const ssOrigem = SpreadsheetApp.openById(FAT_SOURCE_SPREADSHEET_ID);
+    const ssOrigem = SpreadsheetApp.openById(sourceSpreadsheetId);
     const abaOrigem = ssOrigem.getSheetByName(sourceSheetName);
 
     if (!abaOrigem) {
       throw new Error(
         `Aba "${sourceSheetName}" não encontrada na planilha de origem ` +
-        `(ID: ${FAT_SOURCE_SPREADSHEET_ID})`
+        `(ID: ${sourceSpreadsheetId})`
       );
     }
 

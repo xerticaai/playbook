@@ -11,7 +11,7 @@ SELECT
   ROUND(SUM(Gross), 2) AS gross_total,
   ROUND(SUM(Net), 2) AS net_total,
   ROUND(AVG(Gross), 2) AS gross_medio,
-  ROUND(AVG(CAST(Confiana AS FLOAT64))/100, 2) AS confianca_media
+  ROUND(AVG(CAST(Confianca AS FLOAT64))/100, 2) AS confianca_media
 FROM `operaciones-br.sales_intelligence.pipeline`
 WHERE Fiscal_Q = 'FY26-Q1'
 
@@ -49,7 +49,7 @@ SELECT
   ROUND(SUM(Gross), 2) AS gross_total,
   ROUND(SUM(Net), 2) AS net_total,
   ROUND(AVG(Gross), 2) AS gross_medio,
-  ROUND(AVG(CAST(Confiana AS FLOAT64))/100, 2) AS confianca_media
+  ROUND(AVG(CAST(Confianca AS FLOAT64))/100, 2) AS confianca_media
 FROM `operaciones-br.sales_intelligence.pipeline`
 WHERE Fiscal_Q = 'FY26-Q2'
 
@@ -87,7 +87,7 @@ SELECT
   ROUND(SUM(Gross), 2) AS gross_total,
   ROUND(SUM(Net), 2) AS net_total,
   ROUND(AVG(Gross), 2) AS gross_medio,
-  ROUND(AVG(CAST(Confiana AS FLOAT64))/100, 2) AS confianca_media
+  ROUND(AVG(CAST(Confianca AS FLOAT64))/100, 2) AS confianca_media
 FROM `operaciones-br.sales_intelligence.pipeline`
 WHERE Fiscal_Q = 'FY25-Q4'
 

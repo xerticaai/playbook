@@ -329,6 +329,24 @@ function syncToBigQueryScheduled() {
     } catch (e) {
       console.warn('⚠️ FATURAMENTO_2026 não sincronizado:', e.message);
     }
+
+    // ETAPA 8: Carregar Faturamento_Week → tabela BQ: faturamento_semanal
+    let faturamentoSemanalResult = { rowsInserted: 0, status: 'SKIPPED' };
+    try {
+      ensureFaturamentoSemanalTableExists_();
+      const faturamentoSemanalData = prepareFaturamentoSemanalData();
+      if (faturamentoSemanalData.length > 0) {
+        faturamentoSemanalResult = loadToBigQuery(
+          `${BQ_PROJECT}.${BQ_DATASET}.faturamento_semanal`,
+          faturamentoSemanalData,
+          'WRITE_TRUNCATE'
+        );
+      } else {
+        console.warn('⚠️ Aba Faturamento_Week vazia ou não encontrada — sync ignorado');
+      }
+    } catch (e) {
+      console.warn('⚠️ Faturamento_Week não sincronizado:', e.message);
+    }
     
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
     
@@ -341,6 +359,7 @@ function syncToBigQueryScheduled() {
     console.log(`   • Sales Specialist: ${salesSpecResult.rowsInserted} linhas`);
     console.log(`   • FATURAMENTO_2025: ${faturamentoResult.rowsInserted} linhas`);
     console.log(`   • FATURAMENTO_2026: ${faturamento2026Result.rowsInserted} linhas`);
+    console.log(`   • Faturamento_Week: ${faturamentoSemanalResult.rowsInserted} linhas`);
     
     // Salvar timestamp da última sync
     PropertiesService.getScriptProperties().setProperty(
@@ -358,6 +377,7 @@ function syncToBigQueryScheduled() {
       salesSpecRows: salesSpecResult.rowsInserted,
       faturamentoRows: faturamentoResult.rowsInserted,
       faturamento2026Rows: faturamento2026Result.rowsInserted,
+      faturamentoSemanalRows: faturamentoSemanalResult.rowsInserted,
       duration: duration
     };
     
@@ -2289,6 +2309,140 @@ function prepareFaturamento2026Data() {
     });
 
   console.log(`📊 [Faturamento2026] ${result.length} registros lidos de "${sheetName}"`);
+  return result;
+}
+
+// ==================== FATURAMENTO SEMANAL (Q1 2026) ====================
+
+/**
+ * Garante que a tabela `faturamento_semanal` existe no BigQuery.
+ * Schema baseado no cabeçalho normalizado da aba Faturamento_Week (origem: Q1 2026).
+ */
+function ensureFaturamentoSemanalTableExists_() {
+  const tableName = 'faturamento_semanal';
+
+  const schemaFields = [
+    { name: 'mes',                              type: 'INTEGER',   mode: 'NULLABLE' },
+    { name: 'pais',                             type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'cuenta_financeira',                type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'tipo_documento',                   type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'fecha_factura',                    type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'poliza_pais',                      type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'cuenta_contable',                  type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'valor_fatura_moeda_local_sem_iva', type: 'FLOAT64',   mode: 'NULLABLE' },
+    { name: 'produto',                          type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'oportunidade',                     type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'cliente',                          type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'id_oportunidade',                  type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'billing_id',                       type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'percentual_desconto_xertica_ns',   type: 'FLOAT64',   mode: 'NULLABLE' },
+    { name: 'tipo_produto',                     type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'portafolio',                       type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'timbradas',                        type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'estado_pagamento',                 type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'fecha_doc_timbrado',               type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'familia',                          type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'tipo_cambio_pactado',              type: 'FLOAT64',   mode: 'NULLABLE' },
+    { name: 'tipo_cambio_diario',               type: 'FLOAT64',   mode: 'NULLABLE' },
+    { name: 'valor_fatura_usd_comercial',       type: 'FLOAT64',   mode: 'NULLABLE' },
+    { name: 'net_revenue',                      type: 'FLOAT64',   mode: 'NULLABLE' },
+    { name: 'incentivos_google',                type: 'FLOAT64',   mode: 'NULLABLE' },
+    { name: 'backlog_nomeado',                  type: 'FLOAT64',   mode: 'NULLABLE' },
+    { name: 'pais_comercial',                   type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'comercial',                        type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'ano_oportunidade',                 type: 'INTEGER',   mode: 'NULLABLE' },
+    { name: 'tipo_oportunidade_line',           type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'dominio',                          type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'segmento',                         type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'concatenar',                       type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'margem_percentual_final',          type: 'FLOAT64',   mode: 'NULLABLE' },
+    { name: 'revisao_margem',                   type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'etapa_oportunidade',               type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'desconto_xertica',                 type: 'FLOAT64',   mode: 'NULLABLE' },
+    { name: 'cenario_nr',                       type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'Run_ID',                           type: 'STRING',    mode: 'NULLABLE' },
+    { name: 'data_carga',                       type: 'TIMESTAMP', mode: 'NULLABLE' }
+  ];
+
+  let tableExists = false;
+  let existingFields = [];
+  try {
+    const existingTable = BigQuery.Tables.get(BQ_PROJECT, BQ_DATASET, tableName);
+    tableExists = true;
+    existingFields = (existingTable.schema && existingTable.schema.fields) || [];
+  } catch (e) {
+    const msg = String((e && e.message) || e || '');
+    if (msg.indexOf('Not found') === -1 && msg.indexOf('404') === -1) {
+      console.warn(`⚠️ Falha ao verificar ${tableName}: ${msg}`);
+      return;
+    }
+  }
+
+  if (!tableExists) {
+    const tableResource = {
+      tableReference: { projectId: BQ_PROJECT, datasetId: BQ_DATASET, tableId: tableName },
+      description: 'Faturamento semanal — migrado da aba Q1 2026 para Faturamento_Week',
+      schema: { fields: schemaFields }
+    };
+    BigQuery.Tables.insert(tableResource, BQ_PROJECT, BQ_DATASET);
+    console.log(`✅ Tabela ${tableName} criada no BigQuery (${schemaFields.length} colunas)`);
+    return;
+  }
+
+  const existingNames = new Set(existingFields.map(f => String(f.name || '').trim()));
+  const missing = schemaFields.filter(f => !existingNames.has(f.name));
+  if (missing.length === 0) return;
+
+  BigQuery.Tables.patch(
+    { schema: { fields: existingFields.concat(missing) } },
+    BQ_PROJECT, BQ_DATASET, tableName
+  );
+  console.log(`🧩 ${tableName}: ${missing.length} coluna(s) adicionada(s) — ${missing.map(f => f.name).join(', ')}`);
+}
+
+/**
+ * Lê a aba "Faturamento_Week" (origem: Q1 2026)
+ * e retorna array pronto para loadToBigQuery → tabela BQ: faturamento_semanal.
+ * @returns {Array<Object>}
+ */
+function prepareFaturamentoSemanalData() {
+  const sheetName = 'Faturamento_Week';
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(sheetName);
+
+  if (!sheet || sheet.getLastRow() <= 1) {
+    console.warn(`⚠️ [FaturamentoSemanal] Aba "${sheetName}" vazia ou não encontrada.`);
+    return [];
+  }
+
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const rows = data.slice(1);
+
+  const result = rows
+    .filter(row => row.some(v => v !== '' && v !== null && v !== undefined))
+    .map(row => {
+      const obj = {};
+      headers.forEach((h, idx) => {
+        const key = String(h).trim();
+        if (!key) return;
+        const val = row[idx];
+        if (val === null || val === undefined || val === '') {
+          obj[key] = null;
+        } else if (val instanceof Date) {
+          const d = String(val.getDate()).padStart(2, '0');
+          const m = String(val.getMonth() + 1).padStart(2, '0');
+          obj[key] = `${d}/${m}/${val.getFullYear()}`;
+        } else if (typeof val === 'number') {
+          obj[key] = val;
+        } else {
+          obj[key] = String(val).trim() || null;
+        }
+      });
+      return obj;
+    });
+
+  console.log(`📊 [FaturamentoSemanal] ${result.length} registros lidos de "${sheetName}"`);
   return result;
 }
 

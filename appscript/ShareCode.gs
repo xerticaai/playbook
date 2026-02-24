@@ -407,12 +407,49 @@ function calculateMEDDICScore(item, text) {
   const content = normText_(fullContent);
   
   const criteria = {
-    Metrics: ["ROI","RETORNO","ECONOMIA","REDUCAO","AUMENTO","PAYBACK","KPI","AHORRO"],
-    Buyer: ["DECISOR","APROVADOR","CFO","CEO","DIRETOR","SECRETARIO","ORDENADOR","GESTOR","VP"],
-    Criteria: ["CRITERIO","REQUISITOS","MATRIZ","TERMINOS","PLIEGO","EDITAL","TR","ETP","POC"],
-    Process: ["HOMOLOGACAO","ASSINATURA","PARECER","JURIDICO","ARP","LICIT","COMISSAO","ADJUDICACAO"],
-    Pain: ["DESAFIO","PROBLEMA","GARGALO","INEFICIENCIA","DOR","URGENCIA","RISCO","MULTA"],
-    Champion: ["CAMPEAO","DEFENSOR","PONTO FOCAL","ALIADO","SPONSOR","PATROCINADOR"]
+    // Metrics: qualquer menção a valor, resultado, impacto ou métrica
+    Metrics: [
+      "ROI","RETORNO","ECONOMIA","REDUCAO","AUMENTO","PAYBACK","KPI","AHORRO",
+      "IMPACTO","BENEFICIO","GANHO","EFICIENCIA","PRODUTIVIDADE","RESULTADO",
+      "CUSTO","SAVING","VALOR","PERCENTUAL","META","OBJETIVO","PERFORMANCE",
+      "CRESCIMENTO","MELHORIA","LICENCA","SEATS","USUARIOS","ESCALA"
+    ],
+    // Buyer: qualquer pessoa com poder de decisão ou envolvimento executivo
+    Buyer: [
+      "DECISOR","APROVADOR","CFO","CEO","DIRETOR","SECRETARIO","ORDENADOR","GESTOR","VP",
+      "CTO","CIO","COO","SUPERINTENDENTE","PRESIDENTE","VICE","COORDENADOR","GERENTE",
+      "RESPONSAVEL","STAKEHOLDER","LIDERANCA","EXECUTIVO","TOMADOR","AUTORIDADE",
+      "CHEFE","HEAD","TITULAR","PREFEITO","GOVERNADOR","MINISTRO","PROCURADOR"
+    ],
+    // Criteria: qualquer evidência de critério técnico, processo de compra ou avaliação formal
+    Criteria: [
+      "CRITERIO","REQUISITOS","MATRIZ","TERMINOS","PLIEGO","EDITAL","TR","ETP","POC",
+      "AVALIACAO","PROVA DE CONCEITO","TESTE","PILOTO","RFP","RFI","RFQ",
+      "ESPECIFICACAO","BENCHMARK","HOMOLOGAR","VALIDAR","APROVADO","SELECIONADO",
+      "ANALISE TECNICA","DEMONSTRACAO","WORKSHOP","PRESENTA","APRESENTACAO"
+    ],
+    // Process: qualquer sinal de andamento burocrático, assinatura, jurídico ou próximos passos claros
+    Process: [
+      "HOMOLOGACAO","ASSINATURA","PARECER","JURIDICO","ARP","LICIT","COMISSAO","ADJUDICACAO",
+      "CONTRATO","PROPOSTA","NEGOCIACAO","PRAZO","CRONOGRAMA","ETAPA","PROXIMO PASSO",
+      "NEXT STEP","FOLLOWUP","FOLLOW-UP","FOLLOW UP","REUNIAO","AGENDADO","AGENDAMENTO",
+      "APROVACAO","REVISAO","PIPELINE","ORDEM DE COMPRA","OC ","EMPENHO","NOTA FISCAL"
+    ],
+    // Pain: qualquer menção a problema, necessidade, contexto desafiador ou motivação
+    Pain: [
+      "DESAFIO","PROBLEMA","GARGALO","INEFICIENCIA","DOR","URGENCIA","RISCO","MULTA",
+      "NECESSIDADE","DEMANDA","OPORTUNIDADE","MOTIVACAO","CONTEXTO","CENARIO",
+      "DIFICULDADE","OBSTÁCULO","OBSTACULO","CRITICO","PRIORITARIO","ESTRATEGICO",
+      "COMPLIANCE","SEGURANCA","TRANSFORMACAO","MODERNIZACAO","DIGITALIZACAO",
+      "MIGRACAO","PROJETO","INICIATIVA","OBJETIVO"
+    ],
+    // Champion: qualquer pessoa interna ao cliente que apoia, apresenta ou facilita
+    Champion: [
+      "CAMPEAO","DEFENSOR","PONTO FOCAL","ALIADO","SPONSOR","PATROCINADOR",
+      "CONTATO","INTERLOCUTOR","FACILITADOR","EMBAIXADOR","APOIADOR",
+      "REFERENCIA","INDICOU","RECOMENDOU","APRESENTOU","CONECTOU",
+      "PARCEIRO INTERNO","FOCAL POINT","KEY USER","USUARIO CHAVE"
+    ]
   };
 
   let score = 0;
@@ -447,10 +484,34 @@ function calculateBANTScore_(item, activity) {
   const content = normText_(fullContent);
   
   const criteria = {
-    Budget: ["BUDGET", "ORCAMENTO", "VERBA", "CAPEX", "OPEX", "PRICING", "PRECO", "COTACAO"],
-    Authority: ["DECISOR", "APROVADOR", "CFO", "CEO", "DIRETOR", "COMPRADOR", "OWNER", "SPONSOR", "PATROCINADOR"],
-    Need: ["DOR", "PROBLEMA", "DESAFIO", "NECESSIDADE", "GAP", "INEFICIENCIA", "IMPACTO"],
-    Timing: ["PRAZO", "TIMING", "ATE", "DATA", "CRONOGRAMA", "JANELA", "URGENCIA"]
+    // Budget: qualquer sinal de valor, verba, preço ou discussão financeira
+    Budget: [
+      "BUDGET", "ORCAMENTO", "VERBA", "CAPEX", "OPEX", "PRICING", "PRECO", "COTACAO",
+      "VALOR", "CUSTO", "INVESTIMENTO", "RECURSOS", "FINANCEIRO", "LICENCA",
+      "CONTRATO", "PROPOSTA", "DESCONTO", "APROVADO", "DOTACAO", "EMPENHO",
+      "SEATS", "USUARIOS", "ESCALA", "TOTAL"
+    ],
+    // Authority: qualquer pessoa com poder ou envolvimento em decisão
+    Authority: [
+      "DECISOR", "APROVADOR", "CFO", "CEO", "DIRETOR", "COMPRADOR", "OWNER", "SPONSOR", "PATROCINADOR",
+      "CTO", "CIO", "VP", "SUPERINTENDENTE", "GERENTE", "COORDENADOR", "SECRETARIO",
+      "RESPONSAVEL", "TOMADOR", "LIDERANCA", "PREFEITO", "MINISTRO", "PROCURADOR",
+      "AUTORIDADE", "TITULAR", "HEAD", "CHEFE"
+    ],
+    // Need: qualquer sinal de motivação, contexto ou objetivo de negócio
+    Need: [
+      "DOR", "PROBLEMA", "DESAFIO", "NECESSIDADE", "GAP", "INEFICIENCIA", "IMPACTO",
+      "OBJETIVO", "META", "MOTIVACAO", "CONTEXTO", "PROJETO", "INICIATIVA",
+      "MIGRACAO", "MODERNIZACAO", "DIGITALIZACAO", "TRANSFORMACAO", "MELHORIA",
+      "CONFORMIDADE", "COMPLIANCE", "SEGURANCA", "DEMANDA", "URGENCIA", "ESTRATEGIA"
+    ],
+    // Timing: qualquer sinal de prazo, data, andamento ou próximos passos
+    Timing: [
+      "PRAZO", "TIMING", "ATE", "DATA", "CRONOGRAMA", "JANELA", "URGENCIA",
+      "FECHAMENTO", "CLOSE DATE", "PROXIMO PASSO", "NEXT STEP", "AGENDADO",
+      "REUNIAO", "PREVISAO", "TRIMESTRE", "QUARTER", "SEMANA", "MES",
+      "ENTREGA", "GO LIVE", "LANCAMENTO", "DEPLOY", "IMPLANTACAO"
+    ]
   };
 
   let score = 0;

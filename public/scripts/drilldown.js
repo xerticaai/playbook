@@ -27,6 +27,25 @@
   function normalizeDealRow(item) {
     var gross = +(item?.Gross || item?.gross || item?.value || item?.val || 0);
     var net = +(item?.Net || item?.net || 0);
+    var meddicRaw = (item?.MEDDIC_Score != null ? item.MEDDIC_Score : item?.meddic);
+    var meddicPct = null;
+    var meddicBlocksScore = null;
+    if (meddicRaw != null && meddicRaw !== '') {
+      var meddicNumber = parseFloat(String(meddicRaw));
+      if (!isNaN(meddicNumber) && meddicNumber >= 0) {
+        meddicPct = meddicNumber <= 6 ? Math.round((meddicNumber / 6) * 100) : Math.round(meddicNumber);
+        meddicPct = Math.max(0, Math.min(100, meddicPct));
+        meddicBlocksScore = meddicNumber <= 6 ? Math.round(meddicNumber) : Math.round((meddicNumber / 100) * 6);
+        meddicBlocksScore = Math.max(0, Math.min(6, meddicBlocksScore));
+      }
+    }
+
+    var confidenceReason = item?.Motivo_Confianca || item?.confidence_reason || '';
+    var suggestedAction = item?.Acao_Sugerida || item?.acao_recomendada || item?.suggested_action || '';
+    var mainRisk = item?.Risco_Principal || item?.main_risk || '';
+    var identifiedGaps = item?.Gaps_Identificados || item?.identified_gaps || '';
+    var strategicReason = item?.Justificativa_IA || item?.Fatores_Sucesso || item?.Win_Reason || item?.Causa_Raiz || item?.Loss_Reason || item?.reason || '';
+
     return {
       source: normalizeSource(item),
       name: item?.Oportunidade || item?.Opportunity_Name || item?.opportunityName || item?.name || 'Deal sem nome',
@@ -47,14 +66,8 @@
       })(),
       bant: item?.BANT_Score != null ? Number(item.BANT_Score) : item?.bant != null ? Number(item.bant) : null,
       riskScore: item?.Risco_Score != null ? Number(item.Risco_Score) : item?.riskScore != null ? Number(item.riskScore) : null,
-      meddic: (function() {
-        var raw = item?.MEDDIC_Score != null ? item.MEDDIC_Score : item?.meddic;
-        if (raw == null || raw === '') return null;
-        var n = parseFloat(String(raw));
-        if (isNaN(n) || n < 0) return null;
-        // BQ retorna MEDDIC_Score como percentual 0-100; converter para escala de blocos 0-6
-        return n <= 6 ? Math.round(n) : Math.round(n / 100 * 6);
-      })(),
+      meddic: meddicBlocksScore,
+      meddicPct: meddicPct,
       forecastStatus: item?.Forecast_IA || item?.Forecast_SF || item?.forecastStatus || '',
       vertical: item?.Vertical_IA || item?.vertical || '',
       subVertical: item?.Sub_vertical_IA || item?.subVertical || '',
@@ -62,7 +75,11 @@
       state: item?.Estado_Provincia_de_cobranca || item?.state || '',
       portfolio: item?.Portfolio_FDM || item?.portfolio || '',
       resultType: item?.Tipo_Resultado || item?.resultType || '',
-      reason: item?.Justificativa_IA || item?.Fatores_Sucesso || item?.Win_Reason || item?.Causa_Raiz || item?.Loss_Reason || item?.reason || '',
+      reason: strategicReason,
+      confidenceReason: confidenceReason,
+      suggestedAction: suggestedAction,
+      mainRisk: mainRisk,
+      identifiedGaps: identifiedGaps,
       closeDate: item?.Data_Fechamento || item?.Data_Prevista || item?.closeDate || '',
       avoidable: !!(item?.Evitavel || item?.avoidable)
     };
@@ -85,6 +102,9 @@
     if (f.subsegmento_mercado) parts.push('Subsegmento: ' + f.subsegmento_mercado);
     if (f.segmento_consolidado) parts.push('Segmento de Mercado: ' + f.segmento_consolidado);
     if (f.portfolio_fdm) parts.push('Portfólio FDM: ' + f.portfolio_fdm);
+    if (f.tipo_oportunidade) parts.push('Tipo de Oportunidade: ' + f.tipo_oportunidade);
+    if (f.processo) parts.push('Processo: ' + f.processo);
+    if (f.date_start || f.date_end) parts.push('Período: ' + (f.date_start || 'Início') + ' até ' + (f.date_end || 'Fim'));
     return parts.length ? parts.join(' | ') : 'Sem filtros adicionais';
   }
 
@@ -208,10 +228,24 @@
       var cycle = row.cycle != null ? Number(row.cycle) : null;
       var confidence = row.confidence != null ? Number(row.confidence) : null;
       var meddicScore = row.meddic != null ? Math.max(0, Math.min(6, Number(row.meddic))) : null;
+      var meddicPct = row.meddicPct != null ? Math.max(0, Math.min(100, Number(row.meddicPct))) : null;
       var idleClass = idleDays == null ? '' : idleDays > 30 ? 'danger' : idleDays > 14 ? 'warn' : 'ok';
-      var aiNote = row.reason || (source === 'lost'
-        ? 'Perda com baixa tração em decisores e ausência de plano de recuperação ativo.'
-        : 'Engajamento comercial detectado. Priorizar próximo passo com decisor econômico.');
+      var aiScoreSub = row.confidenceReason
+        ? 'Probabilidade de Sucesso · Motivo IA'
+        : (source === 'lost' ? 'Diagnóstico de Perda' : 'Probabilidade de Sucesso');
+
+      var aiFragments = [];
+      if (row.confidenceReason) aiFragments.push(row.confidenceReason);
+      if (row.suggestedAction) aiFragments.push('Próxima ação: ' + row.suggestedAction);
+      if (!row.suggestedAction && row.mainRisk) aiFragments.push('Risco principal: ' + row.mainRisk);
+      if (row.identifiedGaps) aiFragments.push('Gaps: ' + row.identifiedGaps);
+      if (!aiFragments.length && row.reason) aiFragments.push(row.reason);
+
+      var aiNote = aiFragments.length
+        ? aiFragments.slice(0, 2).join(' • ')
+        : (source === 'lost'
+          ? 'Sem justificativa IA registrada para esta perda.'
+          : 'Sem justificativa IA registrada para esta oportunidade.');
 
       var meddicBlocks = Array.from({ length: 6 }).map(function (_, blockIdx) {
         var level = blockIdx + 1;
@@ -258,13 +292,13 @@
                 '<div class="exec-dd-hud-row exec-dd-hud-row-health">' +
                   '<div><div class="exec-dd-hud-label">Ciclo de Venda</div><div class="exec-dd-hud-value-sm">' + (cycle != null ? (cycle + ' dias') : '-') + '</div></div>' +
                   '<div><div class="exec-dd-hud-label">Dias Inativos</div><div class="exec-dd-hud-value-sm exec-dd-idle ' + idleClass + '">' + (idleDays != null ? (idleDays + ' dias') : '-') + '</div></div>' +
-                  '<div><div class="exec-dd-hud-label">MEDDIC Health</div><div class="exec-dd-meddic-row">' + meddicBlocks + '</div></div>' +
+                  '<div><div class="exec-dd-hud-label">MEDDIC Health</div><div class="exec-dd-hud-value-sm">' + (meddicPct != null ? (meddicPct + '%') : '-') + '</div><div class="exec-dd-meddic-row">' + meddicBlocks + '</div></div>' +
                 '</div>' +
               '</div>' +
               '<div class="exec-dd-hud-ai">' +
                 '<div class="exec-dd-ai-score-wrap">' +
                   '<div class="exec-dd-ai-score-circle">' + (confidence != null ? (confidence + '%') : '--') + '</div>' +
-                  '<div><div class="exec-dd-ai-score-title">Inteligência Estratégica</div><div class="exec-dd-ai-score-sub">Probabilidade de Sucesso</div></div>' +
+                  '<div><div class="exec-dd-ai-score-title">Inteligência Estratégica</div><div class="exec-dd-ai-score-sub">' + escapeHtmlSafe(aiScoreSub) + '</div></div>' +
                 '</div>' +
                 '<div class="exec-dd-ai-note">' + escapeHtmlSafe(aiNote) + '</div>' +
               '</div>' +

@@ -425,6 +425,25 @@
         </select>
 
         <div class="filters-group-card">
+          <div class="filters-group-title filters-group-title-opportunity">Oportunidade</div>
+          <div class="filters-fields-row">
+            <div class="filters-field">
+              <span class="filters-field-label">Tipo de Oportunidade:</span>
+              <select id="tipo-oportunidade-filter" onchange="reloadDashboard()">
+                <option value="" selected>Todos</option>
+              </select>
+            </div>
+
+            <div class="filters-field">
+              <span class="filters-field-label">Processo:</span>
+              <select id="processo-filter" onchange="reloadDashboard()">
+                <option value="" selected>Todos</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="filters-group-card">
           <div class="filters-group-title filters-group-title-segmentation">Segmentação</div>
           <div class="filters-fields-row">
             <div class="filters-field">
@@ -985,7 +1004,8 @@
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
           <circle cx="9" cy="7" r="4"/>
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
         </svg>
         Destaques da Equipe no Quarter
       </h3>
@@ -1110,7 +1130,7 @@
               </div>
             </div>
             <div class="card col-8 chart-group-fase">
-              <div class="card-label">Fase do Negócio — Pipeline · Ganhos · Perdidos</div>
+              <div class="card-label">Fase do Negócio — Somente Pipeline</div>
               <div class="chart-wrapper" style="height:280px;"><canvas id="chart-por-fase"></canvas></div>
             </div>
             <div class="card col-4 glow-green chart-group-fase">
@@ -1128,6 +1148,20 @@
             <div class="card col-4 glow-cyan chart-group-fase">
               <div class="card-label">Forecast SF — Composição Pipeline</div>
               <div class="chart-wrapper" style="height:260px;"><canvas id="chart-forecast-sf"></canvas></div>
+            </div>
+            <div class="card col-12 chart-category-card chart-category-opty">
+              <div class="chart-category-head">
+                <div class="card-label chart-category-title">Categoria: Oportunidade &amp; Processo</div>
+                <button class="chart-category-toggle" id="toggle-cat-opty" onclick="toggleChartCategory('opty')">Suspender</button>
+              </div>
+            </div>
+            <div class="card col-6 chart-group-opty">
+              <div class="card-label">Tipo de Oportunidade — Pipeline · Ganhos · Perdidos</div>
+              <div class="chart-wrapper" style="height:300px;"><canvas id="chart-tipo-oportunidade"></canvas></div>
+            </div>
+            <div class="card col-6 chart-group-opty">
+              <div class="card-label">Processo — Pipeline · Ganhos · Perdidos</div>
+              <div class="chart-wrapper" style="height:300px;"><canvas id="chart-processo"></canvas></div>
             </div>
             <div class="card col-12 chart-category-card chart-category-seg">
               <div class="chart-category-head">
@@ -1902,7 +1936,7 @@
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
           </svg>
           Indicadores de Performance
-        </h4>
+        </h3>
         <div class="kpi-grid">
           <div class="kpi-card">
             <svg class="icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

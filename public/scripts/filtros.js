@@ -22,6 +22,8 @@ function reloadDashboard() {
 const GLOBAL_FILTERS_COLLAPSE_KEY = 'global_filters_collapsed';
 const ADVANCED_MULTI_FILTER_IDS = [
   'fase-atual-filter',
+  'tipo-oportunidade-filter',
+  'processo-filter',
   'owner-preventa-filter',
   'billing-city-filter',
   'billing-state-filter',
@@ -45,6 +47,8 @@ function escapeHtmlText(value) {
 function getAdvancedFilterLabel(selectId) {
   const map = {
     'fase-atual-filter': 'Fase',
+    'tipo-oportunidade-filter': 'Tipo de Oportunidade',
+    'processo-filter': 'Processo',
     'owner-preventa-filter': 'Pré-venda',
     'billing-city-filter': 'Cidade (Cobrança)',
     'billing-state-filter': 'Estado (Cobrança)',
@@ -450,6 +454,8 @@ function clearAllFilters() {
   const subsegmentoMercadoFilter = document.getElementById('subsegmento-mercado-filter');
   const segmentoConsolidadoFilter = document.getElementById('segmento-consolidado-filter');
   const portfolioFdmFilter = document.getElementById('portfolio-fdm-filter');
+  const tipoOportunidadeFilter = document.getElementById('tipo-oportunidade-filter');
+  const processoFilter = document.getElementById('processo-filter');
   
   if (yearFilter) yearFilter.value = '';
   if (quarterFilter) quarterFilter.value = '';
@@ -467,6 +473,8 @@ function clearAllFilters() {
   if (subsegmentoMercadoFilter) subsegmentoMercadoFilter.value = '';
   if (segmentoConsolidadoFilter) segmentoConsolidadoFilter.value = '';
   if (portfolioFdmFilter) portfolioFdmFilter.value = '';
+  if (tipoOportunidadeFilter) tipoOportunidadeFilter.value = '';
+  if (processoFilter) processoFilter.value = '';
   ensureAdvancedSelectionsState();
   ADVANCED_MULTI_FILTER_IDS.forEach(id => {
     window.advancedFilterSelections[id] = [];
@@ -485,6 +493,8 @@ function getAdvancedFiltersFromUI() {
   ensureAdvancedSelectionsState();
   const valueFrom = (selectId) => (window.advancedFilterSelections[selectId] || []).join(',');
   return {
+    tipo_oportunidade: valueFrom('tipo-oportunidade-filter'),
+    processo: valueFrom('processo-filter'),
     owner_preventa: valueFrom('owner-preventa-filter'),
     phase: valueFrom('fase-atual-filter'),
     billing_city: valueFrom('billing-city-filter'),
@@ -543,6 +553,8 @@ async function loadAdvancedFilterOptions() {
 
     renderGenericFilterOptions('owner-preventa-filter', data.owner_preventa || []);
     renderGenericFilterOptions('fase-atual-filter', data.phase || []);
+    renderGenericFilterOptions('tipo-oportunidade-filter', data.tipo_oportunidade || []);
+    renderGenericFilterOptions('processo-filter', data.processo || []);
     renderGenericFilterOptions('billing-city-filter', data.billing_city || []);
     renderGenericFilterOptions('billing-state-filter', data.billing_state || []);
     renderGenericFilterOptions('vertical-ia-filter', data.vertical_ia || []);
@@ -551,7 +563,6 @@ async function loadAdvancedFilterOptions() {
     renderGenericFilterOptions('subsegmento-mercado-filter', data.subsegmento_mercado || []);
     renderGenericFilterOptions('segmento-consolidado-filter', data.segmento_consolidado || []);
     renderGenericFilterOptions('portfolio-fdm-filter', data.portfolio_fdm || []);
-
     updateGlobalFiltersPanelUI();
     log('[FILTERS] Opções avançadas carregadas');
   } catch (error) {

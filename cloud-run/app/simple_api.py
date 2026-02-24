@@ -195,6 +195,8 @@ def get_table_columns(table_name: str) -> set[str]:
 def append_pipeline_dimension_filters(
     filters: List[str],
     phase: Optional[str] = None,
+    tipo_oportunidade: Optional[str] = None,
+    processo: Optional[str] = None,
     owner_preventa: Optional[str] = None,
     billing_city: Optional[str] = None,
     billing_state: Optional[str] = None,
@@ -211,6 +213,16 @@ def append_pipeline_dimension_filters(
         phase_filter = build_in_filter("Fase_Atual", phase)
         if phase_filter:
             filters.append(phase_filter)
+
+    if tipo_oportunidade and "Tipo_Oportunidade" in columns:
+        tipo_filter = build_in_filter("Tipo_Oportunidade", tipo_oportunidade)
+        if tipo_filter:
+            filters.append(tipo_filter)
+
+    if processo and "Processo" in columns:
+        processo_filter = build_in_filter("Processo", processo)
+        if processo_filter:
+            filters.append(processo_filter)
 
     filter_map = [
         ("Owner_Preventa", owner_preventa),
@@ -251,12 +263,77 @@ def append_pipeline_dimension_filters(
         filters.append(f"({state_terms})")
 
 
+def append_closed_dimension_filters(
+    filters: List[str],
+    table_name: str,
+    phase: Optional[str] = None,
+    tipo_oportunidade: Optional[str] = None,
+    processo: Optional[str] = None,
+    owner_preventa: Optional[str] = None,
+    billing_city: Optional[str] = None,
+    billing_state: Optional[str] = None,
+    vertical_ia: Optional[str] = None,
+    sub_vertical_ia: Optional[str] = None,
+    sub_sub_vertical_ia: Optional[str] = None,
+    subsegmento_mercado: Optional[str] = None,
+    segmento_consolidado: Optional[str] = None,
+    portfolio_fdm: Optional[str] = None,
+) -> None:
+    columns = get_table_columns(table_name)
+
+    if phase:
+        phase_column = "Status" if "Status" in columns else ("Fase_Atual" if "Fase_Atual" in columns else None)
+        if phase_column:
+            phase_filter = build_in_filter(phase_column, phase)
+            if phase_filter:
+                filters.append(phase_filter)
+
+    filter_map = [
+        ("Tipo_Oportunidade", tipo_oportunidade),
+        ("Processo", processo),
+        ("Owner_Preventa", owner_preventa),
+        ("Vertical_IA", vertical_ia),
+        ("Sub_vertical_IA", sub_vertical_ia),
+        ("Sub_sub_vertical_IA", sub_sub_vertical_ia),
+        ("Subsegmento_de_mercado", subsegmento_mercado),
+        ("Segmento_consolidado", segmento_consolidado),
+        ("Portfolio_FDM", portfolio_fdm),
+    ]
+
+    for column_name, filter_value in filter_map:
+        if filter_value and column_name in columns:
+            in_filter = build_in_filter(column_name, filter_value)
+            if in_filter:
+                filters.append(in_filter)
+
+    if billing_city:
+        city_column = "Cidade_de_cobranca" if "Cidade_de_cobranca" in columns else None
+        if city_column:
+            city_filter = build_in_filter(city_column, billing_city)
+            if city_filter:
+                filters.append(city_filter)
+
+    if billing_state:
+        state_column = None
+        if "Estado_Provincia_de_cobranca" in columns:
+            state_column = "Estado_Provincia_de_cobranca"
+        elif "EstadoProvincia_de_cobranca" in columns:
+            state_column = "EstadoProvincia_de_cobranca"
+
+        if state_column:
+            state_filter = build_in_filter(state_column, billing_state)
+            if state_filter:
+                filters.append(state_filter)
+
+
 def build_pipeline_filters_for_facets(
     year: Optional[int] = None,
     quarter: Optional[int] = None,
     month: Optional[int] = None,
     seller: Optional[str] = None,
     phase: Optional[str] = None,
+    tipo_oportunidade: Optional[str] = None,
+    processo: Optional[str] = None,
     owner_preventa: Optional[str] = None,
     billing_city: Optional[str] = None,
     billing_state: Optional[str] = None,
@@ -294,6 +371,8 @@ def build_pipeline_filters_for_facets(
     append_pipeline_dimension_filters(
         filters,
         phase=None if exclude_param == "phase" else phase,
+        tipo_oportunidade=None if exclude_param == "tipo_oportunidade" else tipo_oportunidade,
+        processo=None if exclude_param == "processo" else processo,
         owner_preventa=None if exclude_param == "owner_preventa" else owner_preventa,
         billing_city=None if exclude_param == "billing_city" else billing_city,
         billing_state=None if exclude_param == "billing_state" else billing_state,
@@ -504,6 +583,8 @@ def get_metrics(
     month: Optional[int] = None, 
     seller: Optional[str] = None,
     phase: Optional[str] = None,
+    tipo_oportunidade: Optional[str] = None,
+    processo: Optional[str] = None,
     owner_preventa: Optional[str] = None,
     billing_city: Optional[str] = None,
     billing_state: Optional[str] = None,
@@ -531,6 +612,8 @@ def get_metrics(
             "month": month,
             "seller": seller,
             "phase": phase,
+            "tipo_oportunidade": tipo_oportunidade,
+            "processo": processo,
             "owner_preventa": owner_preventa,
             "billing_city": billing_city,
             "billing_state": billing_state,
@@ -605,9 +688,45 @@ def get_metrics(
                 closed_won_filters.append(f"Vendedor IN ('{sellers_quoted}')")
                 closed_lost_filters.append(f"Vendedor IN ('{sellers_quoted}')")
 
+        append_closed_dimension_filters(
+            closed_won_filters,
+            "closed_deals_won",
+            phase=phase,
+            tipo_oportunidade=tipo_oportunidade,
+            processo=processo,
+            owner_preventa=owner_preventa,
+            billing_city=billing_city,
+            billing_state=billing_state,
+            vertical_ia=vertical_ia,
+            sub_vertical_ia=sub_vertical_ia,
+            sub_sub_vertical_ia=sub_sub_vertical_ia,
+            subsegmento_mercado=subsegmento_mercado,
+            segmento_consolidado=segmento_consolidado,
+            portfolio_fdm=portfolio_fdm,
+        )
+
+        append_closed_dimension_filters(
+            closed_lost_filters,
+            "closed_deals_lost",
+            phase=phase,
+            tipo_oportunidade=tipo_oportunidade,
+            processo=processo,
+            owner_preventa=owner_preventa,
+            billing_city=billing_city,
+            billing_state=billing_state,
+            vertical_ia=vertical_ia,
+            sub_vertical_ia=sub_vertical_ia,
+            sub_sub_vertical_ia=sub_sub_vertical_ia,
+            subsegmento_mercado=subsegmento_mercado,
+            segmento_consolidado=segmento_consolidado,
+            portfolio_fdm=portfolio_fdm,
+        )
+
         append_pipeline_dimension_filters(
             pipeline_filters,
             phase=phase,
+            tipo_oportunidade=tipo_oportunidade,
+            processo=processo,
             owner_preventa=owner_preventa,
             billing_city=billing_city,
             billing_state=billing_state,
@@ -825,6 +944,8 @@ def get_pipeline(
     month: Optional[int] = None,
     seller: Optional[str] = None,
     phase: Optional[str] = None,
+    tipo_oportunidade: Optional[str] = None,
+    processo: Optional[str] = None,
     owner_preventa: Optional[str] = None,
     billing_city: Optional[str] = None,
     billing_state: Optional[str] = None,
@@ -853,6 +974,8 @@ def get_pipeline(
             "month": month,
             "seller": seller,
             "phase": phase,
+            "tipo_oportunidade": tipo_oportunidade,
+            "processo": processo,
             "owner_preventa": owner_preventa,
             "billing_city": billing_city,
             "billing_state": billing_state,
@@ -894,6 +1017,8 @@ def get_pipeline(
         append_pipeline_dimension_filters(
             pipeline_filters,
             phase=phase,
+            tipo_oportunidade=tipo_oportunidade,
+            processo=processo,
             owner_preventa=owner_preventa,
             billing_city=billing_city,
             billing_state=billing_state,
@@ -913,15 +1038,25 @@ def get_pipeline(
             Fiscal_Q,
             Conta, Idle_Dias, SAFE_CAST(Ciclo_dias AS FLOAT64) as Ciclo_dias, Atividades,
             Data_Prevista, SAFE_CAST(Confianca AS FLOAT64) as Confianca,
+            SAFE_CAST(MEDDIC_Score AS FLOAT64) as MEDDIC_Score,
+            SAFE_CAST(BANT_Score AS FLOAT64) as BANT_Score,
+            SAFE_CAST(NULL AS FLOAT64) as Risco_Score,
             Gross, Net, Forecast_SF, Forecast_IA,
             Perfil, Produtos,
+            COALESCE(CAST(Justificativa_IA AS STRING), '') as Justificativa_IA,
+            COALESCE(CAST(Motivo_Confianca AS STRING), '') as Motivo_Confianca,
+            COALESCE(CAST(Risco_Principal AS STRING), '') as Risco_Principal,
+            COALESCE(CAST(Gaps_Identificados AS STRING), '') as Gaps_Identificados,
+            COALESCE(CAST(Acao_Sugerida AS STRING), '') as Acao_Sugerida,
             Owner_Preventa, Vertical_IA, Sub_vertical_IA, Sub_sub_vertical_IA,
             Estado_Cidade_Detectado,
             COALESCE(CAST(Portfolio_FDM AS STRING), '') as Portfolio_FDM,
             COALESCE(CAST(Segmento_consolidado AS STRING), '') as Segmento_consolidado,
             COALESCE(CAST(Subsegmento_de_mercado AS STRING), '') as Subsegmento_de_mercado,
             COALESCE(CAST(Cidade_de_cobranca AS STRING), '') as Cidade_de_cobranca,
-            COALESCE(CAST(Estado_Provincia_de_cobranca AS STRING), '') as Estado_Provincia_de_cobranca
+            COALESCE(CAST(Estado_Provincia_de_cobranca AS STRING), '') as Estado_Provincia_de_cobranca,
+            COALESCE(CAST(Tipo_Oportunidade AS STRING), '') as Tipo_Oportunidade,
+            COALESCE(CAST(Processo AS STRING), '') as Processo
         FROM `{PROJECT_ID}.{DATASET_ID}.pipeline`
         {where_clause}
         ORDER BY Gross DESC
@@ -941,6 +1076,8 @@ def get_filter_options(
     month: Optional[int] = None,
     seller: Optional[str] = None,
     phase: Optional[str] = None,
+    tipo_oportunidade: Optional[str] = None,
+    processo: Optional[str] = None,
     owner_preventa: Optional[str] = None,
     billing_city: Optional[str] = None,
     billing_state: Optional[str] = None,
@@ -960,6 +1097,8 @@ def get_filter_options(
             "month": month,
             "seller": seller,
             "phase": phase,
+            "tipo_oportunidade": tipo_oportunidade,
+            "processo": processo,
             "owner_preventa": owner_preventa,
             "billing_city": billing_city,
             "billing_state": billing_state,
@@ -981,6 +1120,8 @@ def get_filter_options(
 
         facet_column_map = {
             "phase": "Fase_Atual",
+            "tipo_oportunidade": "Tipo_Oportunidade",
+            "processo": "Processo",
             "owner_preventa": "Owner_Preventa",
             "billing_city": "Cidade_de_cobranca",
             "billing_state": "Estado_Provincia_de_cobranca",
@@ -1002,6 +1143,8 @@ def get_filter_options(
                 month=month,
                 seller=seller,
                 phase=phase,
+                tipo_oportunidade=tipo_oportunidade,
+                processo=processo,
                 owner_preventa=owner_preventa,
                 billing_city=billing_city,
                 billing_state=billing_state,
@@ -1034,6 +1177,8 @@ def get_filter_options(
 
         result = {
             "phase": distinct_values_with_counts("phase", facet_column_map["phase"]),
+            "tipo_oportunidade": distinct_values_with_counts("tipo_oportunidade", facet_column_map["tipo_oportunidade"]),
+            "processo": distinct_values_with_counts("processo", facet_column_map["processo"]),
             "owner_preventa": distinct_values_with_counts("owner_preventa", facet_column_map["owner_preventa"]),
             "billing_city": distinct_values_with_counts("billing_city", facet_column_map["billing_city"]),
             "billing_state": distinct_values_with_counts("billing_state", facet_column_map["billing_state"]),
@@ -1061,6 +1206,18 @@ def get_closed_won(
     quarter: Optional[int] = None,
     month: Optional[int] = None,
     seller: Optional[str] = None,
+    phase: Optional[str] = None,
+    tipo_oportunidade: Optional[str] = None,
+    processo: Optional[str] = None,
+    owner_preventa: Optional[str] = None,
+    billing_city: Optional[str] = None,
+    billing_state: Optional[str] = None,
+    vertical_ia: Optional[str] = None,
+    sub_vertical_ia: Optional[str] = None,
+    sub_sub_vertical_ia: Optional[str] = None,
+    subsegmento_mercado: Optional[str] = None,
+    segmento_consolidado: Optional[str] = None,
+    portfolio_fdm: Optional[str] = None,
     limit: int = 5000,
     nocache: bool = False
 ):
@@ -1074,7 +1231,25 @@ def get_closed_won(
     """
     cache_key = build_cache_key(
         "/api/closed/won",
-        {"year": year, "quarter": quarter, "month": month, "seller": seller, "limit": limit}
+        {
+            "year": year,
+            "quarter": quarter,
+            "month": month,
+            "seller": seller,
+            "phase": phase,
+            "tipo_oportunidade": tipo_oportunidade,
+            "processo": processo,
+            "owner_preventa": owner_preventa,
+            "billing_city": billing_city,
+            "billing_state": billing_state,
+            "vertical_ia": vertical_ia,
+            "sub_vertical_ia": sub_vertical_ia,
+            "sub_sub_vertical_ia": sub_sub_vertical_ia,
+            "subsegmento_mercado": subsegmento_mercado,
+            "segmento_consolidado": segmento_consolidado,
+            "portfolio_fdm": portfolio_fdm,
+            "limit": limit,
+        }
     )
     if not nocache:
         cached = get_cached_response(cache_key)
@@ -1108,18 +1283,48 @@ def get_closed_won(
             seller_filter = build_seller_filter(seller)
             if seller_filter:
                 closed_filters.append(seller_filter)
+
+        append_closed_dimension_filters(
+            closed_filters,
+            "closed_deals_won",
+            phase=phase,
+            tipo_oportunidade=tipo_oportunidade,
+            processo=processo,
+            owner_preventa=owner_preventa,
+            billing_city=billing_city,
+            billing_state=billing_state,
+            vertical_ia=vertical_ia,
+            sub_vertical_ia=sub_vertical_ia,
+            sub_sub_vertical_ia=sub_sub_vertical_ia,
+            subsegmento_mercado=subsegmento_mercado,
+            segmento_consolidado=segmento_consolidado,
+            portfolio_fdm=portfolio_fdm,
+        )
         
         where_clause = f"WHERE {' AND '.join(closed_filters)}" if closed_filters else ""
 
-        # closed_deals_won tem schema menor — sem campos dimensionais (Vertical_IA etc.)
+        # closed_deals_won com dimensões para gráficos comparativos
         query = f"""
         SELECT
             Oportunidade, Vendedor, Status, Conta,
             Fiscal_Q,
+            COALESCE(CAST(Status AS STRING), '') as Fase_Atual,
             Data_Fechamento, SAFE_CAST(Ciclo_dias AS FLOAT64) as Ciclo_dias,
             Gross, Net, Tipo_Resultado, Fatores_Sucesso, Causa_Raiz, Atividades,
             COALESCE(Produtos, '') as Produtos,
-            COALESCE(Perfil_Cliente, '') as Perfil_Cliente
+            COALESCE(Perfil_Cliente, '') as Perfil_Cliente,
+            COALESCE(CAST(Vertical_IA AS STRING), '') as Vertical_IA,
+            COALESCE(CAST(Sub_vertical_IA AS STRING), '') as Sub_vertical_IA,
+            COALESCE(CAST(Sub_sub_vertical_IA AS STRING), '') as Sub_sub_vertical_IA,
+            COALESCE(CAST(Portfolio_FDM AS STRING), '') as Portfolio_FDM,
+            COALESCE(CAST(Segmento_consolidado AS STRING), '') as Segmento_consolidado,
+            COALESCE(CAST(Subsegmento_de_mercado AS STRING), '') as Subsegmento_de_mercado,
+            COALESCE(CAST(Cidade_de_cobranca AS STRING), '') as Cidade_de_cobranca,
+            COALESCE(CAST(Estado_Provincia_de_cobranca AS STRING), CAST(EstadoProvincia_de_cobranca AS STRING), '') as Estado_Provincia_de_cobranca,
+            COALESCE(CAST(Tipo_Oportunidade AS STRING), '') as Tipo_Oportunidade,
+            COALESCE(CAST(Processo AS STRING), '') as Processo,
+            '' as Forecast_SF,
+            '' as Forecast_IA
         FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_won`
         {where_clause}
         ORDER BY Gross DESC
@@ -1137,6 +1342,18 @@ def get_closed_lost(
     quarter: Optional[int] = None,
     month: Optional[int] = None,
     seller: Optional[str] = None,
+    phase: Optional[str] = None,
+    tipo_oportunidade: Optional[str] = None,
+    processo: Optional[str] = None,
+    owner_preventa: Optional[str] = None,
+    billing_city: Optional[str] = None,
+    billing_state: Optional[str] = None,
+    vertical_ia: Optional[str] = None,
+    sub_vertical_ia: Optional[str] = None,
+    sub_sub_vertical_ia: Optional[str] = None,
+    subsegmento_mercado: Optional[str] = None,
+    segmento_consolidado: Optional[str] = None,
+    portfolio_fdm: Optional[str] = None,
     limit: int = 5000,
     nocache: bool = False
 ):
@@ -1150,7 +1367,25 @@ def get_closed_lost(
     """
     cache_key = build_cache_key(
         "/api/closed/lost",
-        {"year": year, "quarter": quarter, "month": month, "seller": seller, "limit": limit}
+        {
+            "year": year,
+            "quarter": quarter,
+            "month": month,
+            "seller": seller,
+            "phase": phase,
+            "tipo_oportunidade": tipo_oportunidade,
+            "processo": processo,
+            "owner_preventa": owner_preventa,
+            "billing_city": billing_city,
+            "billing_state": billing_state,
+            "vertical_ia": vertical_ia,
+            "sub_vertical_ia": sub_vertical_ia,
+            "sub_sub_vertical_ia": sub_sub_vertical_ia,
+            "subsegmento_mercado": subsegmento_mercado,
+            "segmento_consolidado": segmento_consolidado,
+            "portfolio_fdm": portfolio_fdm,
+            "limit": limit,
+        }
     )
     if not nocache:
         cached = get_cached_response(cache_key)
@@ -1184,6 +1419,23 @@ def get_closed_lost(
             seller_filter = build_seller_filter(seller)
             if seller_filter:
                 closed_filters.append(seller_filter)
+
+        append_closed_dimension_filters(
+            closed_filters,
+            "closed_deals_lost",
+            phase=phase,
+            tipo_oportunidade=tipo_oportunidade,
+            processo=processo,
+            owner_preventa=owner_preventa,
+            billing_city=billing_city,
+            billing_state=billing_state,
+            vertical_ia=vertical_ia,
+            sub_vertical_ia=sub_vertical_ia,
+            sub_sub_vertical_ia=sub_sub_vertical_ia,
+            subsegmento_mercado=subsegmento_mercado,
+            segmento_consolidado=segmento_consolidado,
+            portfolio_fdm=portfolio_fdm,
+        )
         
         where_clause = f"WHERE {' AND '.join(closed_filters)}" if closed_filters else ""
 
@@ -1204,7 +1456,10 @@ def get_closed_lost(
             COALESCE(CAST(Segmento_consolidado AS STRING), '') as Segmento_consolidado,
             COALESCE(CAST(Subsegmento_de_mercado AS STRING), '') as Subsegmento_de_mercado,
             COALESCE(CAST(Cidade_de_cobranca AS STRING), '') as Cidade_de_cobranca,
-            COALESCE(CAST(Estado_Provincia_de_cobranca AS STRING), '') as Estado_Provincia_de_cobranca
+            COALESCE(CAST(Estado_Provincia_de_cobranca AS STRING), CAST(EstadoProvincia_de_cobranca AS STRING), '') as Estado_Provincia_de_cobranca,
+            COALESCE(CAST(Status AS STRING), '') as Fase_Atual,
+            COALESCE(CAST(Tipo_Oportunidade AS STRING), '') as Tipo_Oportunidade,
+            COALESCE(CAST(Processo AS STRING), '') as Processo
         FROM `{PROJECT_ID}.{DATASET_ID}.closed_deals_lost`
         {where_clause}
         ORDER BY Gross DESC

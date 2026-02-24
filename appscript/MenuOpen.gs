@@ -105,9 +105,9 @@ function onOpen() {
       // ══════════════════════════════════════════════════════════════
       .addSeparator()
       .addSubMenu(ui.createMenu('💰 Faturamento')
-        .addItem('🔄 Migrar FATURAMENTO (2025 + 2026)', 'migrarFaturamento')
+        .addItem('🔄 Migrar FATURAMENTO (2025 + 2026 + SEMANAL)', 'migrarFaturamento')
         .addSeparator()
-        .addItem('⏰ Ativar Sync FATURAMENTO (12h)', 'instalarTriggerFaturamento12h')
+        .addItem('⏰ Ativar Sync FATURAMENTO (12h - inclui semanal)', 'instalarTriggerFaturamento12h')
         .addItem('🛑 Desativar Sync FATURAMENTO', 'removerTriggerFaturamento')
         .addItem('📊 Status Triggers', 'statusTriggerFaturamento'))
 

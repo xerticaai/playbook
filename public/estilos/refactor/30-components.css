@@ -51,6 +51,10 @@
   color: var(--ui-warning) !important;
 }
 
+#filters-container .filters-group-title-opportunity {
+  color: var(--ui-cyan) !important;
+}
+
 #filters-container .filters-field-label {
   font-size: 11px !important;
   color: var(--ui-text-2) !important;
@@ -67,6 +71,44 @@
 #filters-container .filters-field select,
 #filters-container .filters-field input[type="date"] {
   min-width: 170px;
+  min-height: 38px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  font-family: inherit;
+}
+
+#filters-container .filters-field select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 34px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--ui-text-3) 50%),
+    linear-gradient(135deg, var(--ui-text-3) 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) calc(50% - 2px),
+    calc(100% - 11px) calc(50% - 2px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+#filters-container .filters-field input[type="date"] {
+  padding-right: 10px;
+}
+
+#filters-container .filters-field input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+#filters-container .filters-field select:focus,
+#filters-container .filters-field input[type="date"]:focus {
+  outline: 2px solid var(--ui-cyan);
+  outline-offset: 1px;
+  border-color: var(--ui-border-strong) !important;
 }
 
 #quarter-filter,
@@ -81,7 +123,7 @@
 
 #date-start-filter,
 #date-end-filter {
-  min-width: 136px !important;
+  min-width: 146px !important;
 }
 
 #filters-container .filters-field select:hover,
@@ -1233,6 +1275,10 @@ table tbody tr:hover td,
   border-left: 4px solid var(--ui-violet) !important;
 }
 
+.chart-category-opty {
+  border-left: 4px solid var(--ui-warning) !important;
+}
+
 .chart-category-geo {
   border-left: 4px solid var(--ui-green) !important;
 }
@@ -1243,6 +1289,10 @@ table tbody tr:hover td,
 
 .chart-category-seg .chart-category-title {
   color: var(--ui-violet) !important;
+}
+
+.chart-category-opty .chart-category-title {
+  color: var(--ui-warning) !important;
 }
 
 .chart-category-geo .chart-category-title {

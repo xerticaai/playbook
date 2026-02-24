@@ -2730,12 +2730,12 @@ function classificarContaFoco2026_(conta) {
   if (has(['PRODERJ'])) return { tipo: 'BASE INSTALADA', sigla: 'PRODERJ' };
   if (has(['SERPRO'])) return { tipo: 'BASE INSTALADA', sigla: 'SERPRO' };
   if (has(['HEMOMINAS'])) return { tipo: 'BASE INSTALADA', sigla: 'HEMOMINAS' };
-  if (has(['PROCERGS'])) return { tipo: 'BASE INSTALADA', sigla: 'PROCERGS' };
+  if (has(['PROCERGS'])) return { tipo: 'PARCERIA', sigla: 'PROCERGS' };
   if (has(['SMART-RJ', 'SMART RJ', 'SISTEMA MUNICIPAL DE ADMINISTRACAO'])) return { tipo: 'BASE INSTALADA', sigla: 'SMART-RJ' };
   if (has(['CGE MT', 'CGE-MT', 'CGEMT', 'CONTROLADORIA GERAL DO ESTADO DE MATO GROSSO'])) return { tipo: 'BASE INSTALADA', sigla: 'CGE MT' };
   if (hasWord(['PRF']) && !has(['SEGURADORA', 'BANCO', 'VAREJO'])) return { tipo: 'BASE INSTALADA', sigla: 'PRF' };
-  // MTI aparece em ambas as listas — BASE INSTALADA tem prioridade
-  if (has(['EMPRESA MATO-GROSSENSE DE TECNOLOGIA', 'EMPRESA MATOGROSSENSE', 'MATOGROSSENSE DE TECNOLOGIA']) || hasWord(['MTI'])) return { tipo: 'BASE INSTALADA', sigla: 'MTI' };
+  // MTI: parceria — entra em New Business
+  if (has(['EMPRESA MATO-GROSSENSE DE TECNOLOGIA', 'EMPRESA MATOGROSSENSE', 'MATOGROSSENSE DE TECNOLOGIA']) || hasWord(['MTI'])) return { tipo: 'PARCERIA', sigla: 'MTI' };
 
   // Judiciário (base instalada)
   if (has(['TRE-PR', 'TRE PR', 'TRIBUNAL REGIONAL ELEITORAL DO PARANA', 'TRIBUNAL REGIONAL ELEITORAL DO PARANÁ'])) return { tipo: 'BASE INSTALADA', sigla: 'TRE-PR' };
