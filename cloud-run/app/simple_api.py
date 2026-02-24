@@ -402,6 +402,24 @@ def build_seller_filter(seller: Optional[str], column_name: str = "Vendedor") ->
         sellers_quoted = "', '".join(sql_literal(s) for s in sellers)
         return f"{column_name} IN ('{sellers_quoted}')"
 
+
+def build_squad_vendor_filter(squad: Optional[str], column_name: str = "Vendedor") -> Optional[str]:
+    """
+    Translates a squad name (or list) into a Vendedor IN subquery via mart_l10.dim_vendedor.
+    Example: squad="Contas Nomeadas" ->
+      Vendedor IN (SELECT vendedor_canonico FROM mart_l10.dim_vendedor WHERE squad IN ('Contas Nomeadas') AND ativo = TRUE)
+    """
+    values = parse_csv_values(squad)
+    if not values:
+        return None
+    squads_quoted = ", ".join(f"'{sql_literal(v)}'" for v in values)
+    return (
+        f"{column_name} IN ("
+        f"SELECT vendedor_canonico "
+        f"FROM `{PROJECT_ID}.mart_l10.dim_vendedor` "
+        f"WHERE squad IN ({squads_quoted}) AND ativo = TRUE)"
+    )
+
 # =============================================
 # HEALTH & ROOT
 # =============================================
@@ -2609,6 +2627,90 @@ def get_attainment(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Attainment error: {str(e)}")
+
+
+# =============================================
+# D6 — Top Contas por Revenue
+# =============================================
+
+@app.get("/api/revenue/top")
+def get_revenue_top(
+    fiscal_q: Optional[str] = None,
+    portfolio: Optional[str] = None,
+    mode: str = "net",
+    limit: int = 20,
+    nocache: bool = False,
+):
+    """
+    D6 — Top contas por Revenue (Net ou Gross).
+    Fonte: mart_l10.v_faturamento_historico (tem cliente, oportunidade, produto).
+
+    Params:
+      fiscal_q  — ex: "FY26-Q1" (opcional)
+      portfolio — portfolio_fat_canonico, virgula-separado
+      mode      — "net" (default) ou "gross" (define ordenação)
+      limit     — max 100, default 20
+
+    Retorna:
+      items: [{ cliente, portfolio, oportunidades, produtos,
+                gross_revenue, net_revenue, pago, pendente }]
+    """
+    params = {"fiscal_q": fiscal_q, "portfolio": portfolio, "mode": mode, "limit": limit}
+    cache_key = build_cache_key("/api/revenue/top", params)
+    if not nocache:
+        cached = get_cached_response(cache_key)
+        if cached is not None:
+            return cached
+
+    try:
+        client = get_bq_client()
+        mart = f"{PROJECT_ID}.{MART_L10_DATASET}"
+
+        filters: List[str] = ["fecha_factura_date IS NOT NULL"]
+        if fiscal_q:
+            fqs = [f"'{sql_literal(q.strip())}'" for q in fiscal_q.split(",") if q.strip()]
+            if len(fqs) == 1:
+                filters.append(f"fiscal_q_derivado = {fqs[0]}")
+            else:
+                filters.append(f"fiscal_q_derivado IN ({', '.join(fqs)})")
+        if portfolio:
+            f = build_in_filter("portfolio_fat_canonico", portfolio)
+            if f:
+                filters.append(f)
+
+        where = "WHERE " + " AND ".join(filters)
+        sort_col = "net_revenue" if mode == "net" else "gross_revenue"
+        lim = max(1, min(int(limit), 100))
+
+        _pago_expr     = "CASE WHEN estado_pagamento_saneado IN ('Pagada','Intercompañia') THEN net_revenue_saneado ELSE 0 END"
+        _pendente_expr = "CASE WHEN estado_pagamento_saneado IN ('Pendiente','NAO_INFORMADO') THEN net_revenue_saneado ELSE 0 END"
+
+        q = f"""
+        SELECT
+          COALESCE(NULLIF(TRIM(cliente), ''), 'Não Informado')          AS cliente,
+          portfolio_fat_canonico                                        AS portfolio,
+          STRING_AGG(DISTINCT oportunidade ORDER BY oportunidade LIMIT 5) AS oportunidades,
+          STRING_AGG(DISTINCT produto      ORDER BY produto      LIMIT 5) AS produtos,
+          ROUND(SUM(gross_revenue_saneado), 2)                          AS gross_revenue,
+          ROUND(SUM(net_revenue_saneado),   2)                          AS net_revenue,
+          ROUND(SUM({_pago_expr}),           2)                         AS pago,
+          ROUND(SUM({_pendente_expr}),       2)                         AS pendente
+        FROM `{mart}.v_faturamento_historico`
+        {where}
+        GROUP BY 1, 2
+        ORDER BY {sort_col} DESC
+        LIMIT {lim}
+        """
+
+        rows = client.query(q).result()
+        items = [dict(row) for row in rows]
+        result = {"items": items, "total_items": len(items), "mode": mode}
+        set_cached_response(cache_key, result)
+        return result
+
+    except Exception as e:
+        log(f"[revenue/top] Erro: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # =============================================

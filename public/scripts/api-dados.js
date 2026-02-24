@@ -959,15 +959,61 @@ async function loadErpData() {
 
   try {
     const qs = params.toString() ? '?' + params.toString() : '';
-    const [rev, att] = await Promise.all([
+    const mode = (window.execDisplayMode === 'net') ? 'net' : 'gross';
+    const topQs = params.toString() ? `?${params.toString()}&mode=${mode}` : `?mode=${mode}`;
+    const [rev, att, top] = await Promise.all([
       fetchJsonNoCache(`${API_BASE_URL}/api/revenue/weekly${qs}`),
-      fetchJsonNoCache(`${API_BASE_URL}/api/attainment${qs}`)
+      fetchJsonNoCache(`${API_BASE_URL}/api/attainment${qs}`),
+      fetchJsonNoCache(`${API_BASE_URL}/api/revenue/top${topQs}`)
     ]);
     renderErpKpiCards(rev, att);
     renderErpCharts(rev);
+    renderErpTopTable(top, mode);
   } catch (e) {
     log('[ERP] Erro ao carregar dados ERP:', e);
   }
+}
+
+function renderErpTopTable(data, mode) {
+  const tbody = document.getElementById('erp-top-table-body');
+  if (!tbody) return;
+  const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const items = data?.items || [];
+
+  if (items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">Sem dados no período selecionado</td></tr>';
+    return;
+  }
+
+  const isNet = (mode === 'net');
+  const revCell = document.getElementById('erp-top-col-rev');
+  if (revCell) revCell.textContent = isNet ? 'Net Revenue' : 'Gross Revenue';
+
+  tbody.innerHTML = items.map((r, i) => {
+    const primary  = isNet ? (r.net_revenue || 0) : (r.gross_revenue || 0);
+    const pago     = r.pago     || 0;
+    const pendente = r.pendente || 0;
+    const total    = pago + pendente || 1;
+    const pagoPct  = Math.min(100, Math.round((pago / total) * 100));
+    const opps     = r.oportunidades || '—';
+    const prods    = r.produtos      || '—';
+    return `<tr>
+      <td style="font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(r.cliente)}">${i + 1}. ${esc(r.cliente)}</td>
+      <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:0.72rem;font-weight:600;background:rgba(0,190,255,.12);color:var(--primary-cyan,#00BEFF)">${esc(r.portfolio || '—')}</span></td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.78rem;color:var(--text-muted)" title="${esc(opps)}">${esc(opps)}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.78rem;color:var(--text-muted)" title="${esc(prods)}">${esc(prods)}</td>
+      <td style="text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">${formatMoney(primary)}</td>
+      <td style="text-align:right;color:var(--success-green,#00e676);font-variant-numeric:tabular-nums;">${formatMoney(pago)}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end;">
+          <span style="color:var(--warning-amber,#ffab40);font-variant-numeric:tabular-nums;">${formatMoney(pendente)}</span>
+          <div style="width:44px;height:4px;background:var(--bg-elevated,#1a2030);border-radius:2px;flex-shrink:0;">
+            <div style="width:${pagoPct}%;height:100%;background:var(--success-green,#00e676);border-radius:2px;"></div>
+          </div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 function renderErpKpiCards(rev, att) {
