@@ -2384,8 +2384,10 @@ def get_revenue_weekly(
         where = ("WHERE " + " AND ".join(filters)) if filters else ""
 
         # --- pago / pendente / anulado classification ---
-        _pago_expr = "CASE WHEN estado_pagamento_saneado IN ('Pagada','Intercompañia') THEN net_revenue_saneado ELSE 0 END"
-        _pendente_expr = "CASE WHEN estado_pagamento_saneado IN ('Pendiente','NAO_INFORMADO') THEN net_revenue_saneado ELSE 0 END"
+        # 'Pagada' = dinheiro efetivamente recebido
+        # 'Intercompañia' = lançamento interno, tratado como pendente
+        _pago_expr = "CASE WHEN estado_pagamento_saneado = 'Pagada' THEN net_revenue_saneado ELSE 0 END"
+        _pendente_expr = "CASE WHEN estado_pagamento_saneado IN ('Pendiente','NAO_INFORMADO','Intercompañia') THEN net_revenue_saneado ELSE 0 END"
         _anulado_expr = "CASE WHEN estado_pagamento_saneado = 'Anulada' THEN ABS(net_revenue_saneado) ELSE 0 END"
 
         # totais
@@ -2671,8 +2673,8 @@ def get_revenue_top(
         sort_col = "net_revenue" if mode == "net" else "gross_revenue"
         lim = max(1, min(int(limit), 100))
 
-        _pago_expr     = "CASE WHEN estado_pagamento_saneado IN ('Pagada','Intercompañia') THEN net_revenue_saneado ELSE 0 END"
-        _pendente_expr = "CASE WHEN estado_pagamento_saneado IN ('Pendiente','NAO_INFORMADO') THEN net_revenue_saneado ELSE 0 END"
+        _pago_expr     = "CASE WHEN estado_pagamento_saneado = 'Pagada' THEN net_revenue_saneado ELSE 0 END"
+        _pendente_expr = "CASE WHEN estado_pagamento_saneado IN ('Pendiente','NAO_INFORMADO','Intercompañia') THEN net_revenue_saneado ELSE 0 END"
 
         q = f"""
         SELECT
