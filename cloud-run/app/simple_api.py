@@ -2571,8 +2571,8 @@ def get_attainment(
           ROUND(meta_net, 2)               AS meta_net,
           ROUND(gross_realizado, 2)        AS gross_realizado,
           ROUND(net_realizado, 2)          AS net_realizado,
-          ROUND(pct_attainment_gross * 100, 1) AS attainment_gross_pct,
-          ROUND(pct_attainment_net   * 100, 1) AS attainment_net_pct,
+          ROUND(attainment_gross_pct * 100, 1) AS attainment_gross_pct,
+          ROUND(attainment_net_pct   * 100, 1) AS attainment_net_pct,
           ROUND(gap_gross, 2)              AS gap_gross,
           ROUND(gap_net, 2)               AS gap_net
         FROM `{mart}.v_attainment`
