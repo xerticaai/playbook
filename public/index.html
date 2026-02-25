@@ -661,11 +661,15 @@
         <div class="exec-charts-row" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px;">
           <div class="chart-card" style="padding:16px;">
             <div class="chart-title" style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted,#8899aa);margin-bottom:12px;">Evolução Semanal</div>
-            <canvas id="erp-chart-semanal" height="160"></canvas>
+            <div style="position:relative;height:160px;overflow:hidden;">
+              <canvas id="erp-chart-semanal"></canvas>
+            </div>
           </div>
           <div class="chart-card" style="padding:16px;">
             <div class="chart-title" style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted,#8899aa);margin-bottom:12px;">Mensal · Net Pago × Pendente</div>
-            <canvas id="erp-chart-mensal" height="160"></canvas>
+            <div style="position:relative;height:160px;overflow:hidden;">
+              <canvas id="erp-chart-mensal"></canvas>
+            </div>
           </div>
         </div>
 

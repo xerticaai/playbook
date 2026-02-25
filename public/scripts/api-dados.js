@@ -1070,6 +1070,12 @@ function renderErpCharts(rev) {
   const labSem  = semanas.map(s => fmtDate(s.semana_inicio));
   const datSem  = semanas.map(s => isNet ? (s.net_revenue || 0) : (s.gross_revenue || 0));
 
+  // y-axis cap: p90 dos valores absolutos × 1.3 para evitar spike de outlier
+  const absSem = datSem.map(v => Math.abs(v)).filter(v => v > 0).sort((a, b) => a - b);
+  const p90Sem = absSem.length ? absSem[Math.floor(absSem.length * 0.9)] : 0;
+  const yMaxSem = p90Sem > 0 ? p90Sem * 1.3 : undefined;
+  const yMinSem = datSem.some(v => v < 0) ? undefined : 0;
+
   const ctxSem = document.getElementById('erp-chart-semanal');
   if (ctxSem) {
     if (_erpChartSemanal) _erpChartSemanal.destroy();
@@ -1085,16 +1091,25 @@ function renderErpCharts(rev) {
           tension: 0.4,
           fill: true,
           pointRadius: 3,
-          pointHoverRadius: 5
+          pointHoverRadius: 5,
+          clip: 0
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => 'R$ ' + (ctx.parsed.y / 1e6).toFixed(2) + 'M' } }
+        },
         scales: {
           x: { ticks: { font: { size: 10 }, color: '#8899aa', maxRotation: 45 }, grid: { color: 'rgba(255,255,255,.05)' } },
-          y: { ticks: { font: { size: 10 }, color: '#8899aa', callback: v => '$' + (v/1e6).toFixed(1) + 'M' }, grid: { color: 'rgba(255,255,255,.06)' } }
+          y: {
+            min: yMinSem,
+            max: yMaxSem,
+            ticks: { font: { size: 10 }, color: '#8899aa', callback: v => 'R$' + (v/1e6).toFixed(1) + 'M' },
+            grid: { color: 'rgba(255,255,255,.06)' }
+          }
         }
       }
     });
@@ -1125,7 +1140,7 @@ function renderErpCharts(rev) {
         plugins: { legend: { labels: { font: { size: 10 }, color: '#ccc', boxWidth: 10, padding: 8 } } },
         scales: {
           x: { stacked: true, ticks: { font: { size: 10 }, color: '#8899aa' }, grid: { color: 'rgba(255,255,255,.05)' } },
-          y: { stacked: true, ticks: { font: { size: 10 }, color: '#8899aa', callback: v => '$' + (v/1e6).toFixed(1) + 'M' }, grid: { color: 'rgba(255,255,255,.06)' } }
+          y: { stacked: true, ticks: { font: { size: 10 }, color: '#8899aa', callback: v => 'R$' + (v/1e6).toFixed(1) + 'M' }, grid: { color: 'rgba(255,255,255,.06)' } }
         }
       }
     });
