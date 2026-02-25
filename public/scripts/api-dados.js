@@ -951,11 +951,13 @@ async function loadErpData() {
   const fiscalQ   = document.getElementById('erp-quarter-filter')?.value  || '';
   const squad     = document.getElementById('erp-squad-filter')?.value    || '';
   const portfolio = document.getElementById('erp-portfolio-filter')?.value || '';
+  const statusPg  = document.getElementById('erp-payment-status-filter')?.value || '';
 
   const params = new URLSearchParams();
   if (fiscalQ)   params.set('fiscal_q', fiscalQ);
   if (squad)     params.set('squad', squad);
   if (portfolio) params.set('portfolio', portfolio);
+  if (statusPg)  params.set('status_pagamento', statusPg);
 
   try {
     const qs = params.toString() ? '?' + params.toString() : '';

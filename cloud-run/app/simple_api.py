@@ -2329,17 +2329,19 @@ def get_revenue_weekly(
     seller: Optional[str] = None,
     squad: Optional[str] = None,
     portfolio: Optional[str] = None,
+    status_pagamento: Optional[str] = None,
     nocache: bool = False,
 ):
     """
     D1 — Revenue semanal do ERP.
-    Fonte: mart_l10.v_revenue_semanal (cadeia ERP → v_faturamento_semanal_consolidado → v_revenue_semanal).
+    Fonte: mart_l10.v_faturamento_historico (cadeia consolidada 2025/2026).
 
     Params:
       fiscal_q  — ex: "FY26-Q1" (opcional; sem filtro retorna todos os períodos)
       seller    — vendedor_canonico, virgula-separado
       squad     — squad, virgula-separado
       portfolio — portfolio_fat_canonico, virgula-separado
+    status_pagamento — estado_pagamento_saneado, virgula-separado
 
     Retorna:
       totais: { gross_revenue, net_revenue, net_pago, net_pendente, net_anulado, linhas }
@@ -2349,7 +2351,13 @@ def get_revenue_weekly(
       por_portfolio: [{ portfolio_fat_canonico, gross_revenue, net_revenue, linhas }]
       por_squad:     [{ squad, gross_revenue, net_revenue, linhas }]
     """
-    params = {"fiscal_q": fiscal_q, "seller": seller, "squad": squad, "portfolio": portfolio}
+    params = {
+        "fiscal_q": fiscal_q,
+        "seller": seller,
+        "squad": squad,
+        "portfolio": portfolio,
+        "status_pagamento": status_pagamento,
+    }
     cache_key = build_cache_key("/api/revenue/weekly", params)
     if not nocache:
         cached = get_cached_response(cache_key)
@@ -2359,6 +2367,7 @@ def get_revenue_weekly(
     try:
         client = get_bq_client()
         mart = f"{PROJECT_ID}.{MART_L10_DATASET}"
+        revenue_source = f"{mart}.v_faturamento_historico"
 
         # --- build WHERE clauses ---
         filters: List[str] = []
@@ -2373,11 +2382,15 @@ def get_revenue_weekly(
             if f:
                 filters.append(f)
         if squad:
-            f = build_in_filter("squad", squad)
+            f = build_in_filter("squad_canonico", squad)
             if f:
                 filters.append(f)
         if portfolio:
             f = build_in_filter("portfolio_fat_canonico", portfolio)
+            if f:
+                filters.append(f)
+        if status_pagamento:
+            f = build_in_filter("estado_pagamento_saneado", status_pagamento)
             if f:
                 filters.append(f)
 
@@ -2393,13 +2406,13 @@ def get_revenue_weekly(
         # totais
         q_totais = f"""
         SELECT
-          ROUND(SUM(gross_revenue), 2)            AS gross_revenue,
+                    ROUND(SUM(gross_revenue_saneado), 2)    AS gross_revenue,
           ROUND(SUM(net_revenue_saneado), 2)      AS net_revenue,
           ROUND(SUM({_pago_expr}), 2)             AS net_pago,
           ROUND(SUM({_pendente_expr}), 2)         AS net_pendente,
           ROUND(SUM({_anulado_expr}), 2)          AS net_anulado,
           COUNT(*)                                AS linhas
-        FROM `{mart}.v_revenue_semanal`
+                FROM `{revenue_source}`
         {where}
         """
 
@@ -2430,11 +2443,11 @@ def get_revenue_weekly(
         q_semanal = f"""
         SELECT
           CAST(semana_inicio AS STRING)           AS semana_inicio,
-          ROUND(SUM(gross_revenue), 2)            AS gross_revenue,
+                    ROUND(SUM(gross_revenue_saneado), 2)    AS gross_revenue,
           ROUND(SUM(net_revenue_saneado), 2)      AS net_revenue,
           ROUND(SUM({_pago_expr}), 2)             AS net_pago,
           ROUND(SUM({_pendente_expr}), 2)         AS net_pendente
-        FROM `{mart}.v_revenue_semanal`
+                FROM `{revenue_source}`
         {where}
         GROUP BY 1
         ORDER BY 1
@@ -2444,11 +2457,11 @@ def get_revenue_weekly(
         q_mensal = f"""
         SELECT
           CAST(mes_inicio AS STRING)              AS mes_inicio,
-          ROUND(SUM(gross_revenue), 2)            AS gross_revenue,
+                    ROUND(SUM(gross_revenue_saneado), 2)    AS gross_revenue,
           ROUND(SUM(net_revenue_saneado), 2)      AS net_revenue,
           ROUND(SUM({_pago_expr}), 2)             AS net_pago,
           ROUND(SUM({_pendente_expr}), 2)         AS net_pendente
-        FROM `{mart}.v_revenue_semanal`
+                FROM `{revenue_source}`
         {where}
         GROUP BY 1
         ORDER BY 1
@@ -2458,10 +2471,10 @@ def get_revenue_weekly(
         q_portfolio = f"""
         SELECT
           COALESCE(portfolio_fat_canonico, 'Outros') AS portfolio,
-          ROUND(SUM(gross_revenue), 2)               AS gross_revenue,
+                    ROUND(SUM(gross_revenue_saneado), 2)       AS gross_revenue,
           ROUND(SUM(net_revenue_saneado), 2)         AS net_revenue,
           COUNT(*)                                   AS linhas
-        FROM `{mart}.v_revenue_semanal`
+                FROM `{revenue_source}`
         {where}
         GROUP BY 1
         ORDER BY net_revenue DESC
@@ -2470,11 +2483,11 @@ def get_revenue_weekly(
         # por squad
         q_squad = f"""
         SELECT
-          COALESCE(squad, 'PENDENTE')             AS squad,
-          ROUND(SUM(gross_revenue), 2)            AS gross_revenue,
+                    COALESCE(squad_canonico, 'PENDENTE')    AS squad,
+                    ROUND(SUM(gross_revenue_saneado), 2)    AS gross_revenue,
           ROUND(SUM(net_revenue_saneado), 2)      AS net_revenue,
           COUNT(*)                                AS linhas
-        FROM `{mart}.v_revenue_semanal`
+                FROM `{revenue_source}`
         {where}
         GROUP BY 1
         ORDER BY net_revenue DESC
@@ -2496,6 +2509,7 @@ def get_revenue_weekly(
                 "seller": seller,
                 "squad": squad,
                 "portfolio": portfolio,
+                "status_pagamento": status_pagamento,
             },
             "totais": {
                 "gross_revenue":  float(totais.get("gross_revenue") or 0),
@@ -2623,6 +2637,7 @@ def get_revenue_top(
     fiscal_q: Optional[str] = None,
     squad: Optional[str] = None,
     portfolio: Optional[str] = None,
+    status_pagamento: Optional[str] = None,
     mode: str = "net",
     limit: int = 20,
     nocache: bool = False,
@@ -2635,6 +2650,7 @@ def get_revenue_top(
       fiscal_q  — ex: "FY26-Q1" (opcional)
       squad     — squad_canonico, virgula-separado
       portfolio — portfolio_fat_canonico, virgula-separado
+    status_pagamento — estado_pagamento_saneado, virgula-separado
       mode      — "net" (default) ou "gross" (define ordenação)
       limit     — max 100, default 20
 
@@ -2642,7 +2658,14 @@ def get_revenue_top(
       items: [{ cliente, portfolio, oportunidades, produtos,
                 gross_revenue, net_revenue, pago, pendente }]
     """
-    params = {"fiscal_q": fiscal_q, "squad": squad, "portfolio": portfolio, "mode": mode, "limit": limit}
+    params = {
+        "fiscal_q": fiscal_q,
+        "squad": squad,
+        "portfolio": portfolio,
+        "status_pagamento": status_pagamento,
+        "mode": mode,
+        "limit": limit,
+    }
     cache_key = build_cache_key("/api/revenue/top", params)
     if not nocache:
         cached = get_cached_response(cache_key)
@@ -2666,6 +2689,10 @@ def get_revenue_top(
                 filters.append(f)
         if portfolio:
             f = build_in_filter("portfolio_fat_canonico", portfolio)
+            if f:
+                filters.append(f)
+        if status_pagamento:
+            f = build_in_filter("estado_pagamento_saneado", status_pagamento)
             if f:
                 filters.append(f)
 
