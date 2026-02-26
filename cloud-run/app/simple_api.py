@@ -2812,20 +2812,56 @@ def get_revenue_top(
         _pendente_expr = "CASE WHEN estado_pagamento_saneado IN ('Pendiente','NAO_INFORMADO','Intercompañia') THEN net_revenue_saneado ELSE 0 END"
 
         q = f"""
-        SELECT
-          COALESCE(NULLIF(TRIM(cliente), ''), 'Não Informado')          AS cliente,
-          portfolio_fat_canonico                                        AS portfolio,
-          STRING_AGG(DISTINCT oportunidade ORDER BY oportunidade LIMIT 5) AS oportunidades,
-          STRING_AGG(DISTINCT produto      ORDER BY produto      LIMIT 5) AS produtos,
-          ROUND(SUM(gross_revenue_saneado), 2)                          AS gross_revenue,
-          ROUND(SUM(net_revenue_saneado),   2)                          AS net_revenue,
-          ROUND(SUM({_pago_expr}),           2)                         AS pago,
-          ROUND(SUM({_pendente_expr}),       2)                         AS pendente
-        FROM `{mart}.v_faturamento_historico`
-        {where}
-        GROUP BY 1, 2
-        ORDER BY {sort_col} DESC
-        LIMIT {lim}
+                WITH base AS (
+                    SELECT
+                        COALESCE(NULLIF(TRIM(cliente), ''), 'Não Informado') AS cliente,
+                        COALESCE(NULLIF(TRIM(produto), ''), 'Produto não informado') AS produto,
+                        oportunidade,
+                        gross_revenue_saneado,
+                        net_revenue_saneado,
+                        {_pago_expr}     AS pago_val,
+                        {_pendente_expr} AS pendente_val
+                    FROM `{mart}.v_faturamento_historico`
+                    {where}
+                ),
+                acc AS (
+                    SELECT
+                        cliente,
+                        STRING_AGG(DISTINCT oportunidade ORDER BY oportunidade LIMIT 5) AS oportunidades,
+                        STRING_AGG(DISTINCT produto      ORDER BY produto      LIMIT 5) AS produtos,
+                        ROUND(SUM(gross_revenue_saneado), 2)                          AS gross_revenue,
+                        ROUND(SUM(net_revenue_saneado),   2)                          AS net_revenue,
+                        ROUND(SUM(pago_val),               2)                         AS pago,
+                        ROUND(SUM(pendente_val),           2)                         AS pendente
+                    FROM base
+                    GROUP BY cliente
+                ),
+                prod_rank AS (
+                    SELECT
+                        cliente,
+                        produto,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY cliente
+                            ORDER BY SUM(net_revenue_saneado) DESC, SUM(gross_revenue_saneado) DESC, produto
+                        ) AS rn
+                    FROM base
+                    GROUP BY cliente, produto
+                )
+                SELECT
+                    a.cliente,
+                    p.produto AS produto_principal,
+                    a.oportunidades,
+                    a.produtos,
+                    a.gross_revenue,
+                    a.net_revenue,
+                    a.pago,
+                    a.pendente
+                FROM acc a
+                LEFT JOIN prod_rank p
+                    ON a.cliente = p.cliente
+                 AND p.rn = 1
+                ORDER BY {sort_col} DESC
+                LIMIT {lim}
         """
 
         rows = client.query(q).result()

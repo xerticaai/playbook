@@ -995,7 +995,7 @@ function renderErpTopTable(data, mode) {
   const items = data?.items || [];
 
   if (items.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text-muted)">Sem dados no período selecionado</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">Sem dados no período selecionado</td></tr>';
     return;
   }
 
@@ -1010,12 +1010,12 @@ function renderErpTopTable(data, mode) {
     const total    = pago + pendente || 1;
     const pagoPct  = Math.min(100, Math.round((pago / total) * 100));
     const opps     = r.oportunidades || '—';
-    const prods    = r.produtos      || '—';
+    const prodMain = r.produto_principal || '—';
+    const prods    = r.produtos || '';
     return `<tr>
       <td style="font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(r.cliente)}">${i + 1}. ${esc(r.cliente)}</td>
-      <td><span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:0.72rem;font-weight:600;background:rgba(0,190,255,.12);color:var(--primary-cyan,#00BEFF)">${esc(r.portfolio || '—')}</span></td>
+      <td title="${esc(prods || prodMain)}"><span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:0.72rem;font-weight:600;background:rgba(0,190,255,.12);color:var(--primary-cyan,#00BEFF)">${esc(prodMain)}</span></td>
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.78rem;color:var(--text-muted)" title="${esc(opps)}">${esc(opps)}</td>
-      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.78rem;color:var(--text-muted)" title="${esc(prods)}">${esc(prods)}</td>
       <td style="text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">${formatMoney(primary)}</td>
       <td style="text-align:right;color:var(--success-green,#00e676);font-variant-numeric:tabular-nums;">${formatMoney(pago)}</td>
       <td>

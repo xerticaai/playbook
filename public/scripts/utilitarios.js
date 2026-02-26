@@ -226,6 +226,21 @@ function toggleErpSection(mode) {
   // Update ERP mode label card
   var modeLabel = document.getElementById('erp-mode-label');
   if (modeLabel) modeLabel.textContent = mode === 'gross' ? 'Gross Revenue' : 'Net Revenue';
+
+  var revenueHiddenTabs = ['mapas', 'oportunidades', 'guia'];
+  revenueHiddenTabs.forEach(function(tabName) {
+    var tabBtn = document.querySelector('.exec-tab[data-tab="' + tabName + '"]');
+    var tabContent = document.querySelector('.exec-tab-content[data-content="' + tabName + '"]');
+    if (tabBtn) tabBtn.style.display = isErp ? 'none' : '';
+    if (isErp && tabContent) {
+      tabContent.classList.remove('active');
+      tabContent.style.display = 'none';
+    }
+  });
+
+  if (isErp && typeof switchExecTab === 'function') {
+    switchExecTab('resumo');
+  }
 }
 
 function applyExecDisplayMode(mode) {
