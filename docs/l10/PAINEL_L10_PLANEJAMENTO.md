@@ -4,6 +4,8 @@ Data da análise: **2026-02-24**
 Fonte validada diretamente no BigQuery do projeto **`operaciones-br`** (conta ativa: `amalia.silva@xertica.com`).
 
 > 📂 **Documentação relacionada:** [Dicionário de Dados — mart_l10](MART_L10_DICIONARIO_DADOS.md)
+> 
+> 🧭 **Implantação faseada da visão Revenue:** [IMPLANTACAO_REVENUE_PASSO_A_PASSO.md](IMPLANTACAO_REVENUE_PASSO_A_PASSO.md)
 
 ## 1) Inventário real de esquemas (datasets)
 
