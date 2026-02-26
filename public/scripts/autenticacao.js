@@ -13,7 +13,8 @@ const FIREBASE_CONFIG = {
 const ALLOWED_EMAILS = [
   "amalia.silva@xertica.com",
   "barbara.pessoa@xertica.com",
-  "gustavo.paula@xertica.com"
+  "gustavo.paula@xertica.com",
+  "renato.rodrigues@xertica.com"
 ];
 
 if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
