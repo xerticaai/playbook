@@ -151,6 +151,37 @@ Dependências:
 - `Intercompañia` não entra em pago efetivo (tratar como pendência interna, conforme regra vigente).
 - Fonte principal da visão Revenue: `mart_l10.v_faturamento_historico`.
 
+## 4.1 Matriz de status de pagamento (revisão de schema)
+Distribuição observada em `v_faturamento_historico`:
+- `Pendiente`: 1.947 linhas
+- `NAO_INFORMADO`: 247 linhas
+- `Pagada`: 129 linhas
+- `Intercompañia`: 9 linhas
+- Outros (`Anulada`, `INCENTIVOS`, `Nota de Credito`): baixo volume
+
+Decisão recomendada para o painel:
+- `Pago`: apenas `Pagada`
+- `Pendente`: `Pendiente`, `NAO_INFORMADO`, `Intercompañia`
+- `Anulado`: `Anulada` (valor absoluto para exibição)
+- `Outros`: manter em bucket “Outros status” (evita perda silenciosa de valor)
+
+## 4.2 Qualidade de dados relevante
+- `net_revenue` nulo em `faturamento_2025`: 0,27% (6/2209)
+- `net_revenue` nulo em `faturamento_2026`: 4,32% (6/139)
+- `meta` disponível apenas para FY26 (`FY26-Q1`..`FY26-Q4`)
+
+Implicação prática:
+- KPIs de attainment devem indicar “sem meta” fora de FY26.
+- Drilldown precisa exibir flag de `net_revenue` ausente para auditoria.
+
+## 4.3 Regra explícita para “Produto principal” no Top Contas
+Para trocar `Portfólio` por `Produto` sem ambiguidade, usar regra determinística:
+1. Agrupar por conta + produto no recorte filtrado.
+2. Ordenar por `SUM(net_revenue_saneado)` desc.
+3. Em empate, usar maior `SUM(gross_revenue_saneado)`.
+4. Persistir primeiro item como `produto_principal`.
+5. Expor `produtos` (lista curta) em tooltip para transparência.
+
 ---
 
 ## 5) Matriz de validação (por fase)
@@ -178,6 +209,13 @@ Dependências:
 3. Concluir `R3` para isolar escopo visual.
 4. Concluir `R4` (drilldown) com testes de filtro.
 5. Planejar e implementar `R5` em sprint própria.
+
+## 6.1 Definition of Done por fase
+- R1: Tabs não aplicáveis ocultas apenas em Revenue; retorno integral no modo Booking.
+- R2: Coluna `Produto` ativa na tabela Top + ordenação `mode` validada.
+- R3: View gráfica Revenue sem gráficos de Booking e com placeholder claro.
+- R4: Cards ERP abrem drilldown com busca, ordenação e export CSV funcionando.
+- R5: Gráficos Revenue usam apenas fonte consolidada (`v_faturamento_historico` + `meta`).
 
 ---
 
