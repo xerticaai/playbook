@@ -953,6 +953,10 @@ async function loadErpData() {
   const portfolio = document.getElementById('erp-portfolio-filter')?.value || '';
   const statusPg  = document.getElementById('erp-payment-status-filter')?.value || '';
 
+  if (typeof updateGlobalFiltersPanelUI === 'function') {
+    updateGlobalFiltersPanelUI();
+  }
+
   const params = new URLSearchParams();
   if (fiscalQ)   params.set('fiscal_q', fiscalQ);
   if (squad)     params.set('squad', squad);

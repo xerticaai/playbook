@@ -242,6 +242,7 @@ function countActiveGlobalFilters() {
     if (document.getElementById('erp-quarter-filter')?.value)   total++;
     if (document.getElementById('erp-squad-filter')?.value)     total++;
     if (document.getElementById('erp-portfolio-filter')?.value) total++;
+    if (document.getElementById('erp-payment-status-filter')?.value) total++;
     return total;
   }
 
@@ -266,6 +267,13 @@ function countActiveGlobalFilters() {
 }
 
 function getPeriodSummaryLabel() {
+  const mode = window.execDisplayMode || 'booking_gross';
+  const isErp = (mode === 'gross' || mode === 'net');
+  if (isErp) {
+    const fiscalQ = document.getElementById('erp-quarter-filter')?.value || '';
+    return fiscalQ || 'Todos';
+  }
+
   const year = document.getElementById('year-filter')?.value || '';
   const quarter = document.getElementById('quarter-filter')?.value || '';
   const month = document.getElementById('month-filter')?.value || '';
@@ -295,8 +303,28 @@ function getPeriodSummaryLabel() {
 }
 
 function syncQuickFilterPillState() {
-  const year = document.getElementById('year-filter')?.value || '';
-  const quarter = document.getElementById('quarter-filter')?.value || '';
+  const mode = window.execDisplayMode || 'booking_gross';
+  const isErp = (mode === 'gross' || mode === 'net');
+
+  let year = document.getElementById('year-filter')?.value || '';
+  let quarter = document.getElementById('quarter-filter')?.value || '';
+  if (isErp) {
+    const erpQuarter = document.getElementById('erp-quarter-filter')?.value || '';
+    if (erpQuarter === 'FY26-Q1,FY26-Q2,FY26-Q3,FY26-Q4') {
+      year = '2026';
+      quarter = '';
+    } else {
+    const m = erpQuarter.match(/^FY(\d{2})-Q([1-4])$/i);
+    if (m) {
+      year = `20${m[1]}`;
+      quarter = `Q${m[2]}`;
+    } else {
+      year = '';
+      quarter = '';
+    }
+    }
+  }
+
   const pills = document.querySelectorAll('.filter-quick-bar .filter-pill');
 
   pills.forEach((pill) => pill.classList.remove('active'));
@@ -439,6 +467,23 @@ function toggleSidebar() {
 
 // Função para aplicar filtros rápidos de FY26
 function applyQuickFilter(year, quarter) {
+  const mode = window.execDisplayMode || 'booking_gross';
+  const isErp = (mode === 'gross' || mode === 'net');
+
+  if (isErp) {
+    const erpQuarterFilter = document.getElementById('erp-quarter-filter');
+    if (erpQuarterFilter) {
+      const fy = String(year || '').slice(-2);
+      erpQuarterFilter.value = quarter ? `FY${fy}-${quarter}` : `FY${fy}-Q1,FY${fy}-Q2,FY${fy}-Q3,FY${fy}-Q4`;
+    }
+
+    syncQuickFilterPillState();
+    updateGlobalFiltersPanelUI();
+    log(`[QUICK FILTER ERP] Aplicando: FY${String(year || '').slice(-2)} ${quarter || 'FULL'}`);
+    if (typeof loadErpData === 'function') loadErpData();
+    return;
+  }
+
   const yearFilter = document.getElementById('year-filter');
   const quarterFilter = document.getElementById('quarter-filter');
   const monthFilter = document.getElementById('month-filter');
@@ -456,6 +501,9 @@ function applyQuickFilter(year, quarter) {
 
 // Função para limpar todos os filtros
 function clearAllFilters() {
+  const mode = window.execDisplayMode || 'booking_gross';
+  const isErp = (mode === 'gross' || mode === 'net');
+
   const yearFilter = document.getElementById('year-filter');
   const quarterFilter = document.getElementById('quarter-filter');
   const monthFilter = document.getElementById('month-filter');
@@ -474,6 +522,10 @@ function clearAllFilters() {
   const portfolioFdmFilter = document.getElementById('portfolio-fdm-filter');
   const tipoOportunidadeFilter = document.getElementById('tipo-oportunidade-filter');
   const processoFilter = document.getElementById('processo-filter');
+  const erpQuarterFilter = document.getElementById('erp-quarter-filter');
+  const erpSquadFilter = document.getElementById('erp-squad-filter');
+  const erpPortfolioFilter = document.getElementById('erp-portfolio-filter');
+  const erpPaymentStatusFilter = document.getElementById('erp-payment-status-filter');
   
   if (yearFilter) yearFilter.value = '';
   if (quarterFilter) quarterFilter.value = '';
@@ -493,6 +545,10 @@ function clearAllFilters() {
   if (portfolioFdmFilter) portfolioFdmFilter.value = '';
   if (tipoOportunidadeFilter) tipoOportunidadeFilter.value = '';
   if (processoFilter) processoFilter.value = '';
+  if (erpQuarterFilter) erpQuarterFilter.value = '';
+  if (erpSquadFilter) erpSquadFilter.value = '';
+  if (erpPortfolioFilter) erpPortfolioFilter.value = '';
+  if (erpPaymentStatusFilter) erpPaymentStatusFilter.value = '';
   ensureAdvancedSelectionsState();
   ADVANCED_MULTI_FILTER_IDS.forEach(id => {
     window.advancedFilterSelections[id] = [];
@@ -503,8 +559,12 @@ function clearAllFilters() {
   
   log('[CLEAR] Todos os filtros limpos');
   updateGlobalFiltersPanelUI();
-  loadAdvancedFilterOptions();
-  reloadDashboard();
+  if (isErp) {
+    if (typeof loadErpData === 'function') loadErpData();
+  } else {
+    loadAdvancedFilterOptions();
+    reloadDashboard();
+  }
 }
 
 function getAdvancedFiltersFromUI() {
