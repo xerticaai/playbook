@@ -948,7 +948,11 @@ let _erpChartSemanal = null;
 let _erpChartMensal  = null;
 
 async function loadErpData() {
-  const fiscalQ   = document.getElementById('erp-quarter-filter')?.value  || '';
+  const year      = document.getElementById('year-filter')?.value || '';
+  const quarter   = document.getElementById('quarter-filter')?.value || '';
+  const month     = document.getElementById('month-filter')?.value || '';
+  const dateStart = document.getElementById('date-start-filter')?.value || '';
+  const dateEnd   = document.getElementById('date-end-filter')?.value || '';
   const squad     = document.getElementById('erp-squad-filter')?.value    || '';
   const portfolio = document.getElementById('erp-portfolio-filter')?.value || '';
   const statusPg  = document.getElementById('erp-payment-status-filter')?.value || '';
@@ -958,7 +962,11 @@ async function loadErpData() {
   }
 
   const params = new URLSearchParams();
-  if (fiscalQ)   params.set('fiscal_q', fiscalQ);
+  if (year)      params.set('year', year);
+  if (quarter)   params.set('quarter', quarter);
+  if (month)     params.set('month', month);
+  if (dateStart) params.set('date_start', dateStart);
+  if (dateEnd)   params.set('date_end', dateEnd);
   if (squad)     params.set('squad', squad);
   if (portfolio) params.set('portfolio', portfolio);
   if (statusPg)  params.set('status_pagamento', statusPg);
@@ -1046,7 +1054,8 @@ function renderErpKpiCards(rev, att) {
   if (attPct !== null) {
     const pct = Math.round(Number(attPct)); // já é percentual (87.4 etc)
     setEl('erp-attainment-pct', pct + '%');
-    setEl('erp-attainment-label', 'meta ' + (document.getElementById('erp-quarter-filter')?.value || 'quarter'));
+    const periodLabel = (typeof getPeriodSummaryLabel === 'function') ? getPeriodSummaryLabel() : 'período selecionado';
+    setEl('erp-attainment-label', 'meta ' + periodLabel);
     const bar = document.getElementById('erp-attainment-bar');
     if (bar) {
       bar.style.width = Math.min(pct, 100) + '%';
@@ -1060,9 +1069,6 @@ function renderErpKpiCards(rev, att) {
 function renderErpCharts(rev) {
   if (typeof Chart === 'undefined') return;
 
-  const mode  = window.execDisplayMode || 'gross';
-  const isNet = (mode === 'net');
-
   // helper: formata 'YYYY-MM-DD' → '01/jan'
   const fmtDate = (d) => {
     if (!d) return '';
@@ -1074,13 +1080,14 @@ function renderErpCharts(rev) {
   // ── Semanal (line) ──
   const semanas = (rev?.por_semana || []);
   const labSem  = semanas.map(s => fmtDate(s.semana_inicio));
-  const datSem  = semanas.map(s => isNet ? (s.net_revenue || 0) : (s.gross_revenue || 0));
+  const datGross = semanas.map(s => s.gross_revenue || 0);
+  const datNet   = semanas.map(s => s.net_revenue || 0);
 
   // y-axis cap: p90 dos valores absolutos × 1.3 para evitar spike de outlier
-  const absSem = datSem.map(v => Math.abs(v)).filter(v => v > 0).sort((a, b) => a - b);
+  const absSem = datGross.concat(datNet).map(v => Math.abs(v)).filter(v => v > 0).sort((a, b) => a - b);
   const p90Sem = absSem.length ? absSem[Math.floor(absSem.length * 0.9)] : 0;
   const yMaxSem = p90Sem > 0 ? p90Sem * 1.3 : undefined;
-  const yMinSem = datSem.some(v => v < 0) ? undefined : 0;
+  const yMinSem = datGross.concat(datNet).some(v => v < 0) ? undefined : 0;
 
   const ctxSem = document.getElementById('erp-chart-semanal');
   if (ctxSem) {
@@ -1089,31 +1096,44 @@ function renderErpCharts(rev) {
       type: 'line',
       data: {
         labels: labSem,
-        datasets: [{
-          label: isNet ? 'Net' : 'Gross',
-          data: datSem,
-          borderColor: '#00BEFF',
-          backgroundColor: 'rgba(0,190,255,0.12)',
-          tension: 0.4,
-          fill: true,
-          pointRadius: 3,
-          pointHoverRadius: 5,
-          clip: 0
-        }]
+        datasets: [
+          {
+            label: 'Gross',
+            data: datGross,
+            borderColor: '#00BEFF',
+            backgroundColor: 'rgba(0,190,255,0.12)',
+            tension: 0.35,
+            fill: false,
+            pointRadius: 2,
+            pointHoverRadius: 4,
+            clip: 0
+          },
+          {
+            label: 'Net',
+            data: datNet,
+            borderColor: '#22c55e',
+            backgroundColor: 'rgba(34,197,94,0.10)',
+            tension: 0.35,
+            fill: false,
+            pointRadius: 2,
+            pointHoverRadius: 4,
+            clip: 0
+          }
+        ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { display: false },
-          tooltip: { callbacks: { label: ctx => 'R$ ' + (ctx.parsed.y / 1e6).toFixed(2) + 'M' } }
+          legend: { labels: { font: { size: 10 }, color: '#ccc', boxWidth: 10, padding: 8 } },
+          tooltip: { callbacks: { label: ctx => '$ ' + (ctx.parsed.y / 1e6).toFixed(2) + 'M' } }
         },
         scales: {
           x: { ticks: { font: { size: 10 }, color: '#8899aa', maxRotation: 45 }, grid: { color: 'rgba(255,255,255,.05)' } },
           y: {
             min: yMinSem,
             max: yMaxSem,
-            ticks: { font: { size: 10 }, color: '#8899aa', callback: v => 'R$' + (v/1e6).toFixed(1) + 'M' },
+            ticks: { font: { size: 10 }, color: '#8899aa', callback: v => '$' + (v/1e6).toFixed(1) + 'M' },
             grid: { color: 'rgba(255,255,255,.06)' }
           }
         }
@@ -1146,7 +1166,7 @@ function renderErpCharts(rev) {
         plugins: { legend: { labels: { font: { size: 10 }, color: '#ccc', boxWidth: 10, padding: 8 } } },
         scales: {
           x: { stacked: true, ticks: { font: { size: 10 }, color: '#8899aa' }, grid: { color: 'rgba(255,255,255,.05)' } },
-          y: { stacked: true, ticks: { font: { size: 10 }, color: '#8899aa', callback: v => 'R$' + (v/1e6).toFixed(1) + 'M' }, grid: { color: 'rgba(255,255,255,.06)' } }
+          y: { stacked: true, ticks: { font: { size: 10 }, color: '#8899aa', callback: v => '$' + (v/1e6).toFixed(1) + 'M' }, grid: { color: 'rgba(255,255,255,.06)' } }
         }
       }
     });

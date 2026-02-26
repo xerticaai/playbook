@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from google.cloud import bigquery
 from typing import List, Dict, Any, Optional
 import os
+import re
 from datetime import datetime
 import time
 from pathlib import Path
@@ -2326,6 +2327,11 @@ Deals perdidos: {lost_deals} (${lost_gross:,.0f})
 @app.get("/api/revenue/weekly")
 def get_revenue_weekly(
     fiscal_q: Optional[str] = None,
+    year: Optional[str] = None,
+    quarter: Optional[str] = None,
+    month: Optional[str] = None,
+    date_start: Optional[str] = None,
+    date_end: Optional[str] = None,
     seller: Optional[str] = None,
     squad: Optional[str] = None,
     portfolio: Optional[str] = None,
@@ -2337,11 +2343,15 @@ def get_revenue_weekly(
     Fonte: mart_l10.v_faturamento_historico (cadeia consolidada 2025/2026).
 
     Params:
-      fiscal_q  — ex: "FY26-Q1" (opcional; sem filtro retorna todos os períodos)
+            fiscal_q  — ex: "FY26-Q1" (opcional; compat legado)
+            year      — ex: "2026" (opcional)
+            quarter   — ex: "Q1" ou "1" (opcional)
+            month     — ex: "1".."12" (opcional)
+            date_start/date_end — ex: "2026-01-01".."2026-03-31" (opcional)
       seller    — vendedor_canonico, virgula-separado
       squad     — squad, virgula-separado
       portfolio — portfolio_fat_canonico, virgula-separado
-    status_pagamento — estado_pagamento_saneado, virgula-separado
+            status_pagamento — estado_pagamento_saneado, virgula-separado
 
     Retorna:
       totais: { gross_revenue, net_revenue, net_pago, net_pendente, net_anulado, linhas }
@@ -2353,6 +2363,11 @@ def get_revenue_weekly(
     """
     params = {
         "fiscal_q": fiscal_q,
+        "year": year,
+        "quarter": quarter,
+        "month": month,
+        "date_start": date_start,
+        "date_end": date_end,
         "seller": seller,
         "squad": squad,
         "portfolio": portfolio,
@@ -2377,6 +2392,20 @@ def get_revenue_weekly(
                 filters.append(f"fiscal_q_derivado = {fqs[0]}")
             else:
                 filters.append(f"fiscal_q_derivado IN ({', '.join(fqs)})")
+        if year and str(year).isdigit():
+            filters.append(f"EXTRACT(YEAR FROM fecha_factura_date) = {int(year)}")
+        if quarter:
+            quarter_digits = re.sub(r"[^0-9]", "", str(quarter))
+            if quarter_digits in {"1", "2", "3", "4"}:
+                filters.append(f"EXTRACT(QUARTER FROM fecha_factura_date) = {int(quarter_digits)}")
+        if month and str(month).isdigit():
+            month_num = int(month)
+            if 1 <= month_num <= 12:
+                filters.append(f"EXTRACT(MONTH FROM fecha_factura_date) = {month_num}")
+        if date_start:
+            filters.append(f"fecha_factura_date >= DATE('{sql_literal(date_start)}')")
+        if date_end:
+            filters.append(f"fecha_factura_date <= DATE('{sql_literal(date_end)}')")
         if seller:
             f = build_in_filter("vendedor_canonico", seller)
             if f:
@@ -2417,13 +2446,28 @@ def get_revenue_weekly(
         """
 
         # attainment — filtra pelo mesmo fiscal_q se fornecido
-        att_where = ""
+        att_filters: List[str] = []
         if fiscal_q:
             fqs_att = [f"'{sql_literal(q.strip())}'" for q in fiscal_q.split(",") if q.strip()]
             if len(fqs_att) == 1:
-                att_where = f"WHERE fiscal_q = {fqs_att[0]}"
+                att_filters.append(f"fiscal_q = {fqs_att[0]}")
             else:
-                att_where = f"WHERE fiscal_q IN ({', '.join(fqs_att)})"
+                att_filters.append(f"fiscal_q IN ({', '.join(fqs_att)})")
+        if year and str(year).isdigit():
+            att_filters.append(f"EXTRACT(YEAR FROM mes_inicio) = {int(year)}")
+        if quarter:
+            quarter_digits = re.sub(r"[^0-9]", "", str(quarter))
+            if quarter_digits in {"1", "2", "3", "4"}:
+                att_filters.append(f"EXTRACT(QUARTER FROM mes_inicio) = {int(quarter_digits)}")
+        if month and str(month).isdigit():
+            month_num = int(month)
+            if 1 <= month_num <= 12:
+                att_filters.append(f"EXTRACT(MONTH FROM mes_inicio) = {month_num}")
+        if date_start:
+            att_filters.append(f"mes_inicio >= DATE('{sql_literal(date_start)}')")
+        if date_end:
+            att_filters.append(f"mes_inicio <= DATE('{sql_literal(date_end)}')")
+        att_where = ("WHERE " + " AND ".join(att_filters)) if att_filters else ""
 
         q_attainment = f"""
         SELECT
@@ -2506,6 +2550,11 @@ def get_revenue_weekly(
         result = {
             "filtros": {
                 "fiscal_q": fiscal_q,
+                "year": year,
+                "quarter": quarter,
+                "month": month,
+                "date_start": date_start,
+                "date_end": date_end,
                 "seller": seller,
                 "squad": squad,
                 "portfolio": portfolio,
@@ -2545,6 +2594,11 @@ def get_revenue_weekly(
 @app.get("/api/attainment")
 def get_attainment(
     fiscal_q: Optional[str] = None,
+    year: Optional[str] = None,
+    quarter: Optional[str] = None,
+    month: Optional[str] = None,
+    date_start: Optional[str] = None,
+    date_end: Optional[str] = None,
     nocache: bool = False,
 ):
     """
@@ -2552,7 +2606,8 @@ def get_attainment(
     Fonte: mart_l10.v_attainment (cadeia v_revenue_semanal × sales_intelligence.meta).
 
     Params:
-      fiscal_q — ex: "FY26-Q1" (opcional; sem filtro retorna todos os 12 meses FY26)
+    fiscal_q — ex: "FY26-Q1" (opcional)
+    year/quarter/month/date_start/date_end — filtros de período (opcional)
 
     Retorna:
       resumo:  { meta_gross, meta_net, gross_realizado, net_realizado, attainment_gross_pct, attainment_net_pct }
@@ -2560,7 +2615,14 @@ def get_attainment(
                   gross_realizado, net_realizado, attainment_gross_pct, attainment_net_pct,
                   gap_gross, gap_net }]
     """
-    params = {"fiscal_q": fiscal_q}
+    params = {
+        "fiscal_q": fiscal_q,
+        "year": year,
+        "quarter": quarter,
+        "month": month,
+        "date_start": date_start,
+        "date_end": date_end,
+    }
     cache_key = build_cache_key("/api/attainment", params)
     if not nocache:
         cached = get_cached_response(cache_key)
@@ -2576,6 +2638,20 @@ def get_attainment(
                 filters.append(f"fiscal_q = {fqs[0]}")
             else:
                 filters.append(f"fiscal_q IN ({', '.join(fqs)})")
+        if year and str(year).isdigit():
+            filters.append(f"EXTRACT(YEAR FROM mes_inicio) = {int(year)}")
+        if quarter:
+            quarter_digits = re.sub(r"[^0-9]", "", str(quarter))
+            if quarter_digits in {"1", "2", "3", "4"}:
+                filters.append(f"EXTRACT(QUARTER FROM mes_inicio) = {int(quarter_digits)}")
+        if month and str(month).isdigit():
+            month_num = int(month)
+            if 1 <= month_num <= 12:
+                filters.append(f"EXTRACT(MONTH FROM mes_inicio) = {month_num}")
+        if date_start:
+            filters.append(f"mes_inicio >= DATE('{sql_literal(date_start)}')")
+        if date_end:
+            filters.append(f"mes_inicio <= DATE('{sql_literal(date_end)}')")
         where = ("WHERE " + " AND ".join(filters)) if filters else ""
 
         q_meses = f"""
@@ -2616,7 +2692,14 @@ def get_attainment(
         }
 
         result = {
-            "filtros": {"fiscal_q": fiscal_q},
+            "filtros": {
+                "fiscal_q": fiscal_q,
+                "year": year,
+                "quarter": quarter,
+                "month": month,
+                "date_start": date_start,
+                "date_end": date_end,
+            },
             "resumo":  resumo,
             "por_mes": meses,
         }
@@ -2635,6 +2718,11 @@ def get_attainment(
 @app.get("/api/revenue/top")
 def get_revenue_top(
     fiscal_q: Optional[str] = None,
+    year: Optional[str] = None,
+    quarter: Optional[str] = None,
+    month: Optional[str] = None,
+    date_start: Optional[str] = None,
+    date_end: Optional[str] = None,
     squad: Optional[str] = None,
     portfolio: Optional[str] = None,
     status_pagamento: Optional[str] = None,
@@ -2647,10 +2735,11 @@ def get_revenue_top(
     Fonte: mart_l10.v_faturamento_historico (tem cliente, oportunidade, produto).
 
     Params:
-      fiscal_q  — ex: "FY26-Q1" (opcional)
+            fiscal_q  — ex: "FY26-Q1" (opcional; compat legado)
+            year/quarter/month/date_start/date_end — filtros de período (opcional)
       squad     — squad_canonico, virgula-separado
       portfolio — portfolio_fat_canonico, virgula-separado
-    status_pagamento — estado_pagamento_saneado, virgula-separado
+            status_pagamento — estado_pagamento_saneado, virgula-separado
       mode      — "net" (default) ou "gross" (define ordenação)
       limit     — max 100, default 20
 
@@ -2660,6 +2749,11 @@ def get_revenue_top(
     """
     params = {
         "fiscal_q": fiscal_q,
+        "year": year,
+        "quarter": quarter,
+        "month": month,
+        "date_start": date_start,
+        "date_end": date_end,
         "squad": squad,
         "portfolio": portfolio,
         "status_pagamento": status_pagamento,
@@ -2683,6 +2777,20 @@ def get_revenue_top(
                 filters.append(f"fiscal_q_derivado = {fqs[0]}")
             else:
                 filters.append(f"fiscal_q_derivado IN ({', '.join(fqs)})")
+        if year and str(year).isdigit():
+            filters.append(f"EXTRACT(YEAR FROM fecha_factura_date) = {int(year)}")
+        if quarter:
+            quarter_digits = re.sub(r"[^0-9]", "", str(quarter))
+            if quarter_digits in {"1", "2", "3", "4"}:
+                filters.append(f"EXTRACT(QUARTER FROM fecha_factura_date) = {int(quarter_digits)}")
+        if month and str(month).isdigit():
+            month_num = int(month)
+            if 1 <= month_num <= 12:
+                filters.append(f"EXTRACT(MONTH FROM fecha_factura_date) = {month_num}")
+        if date_start:
+            filters.append(f"fecha_factura_date >= DATE('{sql_literal(date_start)}')")
+        if date_end:
+            filters.append(f"fecha_factura_date <= DATE('{sql_literal(date_end)}')")
         if squad:
             f = build_in_filter("squad_canonico", squad)
             if f:

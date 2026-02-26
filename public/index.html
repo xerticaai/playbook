@@ -328,7 +328,7 @@
       <!-- Filtros Detalhados -->
       <div id="global-filters-panel" style="overflow: hidden; max-height: 0; opacity: 0; margin-top: 0; transition: max-height 0.28s ease, opacity 0.2s ease, margin-top 0.2s ease;">
       <div class="filters-grid">
-        <div class="filters-group-card">
+        <div class="filters-group-card" id="filters-group-period">
           <div class="filters-group-title filters-group-title-period">Período</div>
           <div class="filters-fields-row">
             <div class="filters-field">
@@ -344,7 +344,7 @@
 
             <div class="filters-field">
               <span class="filters-field-label">Ano:</span>
-              <select id="year-filter" onchange="reloadDashboard()">
+              <select id="year-filter" onchange="onPeriodFilterChange()">
                 <option value="" selected>Todos</option>
                 <option value="2024">2024</option>
                 <option value="2025">2025</option>
@@ -374,9 +374,9 @@
 
             <div class="filters-field">
               <span class="filters-field-label">Período:</span>
-              <input id="date-start-filter" type="date" onchange="reloadDashboard()" />
+              <input id="date-start-filter" type="date" onchange="onPeriodFilterChange()" />
               <span class="filters-field-separator">até</span>
-              <input id="date-end-filter" type="date" onchange="reloadDashboard()" />
+              <input id="date-end-filter" type="date" onchange="onPeriodFilterChange()" />
             </div>
           </div>
         </div>
@@ -510,21 +510,6 @@
         <div class="filters-group-card" id="filters-group-erp" style="display:none;">
           <div class="filters-group-title" style="color:var(--primary-cyan,#00BEFF);">Revenue (ERP)</div>
           <div class="filters-fields-row">
-            <div class="filters-field">
-              <span class="filters-field-label">Quarter Fiscal:</span>
-              <select id="erp-quarter-filter" onchange="loadErpData()">
-                <option value="" selected>Todos</option>
-                <option value="FY26-Q1,FY26-Q2,FY26-Q3,FY26-Q4">FY26 (Full Year)</option>
-                <option value="FY26-Q1">FY26-Q1 (Jan–Mar 2026)</option>
-                <option value="FY26-Q2">FY26-Q2 (Abr–Jun 2026)</option>
-                <option value="FY26-Q3">FY26-Q3 (Jul–Set 2026)</option>
-                <option value="FY26-Q4">FY26-Q4 (Out–Dez 2026)</option>
-                <option value="FY25-Q1">FY25-Q1 (Jan–Mar 2025)</option>
-                <option value="FY25-Q2">FY25-Q2 (Abr–Jun 2025)</option>
-                <option value="FY25-Q3">FY25-Q3 (Jul–Set 2025)</option>
-                <option value="FY25-Q4">FY25-Q4 (Out–Dez 2025)</option>
-              </select>
-            </div>
             <div class="filters-field">
               <span class="filters-field-label">Mensurável:</span>
               <select id="erp-squad-filter" onchange="loadErpData()">

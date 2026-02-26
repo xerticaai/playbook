@@ -206,13 +206,17 @@ function toggleErpSection(mode) {
   var erpSection   = document.getElementById('erp-kpi-section');
   var bookingWrap  = document.getElementById('booking-sections');
   var erpFilters   = document.getElementById('filters-group-erp');
+  var periodFilters = document.getElementById('filters-group-period');
   var filterCards  = document.querySelectorAll('#global-filters-panel .filters-group-card');
   if (erpSection)  erpSection.style.display  = isErp ? '' : 'none';
   if (bookingWrap) bookingWrap.style.display  = isErp ? 'none' : '';
   if (erpFilters)  erpFilters.style.display   = isErp ? '' : 'none';
+  if (periodFilters) periodFilters.style.display = '';
   if (filterCards && filterCards.length) {
     filterCards.forEach(function(card) {
-      if (card.id === 'filters-group-erp') {
+      if (card.id === 'filters-group-period') {
+        card.style.display = '';
+      } else if (card.id === 'filters-group-erp') {
         card.style.display = isErp ? '' : 'none';
       } else {
         card.style.display = isErp ? 'none' : '';
