@@ -141,6 +141,7 @@ function loadSheetData(sheetName) {
 const BQ_PROJECT = 'operaciones-br';
 const BQ_DATASET = 'sales_intelligence';
 const BQ_ENABLED = true; // Feature flag global
+const BQ_SYNC_FATURAMENTO_WEEK = false; // Q1_2026 fora deste fluxo
 
 // MAPEAMENTO REMOVIDO: Agora todas as colunas do Sheet são exportadas dinamicamente
 
@@ -190,6 +191,8 @@ function syncToBigQueryScheduled() {
     const lostRaw = loadSheetData('📉 Análise Perdidas');
     const atividadesRaw = prepareAtividadesData();
     const metaRaw = prepareMetaData();
+    const metaBdmRaw = prepareMetaBdmData();
+    const contasNomeadasRaw = prepareContasNomeadasData();
     
     console.log(`📊 Dados carregados do Sheet:`);
     console.log(`   • Pipeline: ${pipelinePrepared.length} deals`);
@@ -197,6 +200,8 @@ function syncToBigQueryScheduled() {
     console.log(`   • Lost: ${lostRaw.length} deals`);
     console.log(`   • Atividades: ${atividadesRaw.length} registros`);
     console.log(`   • Meta: ${metaRaw.length} registros`);
+    console.log(`   • Meta_BDM: ${metaBdmRaw.length} registros`);
+    console.log(`   • Contas_Nomeadas: ${contasNomeadasRaw.length} registros`);
     
     if (pipelinePrepared.length === 0 && wonRaw.length === 0 && lostRaw.length === 0) {
       throw new Error('Nenhum dado encontrado nas abas de análise');
@@ -242,6 +247,12 @@ function syncToBigQueryScheduled() {
 
     // Garantir tabela Meta no dataset antes da carga
     ensureMetaTableExists_();
+    ensureMetaBdmTableExists_();
+    ensureContasNomeadasTableExists_();
+
+    // Corrige drift de tipos em tabelas históricas (STRING -> DATE/TIMESTAMP) de forma idempotente.
+    // Isso evita parse/cast espalhado na API e mantém compatibilidade com valores já normalizados.
+    enforceCanonicalTypesBeforeSync_();
     
     // ETAPA 3: Carregar para BigQuery
     console.log('📤 Sincronizando com BigQuery (WRITE_TRUNCATE para evitar duplicação)...');
@@ -252,6 +263,9 @@ function syncToBigQueryScheduled() {
       'WRITE_TRUNCATE',
       '🎯 Análise Forecast IA'
     );
+
+    // Garantia final: após o WRITE_TRUNCATE, reforçar Data_Prevista como DATE no pipeline.
+    enforcePipelineDataPrevistaTypePostLoad_();
 
     const wonResult = loadToBigQuery(
       `${BQ_PROJECT}.${BQ_DATASET}.closed_deals_won`,
@@ -276,6 +290,18 @@ function syncToBigQueryScheduled() {
     const metaResult = loadToBigQuery(
       `${BQ_PROJECT}.${BQ_DATASET}.meta`,
       metaRaw,
+      'WRITE_TRUNCATE'
+    );
+
+    const metaBdmResult = loadToBigQuery(
+      `${BQ_PROJECT}.${BQ_DATASET}.meta_bdm`,
+      metaBdmRaw,
+      'WRITE_TRUNCATE'
+    );
+
+    const contasNomeadasResult = loadToBigQuery(
+      `${BQ_PROJECT}.${BQ_DATASET}.Contas_Nomeadas`,
+      contasNomeadasRaw,
       'WRITE_TRUNCATE'
     );
     
@@ -333,16 +359,20 @@ function syncToBigQueryScheduled() {
     // ETAPA 8: Carregar Faturamento_Week → tabela BQ: faturamento_semanal
     let faturamentoSemanalResult = { rowsInserted: 0, status: 'SKIPPED' };
     try {
-      ensureFaturamentoSemanalTableExists_();
-      const faturamentoSemanalData = prepareFaturamentoSemanalData();
-      if (faturamentoSemanalData.length > 0) {
-        faturamentoSemanalResult = loadToBigQuery(
-          `${BQ_PROJECT}.${BQ_DATASET}.faturamento_semanal`,
-          faturamentoSemanalData,
-          'WRITE_TRUNCATE'
-        );
+      if (BQ_SYNC_FATURAMENTO_WEEK) {
+        ensureFaturamentoSemanalTableExists_();
+        const faturamentoSemanalData = prepareFaturamentoSemanalData();
+        if (faturamentoSemanalData.length > 0) {
+          faturamentoSemanalResult = loadToBigQuery(
+            `${BQ_PROJECT}.${BQ_DATASET}.faturamento_semanal`,
+            faturamentoSemanalData,
+            'WRITE_TRUNCATE'
+          );
+        } else {
+          console.warn('⚠️ Aba Faturamento_Week vazia ou não encontrada — sync ignorado');
+        }
       } else {
-        console.warn('⚠️ Aba Faturamento_Week vazia ou não encontrada — sync ignorado');
+        console.log('ℹ️ Sync de Faturamento_Week desativado (Q1_2026 fora deste cenário).');
       }
     } catch (e) {
       console.warn('⚠️ Faturamento_Week não sincronizado:', e.message);
@@ -356,6 +386,8 @@ function syncToBigQueryScheduled() {
     console.log(`   • Closed Lost: ${lostResult.rowsInserted} linhas`);
     console.log(`   • Atividades: ${atividadesResult.rowsInserted} linhas`);
     console.log(`   • Meta: ${metaResult.rowsInserted} linhas`);
+    console.log(`   • Meta_BDM: ${metaBdmResult.rowsInserted} linhas`);
+    console.log(`   • Contas_Nomeadas: ${contasNomeadasResult.rowsInserted} linhas`);
     console.log(`   • Sales Specialist: ${salesSpecResult.rowsInserted} linhas`);
     console.log(`   • FATURAMENTO_2025: ${faturamentoResult.rowsInserted} linhas`);
     console.log(`   • FATURAMENTO_2026: ${faturamento2026Result.rowsInserted} linhas`);
@@ -374,6 +406,8 @@ function syncToBigQueryScheduled() {
       lostRows: lostResult.rowsInserted,
       atividadesRows: atividadesResult.rowsInserted,
       metaRows: metaResult.rowsInserted,
+      metaBdmRows: metaBdmResult.rowsInserted,
+      contasNomeadasRows: contasNomeadasResult.rowsInserted,
       salesSpecRows: salesSpecResult.rowsInserted,
       faturamentoRows: faturamentoResult.rowsInserted,
       faturamento2026Rows: faturamento2026Result.rowsInserted,
@@ -390,6 +424,204 @@ function syncToBigQueryScheduled() {
       error: error.message,
       stack: error.stack
     };
+  }
+}
+
+/**
+ * Configura (ou reconfigura) o trigger de tempo para o BigQuery Sync.
+ * Pode ser executada diretamente deste arquivo, sem depender do MenuOpen.gs.
+ * @param {boolean} runNow - Se true, executa uma sync imediatamente após criar o trigger.
+ * @returns {Object} Resumo da operação
+ */
+function configurarTriggerBigQuerySync_(runNow) {
+  const handlerName = 'syncToBigQueryScheduled';
+
+  // Remove triggers duplicados do mesmo handler para manter apenas 1 agendamento ativo.
+  const triggers = ScriptApp.getProjectTriggers();
+  let removed = 0;
+  triggers.forEach((trigger) => {
+    if (trigger.getHandlerFunction() === handlerName) {
+      ScriptApp.deleteTrigger(trigger);
+      removed++;
+    }
+  });
+
+  if (!BQ_ENABLED) {
+    console.warn('⚠️ Trigger não criado: BQ_ENABLED=false');
+    return {
+      success: false,
+      reason: 'BQ_DISABLED',
+      removed: removed,
+      created: false,
+      frequency: null
+    };
+  }
+
+  ScriptApp.newTrigger(handlerName)
+    .timeBased()
+    .everyHours(1)
+    .create();
+
+  console.log('✅ Trigger do BigQuery Sync configurado (a cada 1 hora)');
+
+  let runResult = null;
+  if (runNow) {
+    runResult = syncToBigQueryScheduled();
+  }
+
+  return {
+    success: true,
+    removed: removed,
+    created: true,
+    frequency: 'everyHours(1)',
+    runNow: !!runNow,
+    runResult: runResult
+  };
+}
+
+/**
+ * Aplica correções de tipo diretamente no schema das tabelas legadas.
+ * Idempotente: pode rodar em toda sync sem efeito colateral quando já estiver correto.
+ */
+function enforceCanonicalTypesBeforeSync_() {
+  const jobs = [
+    {
+      table: 'pipeline',
+      sql: `
+        CREATE OR REPLACE TABLE \`${BQ_PROJECT}.${BQ_DATASET}.pipeline\`
+        PARTITION BY DATE(data_carga)
+        AS
+        SELECT
+          * REPLACE (
+            COALESCE(
+              SAFE.PARSE_DATE('%Y-%m-%d', CAST(Data_Prevista AS STRING)),
+              SAFE.PARSE_DATE('%d/%m/%Y', CAST(Data_Prevista AS STRING)),
+              SAFE.PARSE_DATE('%d-%m-%Y', CAST(Data_Prevista AS STRING)),
+              SAFE.PARSE_DATE('%Y/%m/%d', CAST(Data_Prevista AS STRING))
+            ) AS Data_Prevista
+          )
+        FROM \`${BQ_PROJECT}.${BQ_DATASET}.pipeline\`
+      `
+    },
+    {
+      table: 'closed_deals_won',
+      sql: `
+        CREATE OR REPLACE TABLE \`${BQ_PROJECT}.${BQ_DATASET}.closed_deals_won\` AS
+        SELECT
+          * REPLACE (
+            COALESCE(
+              SAFE.PARSE_DATE('%Y-%m-%d', CAST(Data_Fechamento AS STRING)),
+              SAFE.PARSE_DATE('%d/%m/%Y', CAST(Data_Fechamento AS STRING)),
+              SAFE.PARSE_DATE('%d-%m-%Y', CAST(Data_Fechamento AS STRING)),
+              SAFE.PARSE_DATE('%Y/%m/%d', CAST(Data_Fechamento AS STRING))
+            ) AS Data_Fechamento
+          )
+        FROM \`${BQ_PROJECT}.${BQ_DATASET}.closed_deals_won\`
+      `
+    },
+    {
+      table: 'closed_deals_lost',
+      sql: `
+        CREATE OR REPLACE TABLE \`${BQ_PROJECT}.${BQ_DATASET}.closed_deals_lost\` AS
+        SELECT
+          * REPLACE (
+            COALESCE(
+              SAFE.PARSE_DATE('%Y-%m-%d', CAST(Data_Fechamento AS STRING)),
+              SAFE.PARSE_DATE('%d/%m/%Y', CAST(Data_Fechamento AS STRING)),
+              SAFE.PARSE_DATE('%d-%m-%Y', CAST(Data_Fechamento AS STRING)),
+              SAFE.PARSE_DATE('%Y/%m/%d', CAST(Data_Fechamento AS STRING))
+            ) AS Data_Fechamento
+          )
+        FROM \`${BQ_PROJECT}.${BQ_DATASET}.closed_deals_lost\`
+      `
+    },
+    {
+      table: 'atividades',
+      sql: `
+        CREATE OR REPLACE TABLE \`${BQ_PROJECT}.${BQ_DATASET}.atividades\` AS
+        SELECT
+          * REPLACE (
+            SAFE_CAST(Run_ID AS TIMESTAMP) AS Run_ID,
+            SAFE_CAST(data_carga AS TIMESTAMP) AS data_carga
+          )
+        FROM \`${BQ_PROJECT}.${BQ_DATASET}.atividades\`
+      `
+    }
+  ];
+
+  jobs.forEach((jobDef) => {
+    try {
+      runBigQueryQueryAndWait_(jobDef.sql, `Tipos canônicos (${jobDef.table})`, 120000);
+      console.log(`🧱 Tipos canônicos aplicados em ${jobDef.table}`);
+    } catch (e) {
+      console.warn(`⚠️ Não foi possível aplicar tipos canônicos em ${jobDef.table}: ${e.message}`);
+    }
+  });
+}
+
+/**
+ * Executa query no BigQuery e aguarda conclusão do job para evitar condição de corrida.
+ */
+function runBigQueryQueryAndWait_(sql, label, timeoutMs) {
+  const req = {
+    query: sql,
+    useLegacySql: false,
+    timeoutMs: timeoutMs || 120000
+  };
+
+  const initial = BigQuery.Jobs.query(req, BQ_PROJECT);
+  if (initial.jobComplete) return initial;
+
+  const jobRef = initial.jobReference || {};
+  const jobId = jobRef.jobId;
+  const location = jobRef.location;
+  if (!jobId) {
+    throw new Error(`Job não retornou jobId (${label || 'query'})`);
+  }
+
+  const startedAt = Date.now();
+  const maxWaitMs = timeoutMs || 120000;
+  while ((Date.now() - startedAt) < maxWaitMs) {
+    Utilities.sleep(1500);
+    const status = BigQuery.Jobs.get(BQ_PROJECT, jobId, location ? { location: location } : undefined);
+    const state = status && status.status && status.status.state;
+    if (state === 'DONE') {
+      if (status.status && status.status.errorResult) {
+        throw new Error(status.status.errorResult.message || `Falha no job ${jobId}`);
+      }
+      return status;
+    }
+  }
+
+  throw new Error(`Timeout aguardando job ${jobId} (${label || 'query'})`);
+}
+
+/**
+ * Reforça Data_Prevista como DATE após carga do pipeline.
+ * Evita regressão de tipo quando a tabela é truncada/recarregada.
+ */
+function enforcePipelineDataPrevistaTypePostLoad_() {
+  const sql = `
+    CREATE OR REPLACE TABLE \`${BQ_PROJECT}.${BQ_DATASET}.pipeline\`
+    PARTITION BY DATE(data_carga)
+    AS
+    SELECT
+      * REPLACE (
+        COALESCE(
+          SAFE.PARSE_DATE('%Y-%m-%d', CAST(Data_Prevista AS STRING)),
+          SAFE.PARSE_DATE('%d/%m/%Y', CAST(Data_Prevista AS STRING)),
+          SAFE.PARSE_DATE('%d-%m-%Y', CAST(Data_Prevista AS STRING)),
+          SAFE.PARSE_DATE('%Y/%m/%d', CAST(Data_Prevista AS STRING))
+        ) AS Data_Prevista
+      )
+    FROM \`${BQ_PROJECT}.${BQ_DATASET}.pipeline\`
+  `;
+
+  try {
+    runBigQueryQueryAndWait_(sql, 'Pipeline Data_Prevista post-load', 120000);
+    console.log('🧱 Pipeline pós-load: Data_Prevista reforçada como DATE');
+  } catch (e) {
+    console.warn(`⚠️ Não foi possível reforçar Data_Prevista no pipeline após carga: ${e.message}`);
   }
 }
 
@@ -757,6 +989,320 @@ function resolveMetaSheetName_() {
   return scored.length > 0 ? scored[0].raw : null;
 }
 
+function prepareMetaBdmData() {
+  const metaBdmSheetName = resolveMetaBdmSheetName_();
+  if (!metaBdmSheetName) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const available = ss.getSheets().map(s => s.getName()).join(', ');
+    console.warn(`⚠️ Aba Meta_BDM não encontrada. Abas disponíveis: ${available}`);
+    return [];
+  }
+
+  if (metaBdmSheetName !== 'Meta_BDM') {
+    console.log(`ℹ️ Aba Meta_BDM detectada automaticamente: "${metaBdmSheetName}"`);
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(metaBdmSheetName);
+  if (!sheet || sheet.getLastRow() <= 1) {
+    return [];
+  }
+
+  const matrix = sheet.getDataRange().getValues();
+  const headerRow = matrix[0] || [];
+  const dataRows = matrix.slice(1);
+
+  const normalizeKey = (value) => String(value || '')
+    .toLowerCase()
+    .trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+
+  const aliases = {
+    tipodemeta: 'Tipo_de_meta',
+    tipo_meta: 'Tipo_de_meta',
+    salesspecialist: 'Sales_Specialist',
+    sellerspecialist: 'Sales_Specialist',
+    bdm: 'BDM',
+    mesano: 'Mes_Ano',
+    monthyear: 'Mes_Ano',
+    netgerado: 'Net_gerado',
+    netfaturado: 'Net_faturado',
+    // Compatibilidade retroativa (layout anterior)
+    gross: 'Net_gerado',
+    net: 'Net_faturado',
+    periodofiscal: 'Periodo_Fiscal',
+    fiscalquarter: 'Periodo_Fiscal',
+    fiscalq: 'Periodo_Fiscal'
+  };
+
+  // Fallback operacional para manter consistência do owner de meta quando a coluna
+  // Sales Specialist vier vazia no Sheet após sync/migração.
+  const fallbackSpecialistByTipo = {
+    sales: 'Gabriele Oliveira',
+    cs: 'Emilio Goncalves'
+  };
+
+  const expectedByPosition = [
+    'Tipo_de_meta',
+    'BDM',
+    'Sales_Specialist',
+    'Mes_Ano',
+    'Net_gerado',
+    'Net_faturado',
+    'Periodo_Fiscal'
+  ];
+
+  const padMesAno_ = (val) => {
+    if (val === null || val === undefined || val === '') return null;
+
+    if (val instanceof Date) {
+      const mes = String(val.getMonth() + 1).padStart(2, '0');
+      const ano = val.getFullYear();
+      return `${mes}/${ano}`;
+    }
+
+    if (typeof val === 'number' && isFinite(val) && val >= 20000 && val <= 80000) {
+      const serialDate = new Date(1899, 11, 30);
+      serialDate.setDate(serialDate.getDate() + Math.floor(val) + 1);
+      const mes = String(serialDate.getMonth() + 1).padStart(2, '0');
+      const ano = serialDate.getFullYear();
+      return `${mes}/${ano}`;
+    }
+
+    const str = String(val).trim();
+    const m = str.match(/^(\d{1,2})\/(\d{4})$/);
+    if (!m) return str;
+    const mes = String(parseInt(m[1], 10)).padStart(2, '0');
+    return `${mes}/${m[2]}`;
+  };
+
+  const isLikelyPersonName_ = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return false;
+    if (/^FY\d{2}-Q\d$/i.test(raw)) return false;
+    if (/^\d{1,2}\/\d{4}$/.test(raw)) return false;
+    if (/^[\d\s$.,-]+$/.test(raw)) return false;
+    return raw.length >= 3;
+  };
+
+  const mappedRows = dataRows.map((rawRow) => {
+    const mapped = {
+      Tipo_de_meta: null,
+      Sales_Specialist: null,
+      BDM: null,
+      Mes_Ano: null,
+      Net_gerado: null,
+      Net_faturado: null,
+      Periodo_Fiscal: null
+    };
+
+    headerRow.forEach((sourceHeader, idx) => {
+      const sourceVal = rawRow[idx];
+      if (sourceVal === null || sourceVal === undefined || sourceVal === '') return;
+
+      const norm = normalizeKey(sourceHeader);
+      const normBase = norm.replace(/[0-9]+$/, '');
+      let target = aliases[norm] || aliases[normBase] || null;
+
+      if (!target && idx < expectedByPosition.length) {
+        // Fallback posicional para proteger contra headers quebrados/duplicados na planilha.
+        target = expectedByPosition[idx];
+      }
+
+      if (!target) return;
+
+      if (target === 'Net_gerado' || target === 'Net_faturado') {
+        const parsed = parseNumberForBQ(sourceVal);
+        if (parsed !== null) mapped[target] = parsed;
+      } else if (target === 'Mes_Ano') {
+        const mesAno = padMesAno_(sourceVal);
+        if (mesAno) mapped[target] = mesAno;
+      } else {
+        const value = String(sourceVal).trim();
+        if (!value) return;
+        // Evita sobrescrever um valor válido por colisão de header duplicado.
+        if (!mapped[target]) mapped[target] = value;
+      }
+    });
+
+    // Resgate posicional defensivo (layout esperado: Tipo | BDM | SS | Mes | NetG | NetF | Fiscal).
+    if (!mapped.BDM && isLikelyPersonName_(rawRow[1])) {
+      mapped.BDM = String(rawRow[1]).trim();
+    }
+    if (!mapped.Sales_Specialist && isLikelyPersonName_(rawRow[2])) {
+      const ssCandidate = String(rawRow[2]).trim();
+      if (!mapped.BDM || ssCandidate.toLowerCase() !== String(mapped.BDM).toLowerCase()) {
+        mapped.Sales_Specialist = ssCandidate;
+      }
+    }
+
+    // Fallback por tipo quando a coluna Sales Specialist continuar vazia.
+    if (!mapped.Sales_Specialist) {
+      const tipoKey = String(mapped.Tipo_de_meta || '').trim().toLowerCase();
+      if (fallbackSpecialistByTipo[tipoKey]) {
+        mapped.Sales_Specialist = fallbackSpecialistByTipo[tipoKey];
+      }
+    }
+
+    return mapped;
+  }).filter((row) => {
+    return !!(
+      row.Tipo_de_meta ||
+      row.Sales_Specialist ||
+      row.BDM ||
+      row.Mes_Ano ||
+      row.Net_gerado !== null ||
+      row.Net_faturado !== null ||
+      row.Periodo_Fiscal
+    );
+  });
+
+  const ssFilled = mappedRows.reduce((acc, row) => acc + (row.Sales_Specialist ? 1 : 0), 0);
+  const bdmFilled = mappedRows.reduce((acc, row) => acc + (row.BDM ? 1 : 0), 0);
+  const ssFallbackApplied = mappedRows.reduce((acc, row) => {
+    if (!row.Sales_Specialist) return acc;
+    const tipoKey = String(row.Tipo_de_meta || '').trim().toLowerCase();
+    const fallback = fallbackSpecialistByTipo[tipoKey] || '';
+    return row.Sales_Specialist === fallback ? acc + 1 : acc;
+  }, 0);
+  console.log(`📊 Meta_BDM mapeada para schema BQ: ${mappedRows.length}/${dataRows.length} registros válidos`);
+  console.log(`   • BDM preenchido: ${bdmFilled}`);
+  console.log(`   • Sales_Specialist preenchido: ${ssFilled}`);
+  console.log(`   • Sales_Specialist via fallback: ${ssFallbackApplied}`);
+  return mappedRows;
+}
+
+function resolveMetaBdmSheetName_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheets = ss.getSheets().map(s => s.getName());
+
+  const preferredNames = [
+    'Meta_BDM',
+    'META_BDM',
+    'Meta BDM',
+    'MetaBDM',
+    'Metas_BDM'
+  ];
+
+  for (let i = 0; i < preferredNames.length; i++) {
+    const candidate = preferredNames[i];
+    if (sheets.indexOf(candidate) > -1) return candidate;
+  }
+
+  const normalize = (value) => String(value || '')
+    .toLowerCase()
+    .trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u{1F300}-\u{1FAFF}]/gu, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const scored = sheets
+    .map((name) => ({ raw: name, norm: normalize(name) }))
+    .filter((item) => item.norm.indexOf('meta') > -1 && item.norm.indexOf('bdm') > -1)
+    .sort((a, b) => a.norm.length - b.norm.length);
+
+  return scored.length > 0 ? scored[0].raw : null;
+}
+
+function resolveContasNomeadasSheetName_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheets = ss.getSheets().map(s => s.getName());
+
+  const preferredNames = [
+    'Contas_Nomeadas',
+    'Contas Nomeadas',
+    'Contas nomeadas',
+    'CONTAS_NOMEADAS'
+  ];
+
+  for (let i = 0; i < preferredNames.length; i++) {
+    const candidate = preferredNames[i];
+    if (sheets.indexOf(candidate) > -1) return candidate;
+  }
+
+  const normalize = (value) => String(value || '')
+    .toLowerCase()
+    .trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u{1F300}-\u{1FAFF}]/gu, '')
+    .replace(/[^a-z0-9\s_]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const scored = sheets
+    .map((name) => ({ raw: name, norm: normalize(name) }))
+    .filter((item) => item.norm.indexOf('contas') > -1 && item.norm.indexOf('nomeadas') > -1)
+    .sort((a, b) => a.norm.length - b.norm.length);
+
+  return scored.length > 0 ? scored[0].raw : null;
+}
+
+function prepareContasNomeadasData() {
+  const sheetName = resolveContasNomeadasSheetName_();
+  if (!sheetName) {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const available = ss.getSheets().map(s => s.getName()).join(', ');
+    console.warn(`⚠️ Aba Contas_Nomeadas não encontrada. Abas disponíveis: ${available}`);
+    return [];
+  }
+
+  if (sheetName !== 'Contas_Nomeadas') {
+    console.log(`ℹ️ Aba Contas_Nomeadas detectada automaticamente: "${sheetName}"`);
+  }
+
+  const rawRows = loadSheetData(sheetName);
+  if (!rawRows || rawRows.length === 0) {
+    return [];
+  }
+
+  const normalizeKey = (value) => String(value || '')
+    .toLowerCase()
+    .trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+
+  const aliases = {
+    nomedaconta: 'Nome_da_Conta',
+    nomeconta: 'Nome_da_Conta',
+    conta: 'Nome_da_Conta',
+    accountname: 'Nome_da_Conta',
+    segmento: 'Segmento',
+    comercial: 'Comercial',
+    owner: 'Comercial',
+    responsavel: 'Comercial',
+    tipo: 'Tipo'
+  };
+
+  const mappedRows = rawRows.map((row) => {
+    const mapped = {
+      Nome_da_Conta: null,
+      Segmento: null,
+      Comercial: null,
+      Tipo: null
+    };
+
+    Object.keys(row || {}).forEach((sourceKey) => {
+      const sourceVal = row[sourceKey];
+      if (sourceVal === null || sourceVal === undefined || sourceVal === '') return;
+
+      const target = aliases[normalizeKey(sourceKey)] || null;
+      if (!target) return;
+
+      mapped[target] = String(sourceVal).trim();
+    });
+
+    return mapped;
+  }).filter((row) => {
+    return !!(row.Nome_da_Conta || row.Segmento || row.Comercial || row.Tipo);
+  });
+
+  console.log(`📊 Contas_Nomeadas mapeada para schema BQ: ${mappedRows.length}/${rawRows.length} registros válidos`);
+  return mappedRows;
+}
+
 function ensureMetaTableExists_() {
   const tableName = 'meta';
   try {
@@ -796,6 +1342,133 @@ function ensureMetaTableExists_() {
 
   BigQuery.Tables.insert(tableResource, BQ_PROJECT, BQ_DATASET);
   console.log('✅ Tabela meta criada em BigQuery');
+}
+
+function ensureMetaBdmTableExists_() {
+  const tableName = 'meta_bdm';
+
+  const schemaFields = [
+    { name: 'Tipo_de_meta', type: 'STRING', mode: 'NULLABLE' },
+    { name: 'Sales_Specialist', type: 'STRING', mode: 'NULLABLE' },
+    { name: 'BDM', type: 'STRING', mode: 'NULLABLE' },
+    { name: 'Mes_Ano', type: 'STRING', mode: 'NULLABLE' },
+    { name: 'Net_gerado', type: 'FLOAT', mode: 'NULLABLE' },
+    { name: 'Net_faturado', type: 'FLOAT', mode: 'NULLABLE' },
+    { name: 'Periodo_Fiscal', type: 'STRING', mode: 'NULLABLE' },
+    { name: 'Run_ID', type: 'TIMESTAMP', mode: 'NULLABLE' },
+    { name: 'data_carga', type: 'TIMESTAMP', mode: 'NULLABLE' }
+  ];
+
+  let tableExists = false;
+  let existingFields = [];
+  try {
+    const existingTable = BigQuery.Tables.get(BQ_PROJECT, BQ_DATASET, tableName);
+    tableExists = true;
+    existingFields = (existingTable.schema && existingTable.schema.fields) || [];
+  } catch (e) {
+    const msg = String((e && e.message) || e || '');
+    if (msg.indexOf('Not found') === -1 && msg.indexOf('404') === -1) {
+      console.warn(`⚠️ Falha ao verificar tabela ${tableName}: ${msg}`);
+      return;
+    }
+  }
+
+  if (!tableExists) {
+    const tableResource = {
+      tableReference: {
+        projectId: BQ_PROJECT,
+        datasetId: BQ_DATASET,
+        tableId: tableName
+      },
+      description: 'Metas BDM mensais sincronizadas da aba Meta_BDM do Google Sheets',
+      timePartitioning: {
+        type: 'DAY',
+        field: 'data_carga'
+      },
+      schema: {
+        fields: schemaFields
+      }
+    };
+
+    BigQuery.Tables.insert(tableResource, BQ_PROJECT, BQ_DATASET);
+    console.log('✅ Tabela meta_bdm criada em BigQuery');
+    return;
+  }
+
+  const existingNames = new Set(existingFields.map(f => String(f.name || '').trim()));
+  const missing = schemaFields.filter(f => !existingNames.has(f.name));
+  if (missing.length === 0) return;
+
+  BigQuery.Tables.patch(
+    { schema: { fields: existingFields.concat(missing) } },
+    BQ_PROJECT,
+    BQ_DATASET,
+    tableName
+  );
+
+  console.log(`🧩 ${tableName}: ${missing.length} coluna(s) adicionada(s) — ${missing.map(f => f.name).join(', ')}`);
+}
+
+function ensureContasNomeadasTableExists_() {
+  const tableName = 'Contas_Nomeadas';
+
+  const schemaFields = [
+    { name: 'Nome_da_Conta', type: 'STRING', mode: 'NULLABLE' },
+    { name: 'Segmento', type: 'STRING', mode: 'NULLABLE' },
+    { name: 'Comercial', type: 'STRING', mode: 'NULLABLE' },
+    { name: 'Tipo', type: 'STRING', mode: 'NULLABLE' },
+    { name: 'Run_ID', type: 'TIMESTAMP', mode: 'NULLABLE' },
+    { name: 'data_carga', type: 'TIMESTAMP', mode: 'NULLABLE' }
+  ];
+
+  let tableExists = false;
+  let existingFields = [];
+  try {
+    const existingTable = BigQuery.Tables.get(BQ_PROJECT, BQ_DATASET, tableName);
+    tableExists = true;
+    existingFields = (existingTable.schema && existingTable.schema.fields) || [];
+  } catch (e) {
+    const msg = String((e && e.message) || e || '');
+    if (msg.indexOf('Not found') === -1 && msg.indexOf('404') === -1) {
+      console.warn(`⚠️ Falha ao verificar tabela ${tableName}: ${msg}`);
+      return;
+    }
+  }
+
+  if (!tableExists) {
+    const tableResource = {
+      tableReference: {
+        projectId: BQ_PROJECT,
+        datasetId: BQ_DATASET,
+        tableId: tableName
+      },
+      description: 'Contas nomeadas sincronizadas da aba Contas_Nomeadas do Google Sheets',
+      timePartitioning: {
+        type: 'DAY',
+        field: 'data_carga'
+      },
+      schema: {
+        fields: schemaFields
+      }
+    };
+
+    BigQuery.Tables.insert(tableResource, BQ_PROJECT, BQ_DATASET);
+    console.log('✅ Tabela Contas_Nomeadas criada em BigQuery');
+    return;
+  }
+
+  const existingNames = new Set(existingFields.map(f => String(f.name || '').trim()));
+  const missing = schemaFields.filter(f => !existingNames.has(f.name));
+  if (missing.length === 0) return;
+
+  BigQuery.Tables.patch(
+    { schema: { fields: existingFields.concat(missing) } },
+    BQ_PROJECT,
+    BQ_DATASET,
+    tableName
+  );
+
+  console.log(`🧩 ${tableName}: ${missing.length} coluna(s) adicionada(s) — ${missing.map(f => f.name).join(', ')}`);
 }
 
 // ==================== LOADER BIGQUERY ====================
@@ -1797,17 +2470,32 @@ function parseNumberForBQ(val) {
   
   const lastComma = cleaned.lastIndexOf(',');
   const lastDot = cleaned.lastIndexOf('.');
-  
-  // Define separador decimal pelo ultimo separador encontrado
+
+  const decideSingleSeparator_ = (text, sep) => {
+    const parts = text.split(sep);
+    if (parts.length <= 1) return null;
+    const tail = parts[parts.length - 1];
+
+    // Ex.: 5.3332, 12,3456 -> decimal válido (3+ casas)
+    if (/^\d{1,6}$/.test(tail) && tail.length !== 3) return sep;
+
+    // Ex.: 1.234.567 -> milhares (sem decimal)
+    const headParts = parts.slice(1);
+    const allThousandsGroups = headParts.every((p) => /^\d{3}$/.test(p));
+    if (allThousandsGroups) return null;
+
+    // Caso ambíguo (ex.: 12.345), assume milhar
+    return null;
+  };
+
+  // Define separador decimal pelo último separador encontrado
   let decimalSep = null;
   if (lastComma > -1 && lastDot > -1) {
     decimalSep = lastComma > lastDot ? ',' : '.';
   } else if (lastComma > -1) {
-    // Se houver apenas virgula, assume decimal se houver 1-2 casas
-    decimalSep = /,\d{1,2}$/.test(cleaned) ? ',' : null;
+    decimalSep = decideSingleSeparator_(cleaned, ',');
   } else if (lastDot > -1) {
-    // Se houver apenas ponto, assume decimal se houver 1-2 casas
-    decimalSep = /\.\d{1,2}$/.test(cleaned) ? '.' : null;
+    decimalSep = decideSingleSeparator_(cleaned, '.');
   }
   
   if (decimalSep === ',') {

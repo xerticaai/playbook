@@ -1,5 +1,17 @@
 {
   "projects": {
     "default": "operaciones-br"
+  },
+  "targets": {
+    "operaciones-br": {
+      "hosting": {
+        "xgtm": [
+          "x-gtm"
+        ],
+        "xsales": [
+          "x-sales"
+        ]
+      }
+    }
   }
 }

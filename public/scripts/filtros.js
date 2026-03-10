@@ -20,6 +20,7 @@ function reloadDashboard() {
 }
 
 const GLOBAL_FILTERS_COLLAPSE_KEY = 'global_filters_collapsed';
+const GLOBAL_FILTER_GROUPS_COLLAPSE_KEY = 'global_filter_groups_collapsed';
 const ADVANCED_MULTI_FILTER_IDS = [
   'fase-atual-filter',
   'tipo-oportunidade-filter',
@@ -32,7 +33,13 @@ const ADVANCED_MULTI_FILTER_IDS = [
   'sub-sub-vertical-ia-filter',
   'subsegmento-mercado-filter',
   'segmento-consolidado-filter',
-  'portfolio-fdm-filter'
+  'portfolio-filter',
+  'portfolio-fdm-filter',
+  'perfil-cliente-filter',
+  'status-gtm-filter',
+  'status-cliente-filter',
+  'sales-specialist-envolvido-filter',
+  'elegibilidade-ss-filter'
 ];
 
 function escapeHtmlText(value) {
@@ -57,9 +64,114 @@ function getAdvancedFilterLabel(selectId) {
     'sub-sub-vertical-ia-filter': 'Sub-subvertical IA',
     'subsegmento-mercado-filter': 'Subsegmento',
     'segmento-consolidado-filter': 'Segmento de Mercado',
-    'portfolio-fdm-filter': 'Portfólio FDM'
+    'portfolio-filter': 'Portfólio',
+    'portfolio-fdm-filter': 'Portfólio FDM',
+    'perfil-cliente-filter': 'Perfil Cliente',
+    'status-gtm-filter': 'Status GTM',
+    'status-cliente-filter': 'Status do Cliente',
+    'sales-specialist-envolvido-filter': 'Sales Specialist Envolvido',
+    'elegibilidade-ss-filter': 'Elegibilidade SS'
   };
   return map[selectId] || selectId;
+}
+
+function getFilterGroupKey(cardEl, titleEl) {
+  const explicit = cardEl?.dataset?.filterGroup;
+  if (explicit) return explicit;
+  const raw = String(titleEl?.textContent || '').trim().toLowerCase();
+  return raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function setFilterGroupCollapsed(cardEl, toggleBtn, collapsed) {
+  if (!cardEl || !toggleBtn) return;
+  cardEl.classList.toggle('group-collapsed', !!collapsed);
+  toggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  toggleBtn.classList.toggle('collapsed', !!collapsed);
+}
+
+function loadFilterGroupsCollapsedState() {
+  try {
+    const raw = localStorage.getItem(GLOBAL_FILTER_GROUPS_COLLAPSE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return (parsed && typeof parsed === 'object') ? parsed : {};
+  } catch (_e) {
+    return {};
+  }
+}
+
+function saveFilterGroupsCollapsedState(state) {
+  try {
+    localStorage.setItem(GLOBAL_FILTER_GROUPS_COLLAPSE_KEY, JSON.stringify(state || {}));
+  } catch (_e) {
+    // no-op
+  }
+}
+
+function initFilterGroupCollapsibles() {
+  const cards = document.querySelectorAll('#global-filters-panel .filters-group-card');
+  if (!cards.length) return;
+
+  const savedState = loadFilterGroupsCollapsedState();
+  const nextState = { ...savedState };
+
+  cards.forEach((cardEl) => {
+    if (cardEl.dataset.groupInit === '1') return;
+
+    const titleEl = cardEl.querySelector('.filters-group-title');
+    if (!titleEl) return;
+
+    const fieldsRow = cardEl.querySelector('.filters-fields-row');
+    if (!fieldsRow) return;
+
+    const label = String(titleEl.textContent || '').trim() || 'Categoria';
+    const groupKey = getFilterGroupKey(cardEl, titleEl);
+    const defaultCollapsed = groupKey === 'governanca';
+    const collapsed = Object.prototype.hasOwnProperty.call(savedState, groupKey)
+      ? !!savedState[groupKey]
+      : defaultCollapsed;
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'filters-group-toggle-btn';
+    toggleBtn.setAttribute('aria-label', `Expandir ou recolher ${label}`);
+    toggleBtn.innerHTML = `<span>${escapeHtmlText(label)}</span><span class="filters-group-toggle-chevron" aria-hidden="true">▼</span>`;
+
+    titleEl.textContent = '';
+    titleEl.appendChild(toggleBtn);
+
+    setFilterGroupCollapsed(cardEl, toggleBtn, collapsed);
+    nextState[groupKey] = collapsed;
+
+    const toggleGroup = () => {
+      const isCollapsed = cardEl.classList.contains('group-collapsed');
+      const nextCollapsed = !isCollapsed;
+      setFilterGroupCollapsed(cardEl, toggleBtn, nextCollapsed);
+      nextState[groupKey] = nextCollapsed;
+      saveFilterGroupsCollapsedState(nextState);
+    };
+
+    toggleBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleGroup();
+    });
+
+    // Garantia extra: clicar em qualquer ponto do cabeçalho da categoria alterna expandir/recolher.
+    titleEl.style.cursor = 'pointer';
+    titleEl.addEventListener('click', (event) => {
+      if (event.target === toggleBtn || toggleBtn.contains(event.target)) return;
+      event.preventDefault();
+      toggleGroup();
+    });
+
+    cardEl.dataset.groupInit = '1';
+  });
+
+  saveFilterGroupsCollapsedState(nextState);
 }
 
 function ensureAdvancedSelectionsState() {
@@ -92,6 +204,17 @@ function initAdvancedMultiSelects() {
         <span id="${selectId}-selected-text">Todos</span>
       </div>
       <div class="multi-select-dropdown" id="${selectId}-dropdown">
+        <div class="multi-select-search-wrap">
+          <input
+            type="text"
+            class="multi-select-search"
+            id="${selectId}-search"
+            placeholder="Buscar..."
+            autocomplete="off"
+            oninput="filterGenericFilterOptions('${selectId}', this.value)"
+            onclick="event.stopPropagation()"
+          />
+        </div>
         <div class="multi-select-group" id="${selectId}-options-group">
           <div class="multi-select-group-title">${escapeHtmlText(getAdvancedFilterLabel(selectId))}</div>
         </div>
@@ -114,8 +237,24 @@ function toggleGenericFilterDropdown(selectId) {
   const dropdown = document.getElementById(`${selectId}-dropdown`);
   if (!container || !trigger || !dropdown) return;
 
+  const isOpening = !trigger.classList.contains('open');
   trigger.classList.toggle('open');
   dropdown.classList.toggle('open');
+
+  if (isOpening) {
+    // Foca no campo de busca ao abrir
+    setTimeout(() => {
+      const searchInput = document.getElementById(`${selectId}-search`);
+      if (searchInput) searchInput.focus();
+    }, 50);
+  } else {
+    // Limpa busca ao fechar
+    const searchInput = document.getElementById(`${selectId}-search`);
+    if (searchInput) {
+      searchInput.value = '';
+      filterGenericFilterOptions(selectId, '');
+    }
+  }
 }
 
 function updateGenericFilterTriggerText(selectId) {
@@ -130,12 +269,31 @@ function updateGenericFilterTriggerText(selectId) {
     target.textContent = `Todos (${label})`;
     target.style.color = '#ffffff';
   } else if (selections.length === 1) {
-    target.textContent = selections[0];
+    target.textContent = formatFriendlyFilterValue(selectId, selections[0]);
     target.style.color = 'var(--primary-cyan)';
   } else {
     target.textContent = `${selections.length} selecionados`;
     target.style.color = 'var(--primary-cyan)';
   }
+}
+
+function formatFriendlyFilterValue(selectId, rawValue) {
+  const value = String(rawValue || '').trim();
+  if (!value) return '';
+
+  if (selectId === 'sales-specialist-envolvido-filter') {
+    const lowered = value.toLowerCase();
+    if (['sim', 'yes', 'true', '1', 'y'].includes(lowered)) return 'Com SS';
+    if (['nao', 'não', 'no', 'false', '0', 'n'].includes(lowered)) return 'Sem SS';
+  }
+
+  if (selectId === 'status-cliente-filter') {
+    const lowered = value.toLowerCase();
+    if (lowered === 'nao_iniciado') return 'Não iniciado';
+    if (lowered === 'em_andamento') return 'Em andamento';
+  }
+
+  return value.replace(/_/g, ' ');
 }
 
 function syncHiddenSelectWithSelections(selectId, options) {
@@ -193,11 +351,12 @@ function renderGenericFilterOptions(selectId, options) {
   const items = normalizedOptions.map(item => {
     const checked = selectedSet.has(item.value) ? 'checked' : '';
     const safeValue = escapeHtmlText(item.value);
+    const safeLabel = escapeHtmlText(formatFriendlyFilterValue(selectId, item.value));
     return `
       <div class="multi-select-option">
         <input type="checkbox" id="${selectId}-${safeValue}" value="${safeValue}" ${checked} onchange="onGenericFilterChange('${selectId}')" />
         <label for="${selectId}-${safeValue}">
-          <span>${safeValue}</span>
+          <span>${safeLabel}</span>
           <span class="multi-select-option-badge">${item.count || 0}</span>
         </label>
       </div>
@@ -233,6 +392,40 @@ function clearGenericFilterOptions(selectId) {
   onGenericFilterChange(selectId);
 }
 
+/**
+ * Filtra as opções visíveis do dropdown baseado no texto digitado no campo de busca.
+ * Não altera as seleções — apenas oculta/mostra itens.
+ */
+function filterGenericFilterOptions(selectId, query) {
+  const group = document.getElementById(`${selectId}-options-group`);
+  if (!group) return;
+
+  const q = String(query || '').trim().toLowerCase();
+  const options = group.querySelectorAll('.multi-select-option');
+  let visibleCount = 0;
+
+  options.forEach(opt => {
+    const label = opt.querySelector('label span')?.textContent?.toLowerCase() || '';
+    const matches = !q || label.includes(q);
+    opt.style.display = matches ? '' : 'none';
+    if (matches) visibleCount++;
+  });
+
+  // Mostra mensagem "sem resultados" se necessário
+  let noResultsEl = group.querySelector('.multi-select-no-results');
+  if (visibleCount === 0 && q) {
+    if (!noResultsEl) {
+      noResultsEl = document.createElement('div');
+      noResultsEl.className = 'multi-select-no-results';
+      noResultsEl.textContent = 'Nenhum resultado';
+      group.appendChild(noResultsEl);
+    }
+    noResultsEl.style.display = '';
+  } else if (noResultsEl) {
+    noResultsEl.style.display = 'none';
+  }
+}
+
 function countActiveGlobalFilters() {
   const mode = window.execDisplayMode || 'booking_gross';
   const isErp = (mode === 'gross' || mode === 'net');
@@ -243,9 +436,11 @@ function countActiveGlobalFilters() {
     if (document.getElementById('quarter-filter')?.value)       total++;
     if (document.getElementById('month-filter')?.value)         total++;
     if (document.getElementById('date-start-filter')?.value || document.getElementById('date-end-filter')?.value) total++;
-    if (document.getElementById('erp-squad-filter')?.value)     total++;
-    if (document.getElementById('erp-portfolio-filter')?.value) total++;
-    if (document.getElementById('erp-payment-status-filter')?.value) total++;
+    if ((document.getElementById('erp-portfolio-filter')?.selectedOptions || []).length > 0) total++;
+    if ((document.getElementById('erp-payment-status-filter')?.selectedOptions || []).length > 0) total++;
+    if ((document.getElementById('erp-product-filter')?.selectedOptions || []).length > 0) total++;
+    if ((document.getElementById('erp-opportunity-type-line-filter')?.selectedOptions || []).length > 0) total++;
+    if ((document.getElementById('erp-segment-filter')?.selectedOptions || []).length > 0) total++;
     return total;
   }
 
@@ -387,6 +582,8 @@ function initGlobalFiltersPanel() {
   const panel = document.getElementById('global-filters-panel');
   if (!panel) return;
 
+  initFilterGroupCollapsibles();
+
   let collapsed = true;
   try {
     const saved = localStorage.getItem(GLOBAL_FILTERS_COLLAPSE_KEY);
@@ -450,15 +647,19 @@ function applyQuickFilter(year, quarter) {
   const yearFilter = document.getElementById('year-filter');
   const quarterFilter = document.getElementById('quarter-filter');
   const monthFilter = document.getElementById('month-filter');
+  const dateStartFilter = document.getElementById('date-start-filter');
+  const dateEndFilter = document.getElementById('date-end-filter');
   
   // Define valores
   if (yearFilter) yearFilter.value = year;
   if (quarterFilter) quarterFilter.value = quarter;
   if (monthFilter) monthFilter.value = '';
+  if (dateStartFilter) dateStartFilter.value = '';
+  if (dateEndFilter) dateEndFilter.value = '';
 
   syncQuickFilterPillState();
   
-  log(`[QUICK FILTER] Aplicando: Year=${year}, Quarter=${quarter}`);
+  log(`[QUICK FILTER] Aplicando: Year=${year}, Quarter=${quarter}, DateRange=limpo`);
   if (isErp) {
     if (typeof loadErpData === 'function') loadErpData();
   } else {
@@ -486,12 +687,20 @@ function clearAllFilters() {
   const subSubVerticalIaFilter = document.getElementById('sub-sub-vertical-ia-filter');
   const subsegmentoMercadoFilter = document.getElementById('subsegmento-mercado-filter');
   const segmentoConsolidadoFilter = document.getElementById('segmento-consolidado-filter');
+  const portfolioFilter = document.getElementById('portfolio-filter');
   const portfolioFdmFilter = document.getElementById('portfolio-fdm-filter');
+  const perfilClienteFilter = document.getElementById('perfil-cliente-filter');
   const tipoOportunidadeFilter = document.getElementById('tipo-oportunidade-filter');
   const processoFilter = document.getElementById('processo-filter');
-  const erpSquadFilter = document.getElementById('erp-squad-filter');
+  const statusGtmFilter = document.getElementById('status-gtm-filter');
+  const statusClienteFilter = document.getElementById('status-cliente-filter');
+  const salesSpecialistEnvolvidoFilter = document.getElementById('sales-specialist-envolvido-filter');
+  const elegibilidadeSsFilter = document.getElementById('elegibilidade-ss-filter');
   const erpPortfolioFilter = document.getElementById('erp-portfolio-filter');
   const erpPaymentStatusFilter = document.getElementById('erp-payment-status-filter');
+  const erpProductFilter = document.getElementById('erp-product-filter');
+  const erpOpportunityTypeLineFilter = document.getElementById('erp-opportunity-type-line-filter');
+  const erpSegmentFilter = document.getElementById('erp-segment-filter');
   
   if (yearFilter) yearFilter.value = '';
   if (quarterFilter) quarterFilter.value = '';
@@ -508,12 +717,23 @@ function clearAllFilters() {
   if (subSubVerticalIaFilter) subSubVerticalIaFilter.value = '';
   if (subsegmentoMercadoFilter) subsegmentoMercadoFilter.value = '';
   if (segmentoConsolidadoFilter) segmentoConsolidadoFilter.value = '';
+  if (portfolioFilter) portfolioFilter.value = '';
   if (portfolioFdmFilter) portfolioFdmFilter.value = '';
+  if (perfilClienteFilter) perfilClienteFilter.value = '';
   if (tipoOportunidadeFilter) tipoOportunidadeFilter.value = '';
   if (processoFilter) processoFilter.value = '';
-  if (erpSquadFilter) erpSquadFilter.value = '';
-  if (erpPortfolioFilter) erpPortfolioFilter.value = '';
-  if (erpPaymentStatusFilter) erpPaymentStatusFilter.value = '';
+  if (statusGtmFilter) statusGtmFilter.value = '';
+  if (statusClienteFilter) statusClienteFilter.value = '';
+  if (salesSpecialistEnvolvidoFilter) salesSpecialistEnvolvidoFilter.value = '';
+  if (elegibilidadeSsFilter) elegibilidadeSsFilter.value = '';
+  if (erpPortfolioFilter) Array.from(erpPortfolioFilter.options || []).forEach((opt) => { opt.selected = false; });
+  if (erpPaymentStatusFilter) Array.from(erpPaymentStatusFilter.options || []).forEach((opt) => { opt.selected = false; });
+  if (erpProductFilter) Array.from(erpProductFilter.options || []).forEach((opt) => { opt.selected = false; });
+  if (erpOpportunityTypeLineFilter) Array.from(erpOpportunityTypeLineFilter.options || []).forEach((opt) => { opt.selected = false; });
+  if (erpSegmentFilter) Array.from(erpSegmentFilter.options || []).forEach((opt) => { opt.selected = false; });
+  if (typeof window.resetErpFilterSelections === 'function') {
+    window.resetErpFilterSelections();
+  }
   ensureAdvancedSelectionsState();
   ADVANCED_MULTI_FILTER_IDS.forEach(id => {
     window.advancedFilterSelections[id] = [];
@@ -547,7 +767,13 @@ function getAdvancedFiltersFromUI() {
     sub_sub_vertical_ia: valueFrom('sub-sub-vertical-ia-filter'),
     subsegmento_mercado: valueFrom('subsegmento-mercado-filter'),
     segmento_consolidado: valueFrom('segmento-consolidado-filter'),
-    portfolio_fdm: valueFrom('portfolio-fdm-filter')
+    portfolio: valueFrom('portfolio-filter'),
+    portfolio_fdm: valueFrom('portfolio-fdm-filter'),
+    perfil_cliente: valueFrom('perfil-cliente-filter'),
+    status_gtm: valueFrom('status-gtm-filter'),
+    status_cliente: valueFrom('status-cliente-filter'),
+    sales_specialist_envolvido: valueFrom('sales-specialist-envolvido-filter'),
+    elegibilidade_ss: valueFrom('elegibilidade-ss-filter')
   };
 }
 
@@ -605,7 +831,13 @@ async function loadAdvancedFilterOptions() {
     renderGenericFilterOptions('sub-sub-vertical-ia-filter', data.sub_sub_vertical_ia || []);
     renderGenericFilterOptions('subsegmento-mercado-filter', data.subsegmento_mercado || []);
     renderGenericFilterOptions('segmento-consolidado-filter', data.segmento_consolidado || []);
+    renderGenericFilterOptions('portfolio-filter', data.portfolio || []);
     renderGenericFilterOptions('portfolio-fdm-filter', data.portfolio_fdm || []);
+    renderGenericFilterOptions('perfil-cliente-filter', data.perfil_cliente || []);
+    renderGenericFilterOptions('status-gtm-filter', data.status_gtm || []);
+    renderGenericFilterOptions('status-cliente-filter', data.status_cliente || []);
+    renderGenericFilterOptions('sales-specialist-envolvido-filter', data.sales_specialist_envolvido || []);
+    renderGenericFilterOptions('elegibilidade-ss-filter', data.elegibilidade_ss || []);
     updateGlobalFiltersPanelUI();
     log('[FILTERS] Opções avançadas carregadas');
   } catch (error) {
@@ -720,9 +952,13 @@ function filterPipeline(period) {
         const forecastGross = (pipelineFiltered.gross || 0) * (avgConf / 100);
         const forecastNet = (pipelineFiltered.net || 0) * (avgConf / 100);
         
-        setTextSafe('exec-forecast-weighted', formatMoney(forecastGross));
-        setTextSafe('exec-forecast-percent', Math.round(avgConf) + '% confiança média');
-        setTextSafe('exec-forecast-net', 'Net: ' + formatMoney(forecastNet));
+        if (typeof setExecutiveForecastAndConfidenceCards === 'function') {
+          setExecutiveForecastAndConfidenceCards({
+            forecastGross,
+            forecastNet,
+            avgConfidence: avgConf,
+          });
+        }
         
         log('[FILTER API] Previsão Ponderada:', {
           avgConfidence: avgConf + '%',
@@ -732,9 +968,13 @@ function filterPipeline(period) {
         
         // Atualiza Deals ≥50% Confiança com dados DA API
         const highConf = metrics.high_confidence || {};
-        setTextSafe('exec-above50-value', formatMoney(highConf.gross || 0));
-        setTextSafe('exec-above50-count', (highConf.deals_count || 0) + ' deals');
-        setTextSafe('exec-above50-net', 'Net: ' + formatMoney(highConf.net || 0));
+        if (typeof setExecutiveForecastAndConfidenceCards === 'function') {
+          setExecutiveForecastAndConfidenceCards({
+            highConfGross: highConf.gross || 0,
+            highConfNet: highConf.net || 0,
+            highConfCount: highConf.deals_count || 0,
+          });
+        }
         
         // Atualiza botões de período
         document.querySelectorAll('.period-filter').forEach(btn => {
@@ -787,9 +1027,13 @@ function filterPipeline(period) {
     const forecastGross = (pipelineAll.gross || 0) * (avgConfGlobal / 100);
     const forecastNet = (pipelineAll.net || 0) * (avgConfGlobal / 100);
     
-    setTextSafe('exec-forecast-weighted', formatMoney(forecastGross));
-    setTextSafe('exec-forecast-percent', Math.round(avgConfGlobal) + '% confiança média');
-    setTextSafe('exec-forecast-net', 'Net: ' + formatMoney(forecastNet));
+    if (typeof setExecutiveForecastAndConfidenceCards === 'function') {
+      setExecutiveForecastAndConfidenceCards({
+        forecastGross,
+        forecastNet,
+        avgConfidence: avgConfGlobal,
+      });
+    }
     
     log('[FILTER] Previsão Ponderada GLOBAL:', {
       avgConfidence: avgConfGlobal + '%',
@@ -798,9 +1042,13 @@ function filterPipeline(period) {
     });
     
     // Atualiza Deals ≥50% com dados globais
-    setTextSafe('exec-above50-value', formatMoney(highConfGlobal.gross || 0));
-    setTextSafe('exec-above50-count', (highConfGlobal.deals_count || 0) + ' deals');
-    setTextSafe('exec-above50-net', 'Net: ' + formatMoney(highConfGlobal.net || 0));
+    if (typeof setExecutiveForecastAndConfidenceCards === 'function') {
+      setExecutiveForecastAndConfidenceCards({
+        highConfGross: highConfGlobal.gross || 0,
+        highConfNet: highConfGlobal.net || 0,
+        highConfCount: highConfGlobal.deals_count || 0,
+      });
+    }
     
     // Atualiza botões
     document.querySelectorAll('.period-filter').forEach(btn => {
@@ -895,9 +1143,13 @@ function filterPipelineLocal(period) {
       const highConfNet = apiMetrics.high_confidence.net || 0;
       const highConfCount = apiMetrics.high_confidence.deals_count || 0;
       
-      setTextSafe('exec-above50-value', formatMoney(highConfGross));
-      setTextSafe('exec-above50-count', highConfCount + ' deals');
-      setTextSafe('exec-above50-net', 'Net: ' + formatMoney(highConfNet));
+      if (typeof setExecutiveForecastAndConfidenceCards === 'function') {
+        setExecutiveForecastAndConfidenceCards({
+          highConfGross,
+          highConfNet,
+          highConfCount,
+        });
+      }
       
       log('[HIGH-CONF] Deals ≥50% da API:', {
         total: highConfCount,
@@ -1224,9 +1476,13 @@ function filterByRep(repName) {
   setTextSafe('exec-pipeline-net', 'Net: ' + formatMoney(repDealsNet));
   
   // Atualiza "Deals ≥50% Confiança IA"
-  setTextSafe('exec-above50-value', formatMoney(repDealsAbove50Gross));
-  setTextSafe('exec-above50-count', repDealsAbove50Count + ' deals');
-  setTextSafe('exec-above50-net', 'Net: ' + formatMoney(repDealsAbove50Net));
+  if (typeof setExecutiveForecastAndConfidenceCards === 'function') {
+    setExecutiveForecastAndConfidenceCards({
+      highConfGross: repDealsAbove50Gross,
+      highConfNet: repDealsAbove50Net,
+      highConfCount: repDealsAbove50Count,
+    });
+  }
   
   log('[REP FILTER] ========== FILTRO APLICADO ==========');
 }

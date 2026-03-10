@@ -29,6 +29,98 @@ function normalizeTagList(value) {
   return [];
 }
 
+function normalizeRiskTagKey(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function humanizeLabelToken(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const normalized = raw
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const lowerWords = new Set(['de', 'da', 'do', 'das', 'dos', 'e']);
+  return normalized
+    .split(' ')
+    .map((part, idx) => {
+      const lower = part.toLowerCase();
+      if (idx > 0 && lowerWords.has(lower)) return lower;
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(' ');
+}
+
+function toUiCaps(value) {
+  const txt = humanizeLabelToken(String(value || '').trim());
+  return txt ? txt.toUpperCase() : '';
+}
+
+function formatPersonDisplayName(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.includes('@')) return raw;
+  return raw
+    .split(',')
+    .map((chunk) => humanizeLabelToken(chunk))
+    .filter(Boolean)
+    .join(', ');
+}
+
+function formatSalesSpecialistInvolvementLabel(data) {
+  const boolRaw = String(data?.Sales_Specialist_Envolvido || data?.sales_specialist_envolvido || '').trim();
+  const namesRaw = String(
+    data?.Sales_Specialist ||
+    data?.sales_specialist ||
+    data?.Sales_Specialist_Name ||
+    data?.sales_specialist_name ||
+    data?.ss_owner ||
+    data?.owner_preventa ||
+    ''
+  ).trim();
+
+  const names = normalizeTagList(namesRaw)
+    .map((name) => formatPersonDisplayName(name))
+    .filter(Boolean);
+
+  if (names.length) return Array.from(new Set(names)).join(', ');
+  return normalizeBooleanLabel(boolRaw, 'Com SS', 'Sem SS');
+}
+
+function extractDealRiskTags(deal) {
+  const uiTags = normalizeTagList((deal?.ui && deal.ui.riskTags) || []);
+  const rawTags = normalizeTagList(deal?.Risk_Tags || deal?.risk_tags || '');
+
+  const labels = [];
+  const seenKeys = new Set();
+  const addUnique = (tag) => {
+    const txt = humanizeLabelToken(tag);
+    if (!txt) return;
+    const key = normalizeRiskTagKey(txt);
+    if (!key || seenKeys.has(key)) return;
+    seenKeys.add(key);
+    if (!labels.some((x) => x.toLowerCase() === txt.toLowerCase())) {
+      labels.push(txt);
+    }
+  };
+
+  uiTags.forEach((t) => {
+    if (typeof t === 'object') {
+      addUnique(t.label || t.key || '');
+    } else {
+      addUnique(t);
+    }
+  });
+  rawTags.forEach(addUnique);
+
+  return labels;
+}
+
 function formatDateDMY(value) {
   const text = String(value || '').trim();
   if (!text) return '';
@@ -75,6 +167,87 @@ function normalizeFeedbackCopy(text) {
     .replace(/pipeline\s+podre/gi, 'pipeline sem avanço')
     .replace(/deals\s+zumbis?/gi, 'oportunidades sem avanço')
     .replace(/\bdeals\b/gi, 'oportunidades');
+}
+
+function normalizeOpportunityType(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return { key: 'unknown', label: 'Não informado' };
+
+  const normalizedText = raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  const compact = normalizedText.replace(/[^a-z0-9]+/g, '');
+
+  if (normalizedText.includes('novo') || normalizedText.includes('nova') || compact.includes('new')) {
+    return { key: 'nova', label: 'Nova' };
+  }
+  if (compact.includes('renov') || compact.includes('renew')) {
+    return { key: 'renovacao', label: 'Renovação' };
+  }
+  if (compact.includes('transfertoken') || compact.includes('transfertokem') || compact.includes('transfert') || compact.includes('transfer')) {
+    return { key: 'transfertoken', label: 'TransferToken' };
+  }
+
+  return { key: 'other', label: raw };
+}
+
+function renderOpportunityTypeTag(schemaTypeValue, fallbackTypeValue = '') {
+  const primary = normalizeOpportunityType(schemaTypeValue);
+  const finalType = primary.key !== 'unknown' ? primary : normalizeOpportunityType(fallbackTypeValue);
+
+  const styleMap = {
+    nova: {
+      color: '#86efac',
+      bg: 'rgba(134,239,172,0.16)',
+      border: 'rgba(134,239,172,0.34)'
+    },
+    renovacao: {
+      color: '#fbbf24',
+      bg: 'rgba(251,191,36,0.16)',
+      border: 'rgba(251,191,36,0.34)'
+    },
+    transfertoken: {
+      color: '#c4b5fd',
+      bg: 'rgba(196,181,253,0.16)',
+      border: 'rgba(196,181,253,0.34)'
+    },
+    other: {
+      color: 'var(--primary-cyan)',
+      bg: 'rgba(0,190,255,0.10)',
+      border: 'rgba(0,190,255,0.28)'
+    },
+    unknown: {
+      color: 'var(--text-gray)',
+      bg: 'rgba(148,163,184,0.12)',
+      border: 'rgba(148,163,184,0.22)'
+    }
+  };
+
+  const s = styleMap[finalType.key] || styleMap.other;
+  return `<span style="font-size: 11px; font-weight: 800; color: ${s.color}; background: ${s.bg}; border: 1px solid ${s.border}; border-radius: 999px; padding: 3px 10px; letter-spacing: 0.2px; text-transform: uppercase;">${escapeHtml(toUiCaps(finalType.label) || finalType.label)}</span>`;
+}
+
+function normalizeBooleanLabel(value, yesLabel, noLabel) {
+  const lowered = String(value || '').trim().toLowerCase();
+  if (['sim', 'yes', 'true', '1', 'y'].includes(lowered)) return yesLabel;
+  if (['nao', 'não', 'no', 'false', '0', 'n'].includes(lowered)) return noLabel;
+  return String(value || '').trim() || 'Não informado';
+}
+
+function renderBusinessContextTags(data) {
+  const perfilCliente = toUiCaps(String(data?.Perfil_Cliente || data?.perfil_cliente || data?.Perfil || '').trim()) || 'NAO INFORMADO';
+  const statusCliente = toUiCaps(String(data?.Status_Cliente || data?.status_cliente || '').trim()) || 'NAO INFORMADO';
+  const ssEnvolvido = formatSalesSpecialistInvolvementLabel(data);
+  const ssEnvolvidoCaps = toUiCaps(ssEnvolvido) || 'SEM SS';
+
+  const tagStyle = 'font-size: 11px; border-radius: 999px; padding: 3px 8px;';
+  return `
+    <span style="${tagStyle} color: rgba(255,255,255,0.95); background: rgba(148,163,184,0.22); border: 1px solid rgba(148,163,184,0.42); text-transform: uppercase;">${escapeHtml(perfilCliente)}</span>
+    <span style="${tagStyle} color: #fbbf24; background: rgba(251,191,36,0.10); border: 1px solid rgba(251,191,36,0.30); text-transform: uppercase;">${escapeHtml(statusCliente)}</span>
+    <span style="${tagStyle} color: #86efac; background: rgba(134,239,172,0.10); border: 1px solid rgba(134,239,172,0.30); text-transform: uppercase;">SS: ${escapeHtml(ssEnvolvidoCaps)}</span>
+  `;
 }
 
 function toggleClampText(contentId, button) {
@@ -175,6 +348,19 @@ function filterAgendaActivitiesByType(sellerIdx, typeKey) {
   rows.forEach((row) => {
     const rowType = row.getAttribute('data-activity-type') || 'sem_tipo';
     row.style.display = (value === 'all' || rowType === value) ? 'block' : 'none';
+  });
+}
+
+function filterWeeklyAgendaDealsByRiskTag(sellerIdx, rawTagKey) {
+  const grid = document.getElementById(`agenda-deals-grid-${sellerIdx}`);
+  if (!grid) return;
+  const selectedKey = String(rawTagKey || 'all');
+  const rows = grid.querySelectorAll('.agenda-deal-row');
+  rows.forEach((row) => {
+    const tags = String(row.getAttribute('data-risk-tags') || '');
+    const rowKeys = tags.split('|').filter(Boolean);
+    const visible = selectedKey === 'all' || rowKeys.includes(selectedKey);
+    row.style.display = visible ? 'block' : 'none';
   });
 }
 // Toggle collapsible sections in Weekly Agenda
@@ -286,13 +472,24 @@ function renderWeeklyAgendaSellerCard(seller, idx) {
   };
   const statusColor = statusColors[feedback.status] || 'var(--text-gray)';
   const sellerContentId = `agenda-seller-content-${idx}`;
+  const sellerDisplayName = formatPersonDisplayName(seller.vendedor || 'Sem vendedor');
+  const isSsOwnerCard = Number(idx) >= 3000;
+  const cardBg = isSsOwnerCard
+    ? 'rgba(255,255,255,0.045)'
+    : 'rgba(255,255,255,0.07)';
+  const cardBorder = isSsOwnerCard
+    ? '1px solid rgba(255,255,255,0.12)'
+    : '1px solid rgba(255,255,255,0.16)';
+  const cardShadow = isSsOwnerCard
+    ? 'inset 0 1px 0 rgba(255,255,255,0.03)'
+    : 'none';
 
   return `
-    <div style="margin-bottom: 16px; padding: 14px; background: rgba(255,255,255,0.07); border-radius: 14px; border: 1px solid rgba(255,255,255,0.16); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);">
+    <div style="margin-bottom: 16px; padding: 14px; background: ${cardBg}; border-radius: 14px; border: ${cardBorder}; box-shadow: ${cardShadow}; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);">
       <div onclick="toggleAgendaPersonCard('${sellerContentId}')" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid ${statusColor}55; cursor: pointer;">
         <div>
           <h4 style="margin: 0 0 8px 0; color: var(--primary-cyan); font-size: 18px; font-weight: 700;">
-            ${agendaIcon('icon-user')} ${seller.vendedor}
+            ${agendaIcon('icon-user')} ${sellerDisplayName}
           </h4>
           <div style="display: flex; gap: 12px; font-size: 13px; color: var(--text-gray);">
             <span><strong>${sellerSummary.total_deals || 0}</strong> deals</span>
@@ -398,7 +595,7 @@ function renderWeeklyAgendaSellerCard(seller, idx) {
         </div>
         <div id="agenda-deals-${idx}" style="display:none;">
           <div style="display: grid; gap: 12px;">
-            ${renderSeller1on1Deals(deals)}
+            ${renderSeller1on1Deals(deals, idx)}
           </div>
         </div>
       </div>
@@ -507,11 +704,108 @@ async function loadWeeklyAgenda() {
     const sellers = data.sellers;
     const summary = data.summary;
     const customerEngineer = data.customer_success || {};
+    const salesSpecialistPayload = data.sales_specialist || { summary: {}, members: [] };
 
     const normalizeName = (value) => String(value || '').trim().toLowerCase();
+    const normalizeKey = (value) => String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const dealLookupKey = (opp, conta) => `${normalizeKey(opp)}|${normalizeKey(conta)}`;
     const customerSuccessSet = new Set(customerSuccessFocusNames.map(normalizeName));
     const bdmSellers = sellers.filter(s => !customerSuccessSet.has(normalizeName(s?.vendedor)));
     const customerSuccessFromDeals = sellers.filter(s => customerSuccessSet.has(normalizeName(s?.vendedor)));
+
+    const bdmSellerIndex = new Map();
+    bdmSellers.forEach((seller) => {
+      const key = normalizeKey(seller?.vendedor || '');
+      if (key) bdmSellerIndex.set(key, seller);
+    });
+
+    // Build an index of full BDM deals so SS view can reuse the same rich payload.
+    const fullDealsByOppConta = new Map();
+    const fullDealsByOpp = new Map();
+    const dealRichnessScore = (deal) => {
+      const checks = [
+        'Perfil_Cliente', 'Status_Cliente', 'Tipo_Oportunidade', 'Produtos',
+        'Data_Criacao', 'Data_Prevista', 'Fase_Atual', 'Portfolio_FDM',
+        'Acao_Sugerida', 'Proxima_Acao_Pipeline', 'Risk_Tags', 'Atividades'
+      ];
+      return checks.reduce((score, key) => score + (String(deal?.[key] || '').trim() ? 1 : 0), 0);
+    };
+    bdmSellers.forEach((seller) => {
+      const deals = Array.isArray(seller?.deals) ? seller.deals : [];
+      deals.forEach((deal) => {
+        const opp = deal?.Oportunidade || deal?.oportunidade || '';
+        const conta = deal?.Conta || deal?.conta || '';
+        if (!opp) return;
+
+        const byOppKey = normalizeKey(opp);
+        const byOppContaKey = dealLookupKey(opp, conta);
+        const currentScore = dealRichnessScore(deal);
+
+        const existingOpp = fullDealsByOpp.get(byOppKey);
+        if (!existingOpp || currentScore > dealRichnessScore(existingOpp)) {
+          fullDealsByOpp.set(byOppKey, deal);
+        }
+
+        const existingOppConta = fullDealsByOppConta.get(byOppContaKey);
+        if (!existingOppConta || currentScore > dealRichnessScore(existingOppConta)) {
+          fullDealsByOppConta.set(byOppContaKey, deal);
+        }
+      });
+    });
+
+    const ssFullDealIndex = {
+      byOpp: fullDealsByOpp,
+      byOppConta: fullDealsByOppConta,
+      normalizeKey,
+      dealLookupKey,
+    };
+
+    // Build owner-centric SS index: deals where specialist is also the pipeline owner.
+    const ownerDealsBySpecialist = new Map();
+    const addOwnerDeal = (name, deal) => {
+      const key = normalizeKey(name);
+      if (!key) return;
+      if (!ownerDealsBySpecialist.has(key)) {
+        ownerDealsBySpecialist.set(key, {
+          name: formatPersonDisplayName(name),
+          deals: []
+        });
+      }
+      ownerDealsBySpecialist.get(key).deals.push(deal);
+    };
+
+    bdmSellers.forEach((seller) => {
+      const deals = Array.isArray(seller?.deals) ? seller.deals : [];
+      deals.forEach((deal) => {
+        const ownerName = String(deal?.Vendedor || deal?.vendedor || '').trim();
+        if (!ownerName) return;
+
+        const ssField = String(
+          deal?.Sales_Specialist_Envolvido ||
+          deal?.sales_specialist_envolvido ||
+          deal?.Sales_Specialist ||
+          deal?.sales_specialist ||
+          ''
+        ).trim();
+        const statusGov = String(deal?.Status_Governanca_SS || deal?.status_governanca_ss || '').trim().toUpperCase();
+
+        const ownerNorm = normalizeKey(ownerName);
+        const ssNorm = normalizeKey(ssField);
+        const ownerIsAlsoSpecialist = !!ssNorm && (ssNorm.includes(ownerNorm) || ownerNorm.includes(ssNorm));
+        const isGovernanceOwnerError = statusGov.includes('IGUAL OWNER');
+
+        // Include owner deals in SS view when owner is flagged as specialist in governance context.
+        if (ownerIsAlsoSpecialist || isGovernanceOwnerError) {
+          addOwnerDeal(ownerName, deal);
+        }
+      });
+    });
 
     const csFocusParams = new URLSearchParams(params.toString());
     csFocusParams.set('cs_names', customerSuccessFocusNames.join(','));
@@ -681,6 +975,18 @@ async function loadWeeklyAgenda() {
       <div style="margin-top: 12px; padding: 12px 14px; background: rgba(255,255,255,0.06); border-radius: 12px; border: 1px solid rgba(255,255,255,0.14);">
         <div style="display:flex; align-items:center; justify-content: space-between; gap: 10px; margin-bottom: 6px;">
           <div>
+            ${sectionLabel('SS · Sales Specialist')}
+          </div>
+          <button id="agenda-ss-block-btn" onclick="toggleWeeklyAgendaBlock('agenda-ss-block')" style="background: rgba(255,255,255,0.07); color: var(--text-main); border: 1px solid var(--glass-border); padding: 6px 10px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer;">▶ Expandir</button>
+        </div>
+        <div id="agenda-ss-block" style="display:none;">
+          ${renderSalesSpecialistSection(salesSpecialistPayload, ssFullDealIndex, ownerDealsBySpecialist, bdmSellerIndex)}
+        </div>
+      </div>
+
+      <div style="margin-top: 12px; padding: 12px 14px; background: rgba(255,255,255,0.06); border-radius: 12px; border: 1px solid rgba(255,255,255,0.14);">
+        <div style="display:flex; align-items:center; justify-content: space-between; gap: 10px; margin-bottom: 6px;">
+          <div>
             ${sectionLabel('CE · Customer Engineer')}
           </div>
             <button id="agenda-cs-block-btn" onclick="toggleWeeklyAgendaBlock('agenda-cs-block')" style="background: rgba(255,255,255,0.07); color: var(--text-main); border: 1px solid var(--glass-border); padding: 6px 10px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer;">▶ Expandir</button>
@@ -745,6 +1051,7 @@ function setWeeklyAgendaView(view) {
 
   applyTabState('agenda-tab');
   applyTabState('agenda-cs-tab');
+  applyTabState('agenda-ss-tab');
 
   const container = document.getElementById('agenda-sellers-container');
   if (!container) return;
@@ -845,6 +1152,334 @@ function renderCustomerSuccessSection(customerSuccess) {
                   `;
                 }).join('') : renderEmptyState('Sem atividades no período.')}
               </div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderSalesSpecialistSection(payload, fullDealIndex, ownerDealsBySpecialist, bdmSellerIndex) {
+  const summary = payload?.summary || {};
+  const members = Array.isArray(payload?.members) ? payload.members : [];
+
+  if (!members.length) {
+    return renderEmptyState('Sem dados de Sales Specialist para o filtro atual.');
+  }
+
+  const toNumber = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const norm = (v) => String(v || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+  const matchesPerson = (left, right) => {
+    const a = norm(left).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    const b = norm(right).replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!a || !b) return false;
+    if (a === b) return true;
+    // Allow partial match for cases like "Gabriele" vs "Gabriele Oliveira".
+    return a.includes(b) || b.includes(a);
+  };
+
+  const lookupFullDeal = (deal) => {
+    if (!fullDealIndex) return null;
+    const opp = deal?.oportunidade || deal?.Oportunidade || '';
+    const conta = deal?.conta || deal?.Conta || '';
+    const byOppContaKey = fullDealIndex.dealLookupKey ? fullDealIndex.dealLookupKey(opp, conta) : '';
+    const byOppKey = fullDealIndex.normalizeKey ? fullDealIndex.normalizeKey(opp) : '';
+    if (byOppContaKey && fullDealIndex.byOppConta?.has(byOppContaKey)) {
+      return fullDealIndex.byOppConta.get(byOppContaKey);
+    }
+    if (byOppKey && fullDealIndex.byOpp?.has(byOppKey)) {
+      return fullDealIndex.byOpp.get(byOppKey);
+    }
+    return null;
+  };
+
+  const mapToFullDeal = (deal, ssName) => {
+    const source = lookupFullDeal(deal) || {};
+    const bdmOwner = formatPersonDisplayName(deal?.bdm_owner || deal?.vendedor || 'Não informado');
+    const ssDisplay = formatPersonDisplayName(ssName || deal?.ss_vinculo || deal?.sales_specialist_envolvido || 'Não informado');
+    const justificativa = String(deal?.justificativa_ss || '').trim();
+    const extra = [`SS Owner: ${ssDisplay}`, `BDM Owner: ${bdmOwner}`];
+    if (justificativa) extra.push(justificativa);
+    return {
+      ...source,
+      Oportunidade: source?.Oportunidade || deal?.oportunidade || 'N/A',
+      Conta: source?.Conta || deal?.conta || 'N/A',
+      Vendedor: source?.Vendedor || deal?.vendedor || '',
+      BDM_Owner: bdmOwner,
+      Fiscal_Q: source?.Fiscal_Q || deal?.fiscal_q || '-',
+      Gross: toNumber(source?.Gross ?? deal?.gross),
+      Net: toNumber(source?.Net ?? deal?.net),
+      Confianca: toNumber(source?.Confianca ?? deal?.confianca),
+      Fase_Atual: source?.Fase_Atual || source?.Fase || deal?.fase_atual || '-',
+      Fase: source?.Fase || source?.Fase_Atual || deal?.fase_atual || '-',
+      Data_Prevista: source?.Data_Prevista || deal?.data_prevista || '',
+      Data_Criacao: source?.Data_Criacao || source?.Data_de_criacao || deal?.data_criacao || '',
+      Data_de_criacao: source?.Data_de_criacao || source?.Data_Criacao || deal?.data_criacao || '',
+      Dias_Funil: toNumber(source?.Dias_Funil ?? deal?.dias_funil),
+      Produtos: source?.Produtos || deal?.produtos || '',
+      Portfolio_FDM: source?.Portfolio_FDM || source?.Portfolio || deal?.portfolio_fdm || deal?.portfolio || '',
+      Portfolio: source?.Portfolio || source?.Portfolio_FDM || deal?.portfolio || deal?.portfolio_fdm || '',
+      Tipo_Oportunidade: source?.Tipo_Oportunidade || deal?.tipo_oportunidade || '',
+      Perfil_Cliente: source?.Perfil_Cliente || deal?.perfil_cliente || '',
+      Status_Cliente: source?.Status_Cliente || deal?.status_cliente || '',
+      Acao_Sugerida: source?.Acao_Sugerida || source?.Proxima_Acao_Pipeline || deal?.acao_sugerida || '',
+      Proxima_Acao_Pipeline: source?.Proxima_Acao_Pipeline || source?.Acao_Sugerida || deal?.acao_sugerida || '',
+      Atividades: toNumber(source?.Atividades ?? deal?.atividades),
+      Categoria_Pauta: deal?.categoria || 'MONITORAR',
+      Risk_Tags: source?.Risk_Tags || normalizeTagList(deal?.risk_tags || []).join(', '),
+      Sales_Specialist_Envolvido: ssDisplay,
+      Elegibilidade_SS: deal?.elegibilidade_ss || '-',
+      Status_Governanca_SS: deal?.status_governanca_ss || '-',
+      Justificativa_Elegibilidade_SS: justificativa || '-',
+      Justificativa_IA: extra.join(' | '),
+      ui: {
+        categoria: deal?.categoria || 'MONITORAR',
+        categoriaLabel: deal?.categoria || 'MONITORAR',
+        riscoScore: 3,
+        justificativaIA: extra.join(' | ')
+      }
+    };
+  };
+
+  // Re-bucket "Sem Especialista" when governance says SS==owner.
+  const rebucketedMap = new Map();
+  const addDealToMember = (memberName, deal) => {
+    const key = formatPersonDisplayName(memberName || 'Sem Especialista');
+    if (!rebucketedMap.has(key)) {
+      rebucketedMap.set(key, { name: key, deals: [] });
+    }
+    rebucketedMap.get(key).deals.push(deal);
+  };
+
+  members.forEach((member) => {
+    const baseName = formatPersonDisplayName(member?.name || 'Sem Especialista');
+    const deals = Array.isArray(member?.deals) ? member.deals : [];
+    deals.forEach((deal) => {
+      const statusNorm = norm(deal?.status_governanca_ss || '');
+      const ownerName = formatPersonDisplayName(deal?.bdm_owner || deal?.vendedor || '');
+      if (norm(baseName) === 'sem especialista' && statusNorm.includes('igual owner') && ownerName) {
+        addDealToMember(ownerName, deal);
+      } else {
+        addDealToMember(baseName, deal);
+      }
+    });
+  });
+
+  const effectiveMembers = Array.from(rebucketedMap.values());
+
+  // Merge with owner-based specialists from pipeline (detentor da oportunidade).
+  const membersByNorm = new Map();
+  effectiveMembers.forEach((member) => {
+    const key = norm(member?.name || '');
+    if (!key) return;
+    membersByNorm.set(key, {
+      name: formatPersonDisplayName(member?.name || ''),
+      deals: Array.isArray(member?.deals) ? member.deals : []
+    });
+  });
+
+  if (ownerDealsBySpecialist && ownerDealsBySpecialist.forEach) {
+    ownerDealsBySpecialist.forEach((entry, key) => {
+      const nKey = norm(entry?.name || key || '');
+      if (!nKey) return;
+      if (!membersByNorm.has(nKey)) {
+        membersByNorm.set(nKey, {
+          name: formatPersonDisplayName(entry?.name || key),
+          deals: []
+        });
+      }
+    });
+  }
+
+  const mergedMembers = Array.from(membersByNorm.values())
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+
+  const buildSellerCardModelFromDeals = (ssName, ownerDeals, memberSummary) => {
+    const sourceSeller = bdmSellerIndex?.get?.(norm(ssName));
+    const sourceSummary = sourceSeller?.summary || {};
+    const sourcePerformance = sourceSeller?.performance || {};
+    const sourceFeedback = sourceSeller?.feedback || {};
+    const sourcePulse = sourceSeller?.pulse || {};
+
+    const totalGross = ownerDeals.reduce((sum, d) => sum + toNumber(d?.Gross), 0);
+    const totalNet = ownerDeals.reduce((sum, d) => sum + toNumber(d?.Net), 0);
+    const avgConf = ownerDeals.length
+      ? Math.round(ownerDeals.reduce((sum, d) => sum + toNumber(d?.Confianca), 0) / ownerDeals.length)
+      : 0;
+
+    return {
+      vendedor: ssName,
+      deals: ownerDeals,
+      new_deals_detail: [],
+      lost_deals_detail: [],
+      closed_deals_detail: [],
+      summary: {
+        total_deals: ownerDeals.length,
+        total_gross_k: Math.round(totalGross / 1000),
+        total_net_k: Math.round(totalNet / 1000),
+        avg_confianca: avgConf,
+        zumbis: Number(sourceSummary?.zumbis || 0),
+        criticos: Number(sourceSummary?.criticos || 0),
+        alta_prioridade: Number(sourceSummary?.alta_prioridade || 0),
+        monitorar: ownerDeals.length
+      },
+      performance: {
+        ...sourcePerformance,
+        nota_higiene: sourcePerformance?.nota_higiene || 'N/A',
+        pipeline_podre_pct: Number(sourcePerformance?.pipeline_podre_pct || 0),
+        deals_zumbi: Number(sourcePerformance?.deals_zumbi || 0),
+        pipeline_net_k: Math.round(totalNet / 1000),
+        closed_net_k: Number(sourcePerformance?.closed_net_k || 0),
+        win_rate: sourcePerformance?.win_rate ?? null,
+        total_forecast_k: Number(sourcePerformance?.total_forecast_k || 0),
+        pipeline_deals: ownerDeals.length,
+        closed_deals: Number(sourcePerformance?.closed_deals || 0),
+        lost_deals: Number(sourcePerformance?.lost_deals || 0),
+        ciclo_medio_dias: Number(sourcePerformance?.ciclo_medio_dias || 0),
+        pipeline_gross_k: Math.round(totalGross / 1000),
+        closed_gross_k: Number(sourcePerformance?.closed_gross_k || 0)
+      },
+      feedback: {
+        status: sourceFeedback?.status || 'good',
+        message: sourceFeedback?.message || `Visão SS owner com ${ownerDeals.length} oportunidade(s).`,
+        recommendations: Array.isArray(sourceFeedback?.recommendations) ? sourceFeedback.recommendations : []
+      },
+      pulse: {
+        ...sourcePulse,
+        atividades_semana: Number(sourcePulse?.atividades_semana || sourcePulse?.atividades_periodo || 0),
+        meta_atividades: Number(sourcePulse?.meta_atividades || 0),
+        reunioes_semana: Number(sourcePulse?.reunioes_semana || sourcePulse?.total_meetings || 0),
+        meta_reunioes: Number(sourcePulse?.meta_reunioes || 0),
+        novas_oportunidades_periodo: Number(sourcePulse?.novas_oportunidades_periodo || 0),
+        meta_novas_oportunidades: Number(sourcePulse?.meta_novas_oportunidades || 0),
+        dias_uteis_periodo: Number(sourcePulse?.dias_uteis_periodo || 0),
+        qualidade_registros: sourcePulse?.qualidade_registros || { pobres: 0, total: 0, score: 'N/A' },
+        drill_down: Array.isArray(sourcePulse?.drill_down) ? sourcePulse.drill_down : [],
+        last_activities: Array.isArray(sourcePulse?.last_activities) ? sourcePulse.last_activities : [],
+        periodo: sourcePulse?.periodo || { inicio: null, fim: null }
+      }
+    };
+  };
+
+  const statusCounts = summary.status_counts || {};
+  const statusBadges = Object.keys(statusCounts)
+    .sort((a, b) => Number(statusCounts[b] || 0) - Number(statusCounts[a] || 0))
+    .slice(0, 6)
+    .map((status) => `<span class="badge" style="background: rgba(255,255,255,0.10); color: var(--text-main); border: 1px solid rgba(255,255,255,0.18);">${escapeHtml(status)}: ${statusCounts[status]}</span>`)
+    .join('');
+
+  return `
+    <div style="margin-bottom: 10px; padding: 10px; background: rgba(255,255,255,0.04); border-radius: 12px; border: 1px solid rgba(255,255,255,0.12);">
+      <div style="display:flex; justify-content: space-between; align-items:center; gap: 10px; margin-bottom: 10px;">
+        <div style="font-size: 13px; color: var(--primary-cyan); font-weight: 800;">${agendaIcon('icon-briefcase')} Visão Sales Specialist</div>
+        <div style="font-size: 11px; color: var(--text-gray); font-weight: 700;">Curadoria SS + Owner em pipeline</div>
+      </div>
+      ${statusBadges ? `<div style="display:flex; gap:6px; flex-wrap: wrap; margin-bottom: 10px;">${statusBadges}</div>` : ''}
+      <div style="display:grid; gap: 12px;">
+        ${mergedMembers.map((member, idx) => {
+          const ssName = formatPersonDisplayName(member?.name || 'Sem Especialista');
+          if (norm(ssName) === 'sem especialista') {
+            return '';
+          }
+
+          const allDeals = Array.isArray(member?.deals) ? member.deals : [];
+          const elegiveis = allDeals.filter((d) => norm(d?.elegibilidade_ss) === 'elegivel');
+
+          const ownerEntry = ownerDealsBySpecialist?.get?.(norm(ssName));
+          const ownerRawDeals = Array.isArray(ownerEntry?.deals) ? ownerEntry.deals : [];
+          const ownerPipelineDeals = ownerRawDeals.map((d) => mapToFullDeal({
+            oportunidade: d?.Oportunidade || d?.oportunidade,
+            conta: d?.Conta || d?.conta,
+            vendedor: d?.Vendedor || d?.vendedor,
+            bdm_owner: d?.Vendedor || d?.vendedor,
+            fiscal_q: d?.Fiscal_Q || d?.fiscal_q,
+            categoria: d?.Categoria_Pauta || d?.categoria,
+            gross: d?.Gross || d?.gross,
+            net: d?.Net || d?.net,
+            confianca: d?.Confianca || d?.confianca,
+            fase_atual: d?.Fase_Atual || d?.Fase || d?.fase_atual,
+            data_prevista: d?.Data_Prevista || d?.data_prevista,
+            data_criacao: d?.Data_Criacao || d?.Data_de_criacao || d?.data_criacao,
+            dias_funil: d?.Dias_Funil || d?.dias_funil,
+            produtos: d?.Produtos || d?.produtos,
+            portfolio: d?.Portfolio || d?.portfolio,
+            portfolio_fdm: d?.Portfolio_FDM || d?.portfolio_fdm,
+            tipo_oportunidade: d?.Tipo_Oportunidade || d?.tipo_oportunidade,
+            perfil_cliente: d?.Perfil_Cliente || d?.perfil_cliente,
+            status_cliente: d?.Status_Cliente || d?.status_cliente,
+            acao_sugerida: d?.Proxima_Acao_Pipeline || d?.Acao_Sugerida || d?.acao_sugerida,
+            risk_tags: d?.Risk_Tags || d?.risk_tags,
+            elegibilidade_ss: d?.Elegibilidade_SS || d?.elegibilidade_ss,
+            status_governanca_ss: d?.Status_Governanca_SS || d?.status_governanca_ss,
+            justificativa_ss: d?.Justificativa_Elegibilidade_SS || d?.justificativa_ss,
+            ss_vinculo: d?.Sales_Specialist_Envolvido || d?.sales_specialist_envolvido || ssName,
+          }, ssName));
+
+          const ownerDealsFromCuration = elegiveis.filter((d) => {
+            const ownerName = d?.bdm_owner || d?.vendedor || '';
+            return matchesPerson(ownerName, ssName);
+          });
+          const linkedDeals = elegiveis.filter((d) => {
+            const ownerName = d?.bdm_owner || d?.vendedor || '';
+            return !matchesPerson(ownerName, ssName);
+          });
+          const ownerFromCurationFullDeals = ownerDealsFromCuration.map((d) => mapToFullDeal(d, ssName));
+          const linkedFullDeals = linkedDeals.map((d) => mapToFullDeal(d, ssName));
+
+          const ownerByOppConta = new Map();
+          [...ownerPipelineDeals, ...ownerFromCurationFullDeals].forEach((d) => {
+            const key = `${norm(d?.Oportunidade || '')}|${norm(d?.Conta || '')}`;
+            if (!ownerByOppConta.has(key)) ownerByOppConta.set(key, d);
+          });
+          const ownerFinalDeals = Array.from(ownerByOppConta.values());
+
+          if (!ownerFinalDeals.length && !linkedFullDeals.length) {
+            return `
+              <div style="padding: 12px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);">
+                <div style="font-size: 14px; color: var(--text-main); font-weight: 900; margin-bottom: 6px;">${escapeHtml(ssName)}</div>
+                <div style="font-size: 12px; color: var(--text-gray);">Sem oportunidades no recorte atual.</div>
+              </div>
+            `;
+          }
+
+          const ssSellerModel = buildSellerCardModelFromDeals(ssName, ownerFinalDeals, member?.summary || {});
+          const ssCardIdx = 3000 + idx;
+          const linkedSectionId = `ss-linked-section-${idx}`;
+
+          const summaryLine = `Curadoria elegível: ${elegiveis.length} | Owner pipeline: ${ownerFinalDeals.length} | Vinculados a BDM: ${linkedDeals.length}`;
+
+          return `
+            <div style="padding: 12px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.14);">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px;">
+                <div style="font-size: 14px; color: var(--text-main); font-weight: 900;">${escapeHtml(ssName)}</div>
+                <div style="font-size: 11px; color: var(--text-gray); font-weight:700;">${escapeHtml(summaryLine)}</div>
+              </div>
+
+              <div style="margin-bottom: 10px;">
+                <div style="font-size: 11px; color: var(--accent-green); font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 8px;">Deal Owner SS</div>
+                ${ownerFinalDeals.length
+                  ? renderWeeklyAgendaSellerCard(ssSellerModel, ssCardIdx)
+                  : '<div style="font-size:12px;color:var(--text-gray);padding:8px;border:1px dashed rgba(255,255,255,0.2);border-radius:8px;">Sem deal owner no pipeline para este especialista.</div>'}
+              </div>
+
+              <div>
+                <div style="font-size: 11px; color: #93c5fd; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 8px;">Deal BDM vinculado ao SS</div>
+                ${linkedFullDeals.length ? `
+                  <button id="${linkedSectionId}-btn" onclick="toggleAgendaPersonCard('${linkedSectionId}')" style="background: rgba(255,255,255,0.07); color: var(--text-main); border: 1px solid var(--glass-border); padding: 6px 10px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: pointer; margin-bottom: 8px;">▶ Expandir</button>
+                  <div id="${linkedSectionId}" style="display:none;">
+                    ${renderSeller1on1Deals(linkedFullDeals, `ss-linked-${idx}`)}
+                  </div>
+                ` : '<div style="font-size:12px;color:var(--text-gray);padding:8px;border:1px dashed rgba(255,255,255,0.2);border-radius:8px;">Sem deal BDM vinculado elegível.</div>'}
               </div>
             </div>
           `;
@@ -1189,8 +1824,18 @@ function renderSellerNewDeals(newDeals) {
   return newDeals.map(d => {
     const confianca = Number(d.confianca || 0);
     const fase = String(d.fase_atual || '').trim() || 'N/A';
-    const dataCriacao = formatDateDMY(d.data_criacao || '');
+    const dataCriacaoRaw = d.Data_de_criacao || d.Data_Criacao || d.data_criacao || d.created_date || '';
+    const dataCriacao = formatDateDMY(dataCriacaoRaw);
+    const dataPrevista = formatDateDMY(d.data_prevista || d.data_fechamento || d.close_date || '');
+    const produtos = String(d.produtos || d.product_name || d.products || '').trim() || 'Não informado';
+    const portfolio = String(d.Portfolio_FDM || d.Portfolio || d.portfolio_fdm || d.portfolio || '').trim() || 'Não informado';
+    const tipoOportunidade = String(d.Tipo_Oportunidade || d.tipo_oportunidade || '').trim() || 'Não informado';
+    const tipoOportunidadeSchemaRaw = d.Tipo_Oportunidade || d.tipo_oportunidade || '';
+    const acaoSugerida = String(d.Proxima_Acao_Pipeline || d.Acao_Sugerida || d.acao_sugerida || d.Acao_Recomendada || d.acao_recomendada || '').trim() || 'Não informado na fonte';
     const diasFunil = Number(d.dias_funil || 0);
+    const dataCriacaoLabel = dataCriacao || 'Não informado na fonte';
+    const portfolioLabel = portfolio || 'Não informado na fonte';
+    const tipoOportunidadeTag = renderOpportunityTypeTag(tipoOportunidadeSchemaRaw, tipoOportunidade);
 
     return `
       <div style="padding: 14px; background: rgba(255,255,255,0.02); border-left: 4px solid var(--warning); border-radius: 10px;">
@@ -1202,8 +1847,15 @@ function renderSellerNewDeals(newDeals) {
             <div style="font-size: 12px; color: var(--text-gray); margin-bottom: 6px;">
               ${escapeHtml(d.conta || 'Conta não informada')}
             </div>
-            <div style="font-size: 11px; color: var(--text-gray);">
-              Criada: ${dataCriacao || 'N/A'} | ${diasFunil} dias funil | Fase: ${escapeHtml(fase)}
+            <div style="display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 2px;">
+              ${renderBusinessContextTags(d)}
+              ${tipoOportunidadeTag}
+              <span style="font-size: 11px; color: var(--text-gray); background: rgba(0,190,255,0.08); border: 1px solid rgba(0,190,255,0.2); border-radius: 999px; padding: 3px 8px;">Criada: ${escapeHtml(dataCriacaoLabel)}</span>
+              <span style="font-size: 11px; color: var(--text-gray); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.14); border-radius: 999px; padding: 3px 8px;">${diasFunil} dias funil</span>
+              <span style="font-size: 11px; color: var(--primary-cyan); background: rgba(0,190,255,0.08); border: 1px solid rgba(0,190,255,0.2); border-radius: 999px; padding: 3px 8px;">Fase: ${escapeHtml(fase)}</span>
+            </div>
+            <div style="margin-top: 6px; font-size: 11px; color: var(--text-main); line-height: 1.45; background: rgba(255,255,255,0.04); border-left: 3px solid rgba(0,190,255,0.55); border-radius: 6px; padding: 6px 8px;">
+              <strong style="color: var(--primary-cyan);">Produtos:</strong> ${escapeHtml(produtos)}
             </div>
           </div>
           <div style="text-align: right; min-width: 140px;">
@@ -1214,18 +1866,66 @@ function renderSellerNewDeals(newDeals) {
             </div>
           </div>
         </div>
+
+        <div style="margin-top: 12px; padding: 12px; background: rgba(255,255,255,0.04); border-radius: 10px; border: 1px solid rgba(255,255,255,0.12);">
+          <div style="font-weight: 800; font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-gray); margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+            ${agendaIcon('icon-calendar')} Resumo da Oportunidade
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px;">
+            <div style="padding: 8px; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);">
+              <div style="font-size: 10px; color: var(--text-gray); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px;">Data de criação</div>
+              <div style="font-size: 12px; color: var(--text-main); font-weight: 700;">${escapeHtml(dataCriacaoLabel)}</div>
+            </div>
+            <div style="padding: 8px; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);">
+              <div style="font-size: 10px; color: var(--text-gray); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px;">Data prevista</div>
+              <div style="font-size: 12px; color: var(--text-main); font-weight: 700;">${escapeHtml(dataPrevista || 'N/A')}</div>
+            </div>
+            <div style="padding: 8px; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);">
+              <div style="font-size: 10px; color: var(--text-gray); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px;">Fase atual</div>
+              <div style="font-size: 12px; color: var(--primary-cyan); font-weight: 700;">${escapeHtml(fase)}</div>
+            </div>
+            <div style="padding: 8px; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);">
+              <div style="font-size: 10px; color: var(--text-gray); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px;">Portfólio</div>
+              <div style="font-size: 12px; color: var(--text-main); font-weight: 700; line-height: 1.4;">${escapeHtml(portfolioLabel)}</div>
+            </div>
+          </div>
+          <div style="margin-top: 8px; padding: 10px; border-radius: 8px; background: rgba(0,190,255,0.08); border-left: 3px solid var(--primary-cyan);">
+            <div style="font-size: 10px; color: var(--text-gray); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px;">Ação sugerida</div>
+            <div style="font-size: 12px; color: var(--text-main); font-weight: 700; line-height: 1.5;">${escapeHtml(acaoSugerida)}</div>
+          </div>
+        </div>
       </div>
     `;
   }).join('');
 }
 
 
-function renderSeller1on1Deals(deals) {
+function renderSeller1on1Deals(deals, sellerIdx) {
   if (!deals || deals.length === 0) {
     return renderEmptyState('Sem oportunidades no período.');
   }
+
+  const allRiskTags = [];
+  deals.forEach((deal) => {
+    extractDealRiskTags(deal).forEach((tag) => {
+      if (!allRiskTags.some((x) => x.toLowerCase() === String(tag).toLowerCase())) {
+        allRiskTags.push(tag);
+      }
+    });
+  });
   
-  return deals.map(deal => {
+  return `
+    ${allRiskTags.length ? `
+      <div style="padding: 10px 12px; margin-bottom: 8px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; display:flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <div style="font-size: 11px; color: var(--text-gray); font-weight: 700;">Filtrar por tag de risco:</div>
+        <select onchange="filterWeeklyAgendaDealsByRiskTag('${sellerIdx}', this.value)" style="background: rgba(255,255,255,0.07); color: var(--text-main); border: 1px solid var(--glass-border); border-radius: 8px; padding: 6px 8px; font-size: 12px; min-width: 220px;">
+          <option value="all">Todas</option>
+          ${allRiskTags.map((t) => `<option value="${escapeHtml(normalizeRiskTagKey(t))}">${escapeHtml(t)}</option>`).join('')}
+        </select>
+      </div>
+    ` : ''}
+    <div id="agenda-deals-grid-${sellerIdx}" style="display: grid; gap: 12px;">
+      ${deals.map(deal => {
     const ui = deal.ui || {};
     const confidence = parseFloat(deal.Confianca || 0) || 0;
     const gross = parseFloat(deal.Gross || 0) || 0;
@@ -1236,11 +1936,30 @@ function renderSeller1on1Deals(deals) {
     const risco = Math.max(0, Math.min(5, Number(riscoRaw) || 0));
     const questions = deal.sabatina_questions || [];
 
-    const riskTags = normalizeTagList(ui.riskTags || deal.Risk_Tags || deal.risk_tags);
+    const riskTags = extractDealRiskTags(deal);
+    const riskTagKeys = riskTags.map((t) => normalizeRiskTagKey(t)).filter(Boolean);
     const justificativaIA = ui.justificativaIA || deal.Justificativa_IA || deal.justificativaIA || deal.Motivo_Confianca || deal.motivo_confianca || '';
     const iaNotaLabel = ui.iaNotaLabel || ui.iaNota || '';
     const riscoPrincipal = (ui.riscoPrincipal || deal.Risco_Principal || '').trim();
     const faseAtual = deal.Fase_Atual || deal.Fase || deal.Stage || '';
+    const dataCriacaoRaw = deal.Data_de_criacao || deal.Data_Criacao || deal.Created_Date || deal.CreatedDate || deal.Created || '';
+    const dataPrevistaRaw = deal.Data_Prevista || deal.Close_Date || deal.CloseDate || deal.Data_Fechamento || deal.Data_de_Fechamento || '';
+    const produtosRaw = deal.Produtos || deal.Product_Name || deal.Product || deal.products || '';
+    const portfolioRaw = deal.Portfolio_FDM || deal.Portfolio || deal.portfolio_fdm || deal.portfolio || '';
+    const tipoOportunidadeRaw = deal.Tipo_Oportunidade || deal.tipo_oportunidade || '';
+    const tipoOportunidadeSchemaRaw = deal.Tipo_Oportunidade || deal.tipo_oportunidade || '';
+    const acaoSugeridaRaw = deal.Proxima_Acao_Pipeline || deal.Acao_Sugerida || deal.acao_sugerida || deal.Acao_Recomendada || deal.acao_recomendada || '';
+    const bdmOwnerRaw = deal.BDM_Owner || deal.bdm_owner || deal.Vendedor || deal.vendedor || '';
+    const bdmOwnerLabel = formatPersonDisplayName(bdmOwnerRaw);
+    const dataCriacao = formatDateDMY(dataCriacaoRaw);
+    const dataPrevista = formatDateDMY(dataPrevistaRaw) || 'N/A';
+    const faseAtualLabel = humanizeLabelToken(String(faseAtual || '').trim()) || 'N/A';
+    const produtosLabel = String(produtosRaw || '').trim() || 'Não informado';
+    const portfolioLabel = humanizeLabelToken(String(portfolioRaw || '').trim()) || 'Não informado na fonte';
+    const tipoOportunidadeLabel = String(tipoOportunidadeRaw || '').trim() || 'Não informado';
+    const tipoOportunidadeTag = renderOpportunityTypeTag(tipoOportunidadeSchemaRaw, tipoOportunidadeLabel);
+    const acaoSugeridaLabel = String(acaoSugeridaRaw || '').trim() || 'Não informado na fonte';
+    const dataCriacaoLabel = dataCriacao || 'Não informado na fonte';
     const fechamentoQuarter = (deal.Fechamento_Fiscal_Q || '').toString().trim();
     const pautaQuarter = (deal.Fiscal_Q || '').toString().trim();
     const fechamentoMismatch = fechamentoQuarter && pautaQuarter && fechamentoQuarter !== pautaQuarter;
@@ -1274,7 +1993,7 @@ function renderSeller1on1Deals(deals) {
                         marginPct < 80 ? 'var(--accent-green)' : 'var(--success)';
     
     return `
-      <div style="padding: 16px; background: rgba(255,255,255,0.02); border-left: 4px solid ${borderColor}; border-radius: 10px; transition: all 0.3s;" onmouseover="this.style.background='rgba(255,255,255,0.06)'" onmouseout="this.style.background='rgba(255,255,255,0.02)'">
+      <div class="agenda-deal-row" data-risk-tags="${escapeHtml(riskTagKeys.join('|'))}" style="padding: 16px; background: linear-gradient(160deg, rgba(9,16,26,0.82) 0%, rgba(16,24,35,0.78) 100%); border-left: 4px solid ${borderColor}; border-radius: 10px; border: 1px solid rgba(255,255,255,0.10); box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 8px 20px rgba(0,0,0,0.22); transition: all 0.25s ease;" onmouseover="this.style.background='linear-gradient(160deg, rgba(12,20,32,0.9) 0%, rgba(20,30,43,0.85) 100%)'; this.style.borderColor='rgba(255,255,255,0.16)'" onmouseout="this.style.background='linear-gradient(160deg, rgba(9,16,26,0.82) 0%, rgba(16,24,35,0.78) 100%)'; this.style.borderColor='rgba(255,255,255,0.10)'">
         <!-- Deal Header -->
         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
           <div style="flex: 1;">
@@ -1283,18 +2002,23 @@ function renderSeller1on1Deals(deals) {
             </div>
             <div style="font-size: 12px; color: var(--text-gray); margin-bottom: 4px;">
               ${deal.Conta || 'Conta não informada'}
-              ${deal.Perfil_Cliente ? `<span class="badge" style="background: ${deal.Perfil_Cliente.toUpperCase().includes('BASE') ? 'rgba(0,190,255,0.15)' : 'rgba(192,255,125,0.15)'}; color: ${deal.Perfil_Cliente.toUpperCase().includes('BASE') ? 'var(--primary-cyan)' : 'var(--accent-green)'}; padding: 2px 8px; font-size: 10px; border-radius: 4px; font-weight: 600; margin-left: 8px;">${deal.Perfil_Cliente}</span>` : ''}
             </div>
             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px;">
+              ${renderBusinessContextTags(deal)}
+              ${tipoOportunidadeTag}
+              ${bdmOwnerLabel ? `<span style="font-size: 11px; color: #93c5fd; background: rgba(147,197,253,0.10); border: 1px solid rgba(147,197,253,0.30); border-radius: 999px; padding: 3px 8px;">BDM Owner: ${escapeHtml(bdmOwnerLabel)}</span>` : ''}
               <span class="badge" style="background: ${borderColor}20; color: ${borderColor}; border: 1px solid ${borderColor};">
                 ${categoriaLabel}
               </span>
-              <span style="font-size: 11px; color: var(--text-gray);">
-                ${deal.Fiscal_Q || 'Q?'}${fechamentoQuarter ? ` | Fechamento: <span style="color:${fechamentoMismatch ? 'var(--warning)' : 'var(--text-gray)'}; font-weight:${fechamentoMismatch ? '900' : '700'};">${fechamentoQuarter}</span>` : ''} | ${deal.Dias_Funil || 0} dias funil${faseAtual ? ` | Fase: ${faseAtual}` : ''}
+              <span style="font-size: 11px; color: var(--text-gray); background: rgba(0,190,255,0.08); border: 1px solid rgba(0,190,255,0.2); border-radius: 999px; padding: 3px 8px;">
+                ${deal.Fiscal_Q || 'Q?'}${fechamentoQuarter ? ` | Fechamento: <span style="color:${fechamentoMismatch ? 'var(--warning)' : 'var(--text-gray)'}; font-weight:${fechamentoMismatch ? '900' : '700'};">${fechamentoQuarter}</span>` : ''} | ${deal.Dias_Funil || 0} dias funil${faseAtualLabel && faseAtualLabel !== 'N/A' ? ` | Fase: ${faseAtualLabel}` : ''}
               </span>
-              <span style="font-size: 11px; color: var(--text-gray);">
+              <span style="font-size: 11px; color: var(--text-gray); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.14); border-radius: 999px; padding: 3px 8px;">
                 ${deal.Atividades || 0} atividades
               </span>
+            </div>
+            <div style="margin-top: 6px; font-size: 11px; color: var(--text-main); line-height: 1.45; background: rgba(255,255,255,0.04); border-left: 3px solid rgba(0,190,255,0.55); border-radius: 6px; padding: 6px 8px;">
+              <strong style="color: var(--primary-cyan);">Produtos:</strong> ${escapeHtml(produtosLabel)}
             </div>
           </div>
           <div style="text-align: right; min-width: 220px;">
@@ -1319,6 +2043,34 @@ function renderSeller1on1Deals(deals) {
           </div>
         </div>
 
+        <div style="margin-top: 12px; padding: 12px; background: rgba(255,255,255,0.04); border-radius: 10px; border: 1px solid rgba(255,255,255,0.12);">
+          <div style="font-weight: 800; font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-gray); margin-bottom: 10px; display: flex; align-items: center; gap: 6px;">
+            ${agendaIcon('icon-calendar')} Resumo da Oportunidade
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px;">
+            <div style="padding: 8px; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);">
+              <div style="font-size: 10px; color: var(--text-gray); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px;">Data de criação</div>
+              <div style="font-size: 12px; color: var(--text-main); font-weight: 700;">${escapeHtml(dataCriacaoLabel)}</div>
+            </div>
+            <div style="padding: 8px; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);">
+              <div style="font-size: 10px; color: var(--text-gray); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px;">Data prevista</div>
+              <div style="font-size: 12px; color: var(--text-main); font-weight: 700;">${escapeHtml(dataPrevista)}</div>
+            </div>
+            <div style="padding: 8px; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);">
+              <div style="font-size: 10px; color: var(--text-gray); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px;">Fase atual</div>
+              <div style="font-size: 12px; color: var(--primary-cyan); font-weight: 700;">${escapeHtml(faseAtualLabel)}</div>
+            </div>
+            <div style="padding: 8px; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.10);">
+              <div style="font-size: 10px; color: var(--text-gray); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px;">Portfólio</div>
+              <div style="font-size: 12px; color: var(--text-main); font-weight: 700; line-height: 1.4;">${escapeHtml(portfolioLabel)}</div>
+            </div>
+          </div>
+          <div style="margin-top: 8px; padding: 10px; border-radius: 8px; background: rgba(0,190,255,0.08); border-left: 3px solid var(--primary-cyan);">
+            <div style="font-size: 10px; color: var(--text-gray); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 4px;">Ação sugerida</div>
+            <div style="font-size: 12px; color: var(--text-main); font-weight: 700; line-height: 1.5;">${escapeHtml(acaoSugeridaLabel)}</div>
+          </div>
+        </div>
+
         ${(riskTags.length > 0 || justificativaIA || iaNotaLabel || riskReasons.length > 0 || riscoPrincipal) ? `
           <div style="margin-top: 12px; padding: 12px; background: rgba(255,165,0,0.06); border-radius: 8px; border: 1px solid rgba(255,165,0,0.18);">
             <div style="font-weight: 700; font-size: 12px; margin-bottom: 8px; color: var(--warning);">
@@ -1328,7 +2080,7 @@ function renderSeller1on1Deals(deals) {
             ${(iaNotaLabel) ? `<div style="font-size: 12px; color: var(--text-gray); margin-bottom: 8px;"><strong>Nota IA:</strong> ${iaNotaLabel}</div>` : ''}
             ${(riskTags.length > 0) ? `
               <div style="display:flex; gap:6px; flex-wrap: wrap; margin-bottom: 8px;">
-                ${riskTags.slice(0, 8).map(t => `<span class="badge" style="background: rgba(255,165,0,0.14); color: var(--warning); border: 1px solid rgba(255,165,0,0.25);">${t}</span>`).join('')}
+                ${riskTags.slice(0, 8).map(t => `<span class="badge" style="background: rgba(255,165,0,0.14); color: var(--warning); border: 1px solid rgba(255,165,0,0.25);">${escapeHtml(t)}</span>`).join('')}
               </div>
             ` : ''}
             ${(justificativaIA) ? `
@@ -1357,7 +2109,9 @@ function renderSeller1on1Deals(deals) {
         ` : ''}
       </div>
     `;
-  }).join('');
+  }).join('')}
+    </div>
+  `;
 }
 
 // Expõe funções para uso global

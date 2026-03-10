@@ -19,6 +19,7 @@ function renderDashboard() {
       window.currentFilters.sub_sub_vertical_ia ||
       window.currentFilters.subsegmento_mercado ||
       window.currentFilters.segmento_consolidado ||
+      window.currentFilters.portfolio ||
       window.currentFilters.portfolio_fdm
     );
     
@@ -168,10 +169,38 @@ function renderDashboard() {
       log('[HIGH-CONF] ⚠ Dados não disponíveis na API');
     }
 
+    const animateForecastBars = (barIds) => {
+      if (!Array.isArray(barIds) || barIds.length === 0) return;
+      barIds.forEach((barId, idx) => {
+        const el = document.getElementById(barId);
+        if (!el) return;
+        el.style.transition = 'width 620ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms ease, transform 260ms ease, filter 220ms ease';
+        el.style.opacity = '0.84';
+        el.style.transform = 'translateY(3px)';
+        setTimeout(() => {
+          el.style.opacity = '1';
+          el.style.transform = 'translateY(0)';
+        }, idx * 55);
+
+        if (el.dataset.forecastHoverBound !== '1') {
+          el.dataset.forecastHoverBound = '1';
+          el.addEventListener('mouseenter', () => {
+            el.style.filter = 'brightness(1.06)';
+            el.style.transform = 'translateY(-1px)';
+          });
+          el.addEventListener('mouseleave', () => {
+            el.style.filter = 'none';
+            el.style.transform = 'translateY(0)';
+          });
+        }
+      });
+    };
+
     // Função global para recalcular saúde do forecast por período (usando forecast_ia do BigQuery)
     window.updateForecastHealth = function(period) {
       log('[FORECAST HEALTH] Iniciando atualização para período:', period);
       log('[FORECAST HEALTH] Total de deals armazenados:', window.allDealsWithConfidence ? window.allDealsWithConfidence.length : 0);
+      window.currentForecastHealthPeriod = period;
       
       let filteredCommit = 0, filteredCommitNet = 0;
       let filteredUpside = 0, filteredUpsideNet = 0;
@@ -248,6 +277,14 @@ function renderDashboard() {
       setTextSafe('forecast-pipeline-net', 'Net: ' + formatMoney(filteredPipelineNet));
       setTextSafe('forecast-potencial-net', 'Net: ' + formatMoney(filteredPotencialNet));
       setTextSafe('forecast-omitido-net', 'Net: ' + formatMoney(filteredOmitidoNet));
+
+      animateForecastBars([
+        'forecast-commit-bar',
+        'forecast-upside-bar',
+        'forecast-pipeline-bar',
+        'forecast-potencial-bar',
+        'forecast-omitido-bar'
+      ]);
     };
     
     // Inicializar barras com todos os deals (load inicial)
@@ -581,11 +618,16 @@ function renderDashboard() {
       ? apiFilteredData.avg_confidence 
       : avgConfidence;
     
-    setTextSafe('exec-forecast-weighted', formatMoney(forecastAvgWeighted));
-    setTextSafe('exec-forecast-percent', Math.round(displayAvgConfidence) + '% confiança média');
-    setTextSafe('exec-above50-value', formatMoney(above50Value));
-    setTextSafe('exec-above50-count', above50Count + ' deals');
-    setTextSafe('exec-above50-net', 'Net: ' + formatMoney(above50Net));
+    if (typeof setExecutiveForecastAndConfidenceCards === 'function') {
+      setExecutiveForecastAndConfidenceCards({
+        forecastGross: forecastAvgWeighted,
+        forecastNet: forecastNetWeighted,
+        avgConfidence: displayAvgConfidence,
+        highConfGross: above50Value,
+        highConfNet: above50Net,
+        highConfCount: above50Count,
+      });
+    }
     
     // Métricas de Idle Days agora vêm do endpoint /api/metrics via updateExecutiveMetricsFromAPI
     // (chamada já feita em loadData após receber metrics do backend)
@@ -637,17 +679,101 @@ function renderDashboard() {
     
     setTextSafe('forecast-ss-commit-value', formatMoney(salesSpecCommitGross) + ' (' + Math.round(ssCommitPercent) + '%)');
     setTextSafe('forecast-ss-upside-value', formatMoney(salesSpecUpsideGross) + ' (' + Math.round(ssUpsidePercent) + '%)');
+
+    animateForecastBars(['forecast-ss-commit-bar', 'forecast-ss-upside-bar']);
     
-    // SEÇÃO 2: Análise Estratégica da IA (REESCRITA - ANÁLISE INTELIGENTE DE VERDADE)
-    const execContentEl = document.getElementById('executive-content');
+    // SEÇÃO 2: Análise Estratégica da IA — renderiza na aba inline #exec-ia-content
+    const execContentEl   = document.getElementById('exec-ia-content');
+    const execActionsEl   = document.getElementById('exec-ia-actions');
+    const execFilterBadges = document.getElementById('ia-filter-badges');
     const execToggleLabel = document.getElementById('executive-toggle-label');
     const execToggleCaret = document.getElementById('executive-toggle-caret');
-    if (execContentEl) {
-      if (execToggleLabel && execToggleCaret) {
-        execToggleLabel.textContent = 'Ocultar';
-        execToggleCaret.style.transform = 'rotate(0deg)';
+
+    // Modo: booking (booking_gross / booking_net) vs revenue ERP (gross / net)
+    const isRevenueMode = ['gross', 'net'].includes(window.execDisplayMode || '');
+
+    // Popula badges de filtros ativos
+    if (execFilterBadges) {
+      const filterIconSVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px;"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>';
+      if (isRevenueMode) {
+        // Filtros ERP
+        const badges = [];
+        const selectedValues = (id) => Array.from(document.getElementById(id)?.selectedOptions || []).map(o => o.value).filter(Boolean);
+        const fy  = document.getElementById('year-filter')?.value;
+        const fq  = document.getElementById('quarter-filter')?.value;
+        const fm  = document.getElementById('month-filter')?.value;
+        const fpo = selectedValues('erp-portfolio-filter');
+        const fsp = selectedValues('erp-payment-status-filter');
+        const fpr = selectedValues('erp-product-filter');
+        const fto = selectedValues('erp-opportunity-type-line-filter');
+        const fsg = selectedValues('erp-segment-filter');
+        if (fy)  badges.push(`Ano: ${fy}`);
+        if (fq)  badges.push(`Q${fq}`);
+        if (fm)  badges.push(`Mês: ${fm}`);
+        if (fpo.length) badges.push(`Portfólio: ${fpo.length > 2 ? fpo.length + ' selecionados' : fpo.join(', ')}`);
+        if (fsp.length) badges.push(`Status: ${fsp.length > 2 ? fsp.length + ' selecionados' : fsp.join(', ')}`);
+        if (fpr.length) badges.push(`Produto: ${fpr.length > 2 ? fpr.length + ' selecionados' : fpr.join(', ')}`);
+        if (fto.length) badges.push(`Tipo Oportunidade: ${fto.length > 2 ? fto.length + ' selecionados' : fto.join(', ')}`);
+        if (fsg.length) badges.push(`Segmento: ${fsg.length > 2 ? fsg.length + ' selecionados' : fsg.join(', ')}`);
+        badges.push((window.execDisplayMode === 'net') ? 'Net Revenue (ERP)' : 'Gross Revenue (ERP)');
+        execFilterBadges.innerHTML = badges
+          .map(b => `<span class="ia-filter-badge active">${filterIconSVG} ${b}</span>`)
+          .join('');
+      } else {
+        // Filtros Booking CRM
+        const badges = [];
+        if (window.currentFilters) {
+          const f = window.currentFilters;
+          if (f.year)           badges.push(`Ano: ${f.year}`);
+          if (f.quarter)        badges.push(`Q${f.quarter}`);
+          if (f.month)          badges.push(`Mês: ${f.month}`);
+          if (f.seller)         badges.push(`Vendedor: ${f.seller}`);
+          if (f.vertical_ia)    badges.push(`Vertical: ${f.vertical_ia}`);
+          if (f.billing_state)  badges.push(`Estado: ${f.billing_state}`);
+          if (f.billing_city)   badges.push(`Cidade: ${f.billing_city}`);
+          if (f.phase)          badges.push(`Fase: ${f.phase}`);
+          if (f.owner_preventa) badges.push(`Pré-venda: ${f.owner_preventa}`);
+          if (f.portfolio)      badges.push(`Portfólio: ${f.portfolio}`);
+          if (f.portfolio_fdm)  badges.push(`Portfólio FDM: ${f.portfolio_fdm}`);
+        }
+        if (badges.length === 0) {
+          execFilterBadges.innerHTML = '<span class="ia-filter-badge">Todos os dados do quarter</span>';
+        } else {
+          execFilterBadges.innerHTML = badges
+            .map(b => `<span class="ia-filter-badge active">${filterIconSVG} ${b}</span>`)
+            .join('');
+        }
       }
-      if (DATA.aiAnalysis && DATA.aiAnalysis.executive) {
+    }
+
+    // SVG helper: retorna inline SVG por iconKey
+    function iaIconSVG(key) {
+      const icons = {
+        winrate:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>',
+        target:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
+        score:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M7 12h10M12 7v10"/></svg>',
+        calendar:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+        clock:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+        zap:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+        layers:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>',
+        star:      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+        bar:       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+        check:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><polyline points="20 6 9 17 4 12"/></svg>',
+        alert:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+      };
+      return icons[key] || icons['bar'];
+    }
+
+    if (execContentEl) {
+      if (isRevenueMode) {
+        // Revenue Analysis IA — dados do ERP (faturamento)
+        if (window._erpLastData && typeof renderIARevenue === 'function') {
+          renderIARevenue(window._erpLastData);
+        } else {
+          execContentEl.innerHTML = '<div style="padding:40px;text-align:center;color:var(--ui-text-3,#64748b);font-size:13px;">Aguardando dados de receita — selecione um período e o modo GROSS/NET REVENUE.</div>';
+          if (execActionsEl) execActionsEl.innerHTML = '';
+        }
+      } else if (DATA.aiAnalysis && DATA.aiAnalysis.executive) {
         execContentEl.innerHTML = cleanAIResponse(DATA.aiAnalysis.executive);
       } else {
         // CORREÇÃO: Usa valores FILTRADOS quando há filtros ativos
@@ -657,12 +783,12 @@ function renderDashboard() {
         const displayForecastWeighted = displayPipelineGross * (displayAvgConfidence / 100);
         const displaySalesSpecDeals = pipelineSalesSpecDeals;
         const displaySalesSpecGross = pipelineSalesSpecGross;
-        
+
         // Define variáveis de forecast categories para uso posterior
         const hasCommit = totalForecast > 0 && commitPercent >= 10;
         const hasUpside = totalForecast > 0 && upsidePercent >= 20;
         const hasPipeline = totalForecast > 0 && pipelinePercent >= 30;
-        
+
         // Calcula ciclos médios de won/lost para análise
         let avgWinCycle = 0;
         let avgLossCycle = 0;
@@ -674,7 +800,7 @@ function renderDashboard() {
           const totalCicloLoss = lostAgg.reduce((sum, d) => sum + (d.ciclo_dias || d.Ciclo_dias || 0), 0);
           avgLossCycle = totalCicloLoss / lostAgg.length;
         }
-        
+
         // MÉTRICAS CALCULADAS PARA ANÁLISE INTELIGENTE
         const ticketMedio = displayPipelineDeals > 0 ? displayPipelineGross / displayPipelineDeals : 0;
         const ticketGanho = totalWins > 0 ? winsGross / totalWins : 0;
@@ -682,120 +808,309 @@ function renderDashboard() {
         const ratioPerdasVsGanhos = winsGross > 0 ? lossesGross / winsGross : 0;
         const coverage = winsGross > 0 ? (displayForecastWeighted / winsGross) : 0;
         const eficienciaCiclo = totalWins > 0 && totalLosses > 0 ? ((avgWinCycle || 0) / (avgLossCycle || 1)) : 0;
-        
-        // ====== ANÁLISE ESTRATÉGICA — ESTRUTURA DIAG-CARD ======
-        const diagCards = [];   // { type: 'critical'|'warning'|'healthy', icon, title, impact, desc, action }
-        const actionSteps = []; // { label, desc, urgent: bool }
+
+        // ====== ANÁLISE ESTRATÉGICA — nova estrutura ia-diag-card ======
+        const diagCards = [];   // { type, iconKey, title, impact, desc, action }
+        const actionSteps = []; // { label, desc, urgent }
 
         // ——— DIAGNÓSTICO 1: Win Rate ———
         if (displayConversionRate < 20 && totalDeals >= 10) {
-          let desc = `Win Rate de ${displayConversionRate}% indica desperdício massivo de recursos.`;
+          let desc = `Win Rate de ${displayConversionRate}% está muito abaixo do benchmark de 30%. Para cada ${Math.max(1, totalDeals - totalWins)} deals perdidos só ${totalWins} converteram — desperdício direto de recursos do time de vendas.`;
           let action = 'Revisar urgentemente processo de qualificação e ICP.';
-          let impact = formatMoney(lossesGross) + ' em perdas';
           if (ticketPerda > ticketGanho * 1.5) {
-            desc += ` Foco em deals grandes sem fit (perda média ${formatMoney(ticketPerda)} vs ganho ${formatMoney(ticketGanho)}).`;
-            action = `Implementar filtro MEDDIC >20 antes de investir em deals >${formatMoney(ticketPerda * 0.8)}.`;
+            desc += ` O padrão mais preocupante: estamos investindo tempo em deals grandes sem fit — ticket médio perdido (${formatMoney(ticketPerda)}) é ${Math.round(ticketPerda/ticketGanho)}× maior que o ticket ganho (${formatMoney(ticketGanho)}).`;
+            action = `Implementar filtro MEDDIC obrigatório antes de investir em deals acima de ${formatMoney(ticketPerda * 0.8)}.`;
           } else if (ratioPerdasVsGanhos > 10) {
-            desc += ` ${Math.round(ratioPerdasVsGanhos)}× mais valor perdido que ganho — qualificação ausente.`;
-            action = 'Pausar novos deals até revisar ICP e processo de qualificação.';
+            desc += ` ${Math.round(ratioPerdasVsGanhos)}× mais valor perdido que ganho — sinal claro de ausência de qualificação.`;
+            action = 'Pausar abertura de novos deals até revisar ICP e processo de qualificação.';
           }
-          diagCards.push({ type: 'critical', icon: '🚨', title: 'Win Rate Crítico', impact, desc, action });
-          actionSteps.push({ label: 'Filtro de Entrada', desc: action, urgent: true });
+          diagCards.push({
+            type: 'critical', iconKey: 'winrate',
+            title: 'Win Rate Crítico',
+            metric: { value: displayConversionRate + '%', label: 'Win Rate atual · benchmark: 30%+' },
+            stats: [
+              { key: 'Total Deals', val: totalDeals },
+              { key: 'Ganhos', val: totalWins },
+              { key: 'Perdas', val: totalLosses },
+              { key: 'Ticket Ganho', val: formatMoney(ticketGanho) },
+              { key: 'Ticket Perdido', val: formatMoney(ticketPerda) },
+              { key: 'Valor Perdido', val: formatMoney(lossesGross) },
+            ],
+            desc, action,
+            drillLabel: 'Ver análise de oportunidades',
+            drillFn: "switchExecTab('oportunidades')",
+          });
+          actionSteps.push({ label: 'Qualificação de Entrada', desc: action, urgent: true });
         } else if (displayConversionRate >= 20 && displayConversionRate < 30 && totalDeals >= 10) {
-          diagCards.push({ type: 'warning', icon: '⚠️', title: 'Win Rate Abaixo do Benchmark', impact: `${displayConversionRate}% vs benchmark 30%+`, desc: `Com ${formatMoney(lossesGross)} perdidos, há margem para melhora significativa via qualificação inicial.`, action: 'Implementar checklist BANT obrigatório antes de Proposta.' });
+          diagCards.push({
+            type: 'warning', iconKey: 'winrate',
+            title: 'Win Rate Abaixo do Benchmark',
+            metric: { value: displayConversionRate + '%', label: `Win Rate · benchmark: 30%+ · gap: ${30 - displayConversionRate}pp` },
+            stats: [
+              { key: 'Total Deals', val: totalDeals },
+              { key: 'Ganhos', val: totalWins },
+              { key: 'Perdas', val: totalLosses },
+              { key: 'Valor Perdido', val: formatMoney(lossesGross) },
+            ],
+            desc: `Com ${formatMoney(lossesGross)} perdidos, há margem relevante para melhora via qualificação na entrada do processo. ${totalLosses} deals foram descartados — revisar os motivos principais pode revelar padrões evitáveis.`,
+            action: 'Implementar checklist BANT obrigatório antes de avançar para Proposta.',
+            drillLabel: 'Analisar perfil de perdas',
+            drillFn: "switchExecTab('oportunidades')",
+          });
           actionSteps.push({ label: 'Qualificação BANT', desc: 'Implementar checklist obrigatório antes de avançar para Proposta.', urgent: false });
         }
 
         // ——— DIAGNÓSTICO 2: Cobertura de Pipeline ———
         if (coverage < 2 && winsGross > 0) {
           const gap = formatMoney(winsGross * 3 - displayForecastWeighted);
-          diagCards.push({ type: 'critical', icon: '🎯', title: 'Cobertura Crítica de Pipeline', impact: `${coverage.toFixed(1)}× (mín. recomendado: 3×)`, desc: `Pipeline ${coverage.toFixed(1)}× abaixo do resultado atual. Necessário ${gap} adicionais em pipeline qualificado para manter ritmo.`, action: 'Intensificar prospecção e qualificação de novos deals.' });
-          actionSteps.push({ label: 'Pipeline Rebuild', desc: `Adicionar ${gap} em pipeline qualificado nos próximos 30 dias.`, urgent: true });
+          diagCards.push({
+            type: 'critical', iconKey: 'target',
+            title: 'Cobertura Crítica de Pipeline',
+            metric: { value: coverage.toFixed(1) + '×', label: `Cobertura atual · mín. recomendado: 3× · gap: ${gap}` },
+            stats: [
+              { key: 'Pipeline Total', val: formatMoney(displayPipelineGross) },
+              { key: 'Deals Abertos', val: displayPipelineDeals },
+              { key: 'Forecast Ponderado', val: formatMoney(displayForecastWeighted) },
+              { key: 'Conf. Média IA', val: Math.round(displayAvgConfidence) + '%' },
+            ],
+            desc: `Cobertura de ${coverage.toFixed(1)}× é insuficiente para garantir o trimestre. Pipeline de ${formatMoney(displayPipelineGross)} com confiança média de ${Math.round(displayAvgConfidence)}% resulta em forecast ponderado de apenas ${formatMoney(displayForecastWeighted)}. É necessário adicionar ${gap} em pipeline qualificado.`,
+            action: 'Intensificar prospecção e qualificação de novos deals imediatamente.',
+            drillLabel: 'Ver distribuição do pipeline',
+            drillFn: "switchMetricView('view-graficos', document.getElementById('view-btn-graficos'))",
+          });
+          actionSteps.push({ label: 'Reconstrução de Pipeline', desc: `Adicionar ${gap} em pipeline qualificado nos próximos 30 dias.`, urgent: true });
         } else if (coverage > 5) {
-          diagCards.push({ type: 'healthy', icon: '📊', title: 'Pipeline Saudável', impact: `Cobertura ${coverage.toFixed(1)}×`, desc: `Cobertura forte. Foco deve estar em aceleração e conversão, não geração.`, action: 'Priorizar deals ≥50% confiança para fechamento.' });
+          diagCards.push({
+            type: 'healthy', iconKey: 'bar',
+            title: 'Pipeline Saudável',
+            metric: { value: coverage.toFixed(1) + '×', label: 'Cobertura de pipeline · benchmark: 3×' },
+            stats: [
+              { key: 'Pipeline', val: formatMoney(displayPipelineGross) },
+              { key: 'Deals', val: displayPipelineDeals },
+              { key: 'Forecast Pond.', val: formatMoney(displayForecastWeighted) },
+            ],
+            desc: `Cobertura forte de ${coverage.toFixed(1)}× indica pipeline saudável acima do mínimo recomendado. O foco executivo deve estar em aceleração e conversão, não em geração de novos deals.`,
+            action: 'Priorizar deals ≥50% confiança para fechamento rápido.',
+            drillLabel: 'Ver oportunidades prioritárias',
+            drillFn: "switchExecTab('oportunidades')",
+          });
         }
 
         // ——— DIAGNÓSTICO 3: Scoring / Confiança ———
         if (displayAvgConfidence < 35 && displayPipelineDeals > 10) {
-          diagCards.push({ type: 'critical', icon: '🤖', title: 'Scoring de IA Comprometido', impact: `Confiança média ${Math.round(displayAvgConfidence)}%`, desc: `IA não confia no pipeline. Possíveis causas: deals mal qualificados, inatividade ou MEDDIC baixo.`, action: `Auditar ${Math.round(displayPipelineDeals * 0.3)} maiores deals e atualizar MEDDIC.` });
-          actionSteps.push({ label: 'Scoring Audit', desc: `Revisar MEDDIC dos ${Math.round(displayPipelineDeals * 0.3)} maiores deals e atualizar próximas ações.`, urgent: false });
+          const auditCount = Math.round(displayPipelineDeals * 0.3);
+          diagCards.push({
+            type: 'critical', iconKey: 'score',
+            title: 'Scoring de IA Comprometido',
+            metric: { value: Math.round(displayAvgConfidence) + '%', label: 'Confiança média · benchmark: 50%+' },
+            stats: [
+              { key: 'Deals no Pipeline', val: displayPipelineDeals },
+              { key: 'Conf. Média', val: Math.round(displayAvgConfidence) + '%' },
+              { key: 'Deals ≥50%', val: above50Count },
+              { key: 'Valor ≥50%', val: formatMoney(above50Value) },
+            ],
+            desc: `IA está sinalizando baixa confiança geral no pipeline. Possíveis causas: deals mal qualificados, inatividade prolongada nos negócios ou preenchimento incompleto do MEDDIC. Com ${above50Count} de ${displayPipelineDeals} deals acima de 50%, apenas ${formatMoney(above50Value)} têm maturidade para fechamento.`,
+            action: `Auditar os ${auditCount} maiores deals e atualizar MEDDIC, próximas ações e estimativas de fechamento.`,
+            drillLabel: 'Revisar deals no pipeline',
+            drillFn: "switchExecTab('oportunidades')",
+          });
+          actionSteps.push({ label: 'Auditoria de Scoring', desc: `Revisar MEDDIC dos ${auditCount} maiores deals e atualizar próximas ações.`, urgent: false });
         }
 
         // ——— DIAGNÓSTICO 4: Falta de COMMIT ———
         if (!hasCommit && displayPipelineDeals > 5) {
-          diagCards.push({ type: 'critical', icon: '⏰', title: 'Risco de Quarter', impact: 'Zero deals em COMMIT', desc: 'Nenhum fechamento garantido no curto prazo. Receita do quarter em risco.', action: 'Identificar 3–5 deals para converter em COMMIT até fim do mês.' });
+          diagCards.push({
+            type: 'critical', iconKey: 'calendar',
+            title: 'Risco de Quarter — Sem COMMIT',
+            metric: { value: '0', label: 'Deals em COMMIT · fechamentos garantidos no quarter' },
+            stats: [
+              { key: 'Deals Pipeline', val: displayPipelineDeals },
+              { key: 'Quick Wins (≥50%)', val: above50Count },
+              { key: 'Valor Quick Wins', val: formatMoney(above50Value) },
+              { key: 'Cobertura', val: coverage.toFixed(1) + '×' },
+            ],
+            desc: `Nenhum deal classificado como COMMIT — sem fechamentos garantidos no curto prazo. A receita do quarter depende inteiramente de avanços de deals que ainda não estão maduros. ${above50Count > 0 ? `Existem ${above50Count} deals com ≥50% de confiança (${formatMoney(above50Value)}) que podem ser acelerados para COMMIT.` : 'É necessário identificar e qualificar ativamente novos deals para fechamento.'}`,
+            action: above50Count > 0
+              ? `Daily standup nos ${above50Count} deals ≥50% confiança. Meta: mover ${Math.min(3, above50Count)} para COMMIT até fim do mês.`
+              : 'Identificar 5 deals com potencial de fechamento em 30–45 dias e iniciar aceleração.',
+            drillLabel: 'Ver COMMIT e Forecast no Resumo',
+            drillFn: "switchExecTab('resumo')",
+          });
           if (above50Count > 0) {
             actionSteps.push({ label: 'Aceleração Imediata', desc: `Daily standups nos ${above50Count} deals ≥50% confiança. Meta: mover ${Math.min(3, above50Count)} para COMMIT.`, urgent: true });
           } else {
-            actionSteps.push({ label: 'Pipeline Rebuild', desc: 'Identificar 5 deals potenciais com fechamento em 30–45 dias.', urgent: true });
+            actionSteps.push({ label: 'Reconstrução de Pipeline', desc: 'Identificar 5 deals potenciais com fechamento em 30–45 dias.', urgent: true });
           }
         }
 
         // ——— DIAGNÓSTICO 5: Ciclo de Perda ———
         if (avgLossCycle > avgWinCycle * 2 && totalLosses >= 5) {
           const extra = Math.round(avgLossCycle - avgWinCycle);
-          diagCards.push({ type: 'warning', icon: '⏱️', title: 'Ineficiência de Ciclo', impact: `+${extra}d desperdiçados por perda`, desc: `Deals perdidos levam ${Math.round(avgLossCycle)}d vs ${Math.round(avgWinCycle)}d nas vitórias. Custo oculto: tempo de vendedor em deals sem fit.`, action: 'Definir critério de early exit (ex: 60d sem avanço = kill deal).' });
-          actionSteps.push({ label: 'Early Exit Criteria', desc: `Definir: 60 dias sem progressão de estágio = encerrar deal. Resgatar ${totalLosses} análises de perda.`, urgent: false });
+          diagCards.push({
+            type: 'warning', iconKey: 'clock',
+            title: 'Ineficiência de Ciclo',
+            metric: { value: '+' + extra + 'd', label: `Dias desperdiçados por deal perdido · ${totalLosses} perdas no período` },
+            stats: [
+              { key: 'Ciclo Médio Ganhos', val: Math.round(avgWinCycle) + ' dias' },
+              { key: 'Ciclo Médio Perdas', val: Math.round(avgLossCycle) + ' dias' },
+              { key: 'Dias Extras/Deal', val: extra + 'd' },
+              { key: 'Total Perdas', val: totalLosses },
+              { key: 'Custo Oculto', val: extra + 'd × ' + totalLosses + ' deals' },
+            ],
+            desc: `Deals perdidos levam ${Math.round(avgLossCycle)}d para fechar vs ${Math.round(avgWinCycle)}d nas vitórias — ${Math.round(avgLossCycle / avgWinCycle)}× mais lento. Isso significa ${extra} dias por deal desperdiçados com deals sem fit. Com ${totalLosses} perdas no período, o time investiu aproximadamente ${extra * totalLosses} dias em oportunidades sem resultado.`,
+            action: `Implementar critério de saída: deals sem progressão em 60 dias são encerrados. Revisão dos ${totalLosses} motivos de perda para encontrar padrões.`,
+            drillLabel: 'Ver análise de perdas',
+            drillFn: "switchExecTab('aprendizados')",
+          });
+          actionSteps.push({ label: 'Critério de Saída', desc: `Definir: 60 dias sem progressão = encerrar deal. Revisar ${totalLosses} análises de perda.`, urgent: false });
         }
 
-        // ——— OPORTUNIDADES → diag-card healthy ———
+        // ——— OPORTUNIDADES: healthy cards ———
         if (above50Count > 0 && displayForecastWeighted > 0) {
-          diagCards.push({ type: 'healthy', icon: '💰', title: 'Quick Wins Identificados', impact: `${above50Count} deals · ${formatMoney(above50Value)}`, desc: `${above50Count} deals com confiança ≥50% prontos para fechamento.`, action: `Priorizar esses ${above50Count} deals como #1 nas próximas semanas.` });
+          diagCards.push({
+            type: 'healthy', iconKey: 'zap',
+            title: 'Quick Wins Identificados',
+            metric: { value: above50Count.toString(), label: `Deals com confiança ≥50% · ${formatMoney(above50Value)} em valor` },
+            stats: [
+              { key: 'Deals ≥50%', val: above50Count },
+              { key: 'Valor Total', val: formatMoney(above50Value) },
+              { key: 'Ticket Médio', val: above50Count > 0 ? formatMoney(above50Value / above50Count) : '—' },
+              { key: 'Do Pipeline Total', val: displayPipelineDeals > 0 ? Math.round((above50Count / displayPipelineDeals) * 100) + '%' : '—' },
+            ],
+            desc: `${above50Count} deals com alta probabilidade de fechamento representam ${formatMoney(above50Value)} em valor realizável. São as oportunidades de maior retorno de esforço — cada hora investida aqui tem ${Math.round(above50Value / (above50Count || 1) / 1000)}k de retorno potencial.`,
+            action: `Esses ${above50Count} deals são a prioridade absoluta. Agenda semanal de revisão para cada um.`,
+            drillLabel: 'Ver Quick Wins no pipeline',
+            drillFn: "switchExecTab('oportunidades')",
+          });
         }
         if (displaySalesSpecDeals > 0) {
           const specTicket = displaySalesSpecGross / displaySalesSpecDeals;
           if (specTicket > ticketMedio * 1.3) {
-            diagCards.push({ type: 'healthy', icon: '⭐', title: 'Curadoria de Valor', impact: `Ticket ${Math.round((specTicket / ticketMedio) * 100 - 100)}% acima da média`, desc: `Sales Specialist focando em deals maiores (${formatMoney(specTicket)} vs média ${formatMoney(ticketMedio)}).`, action: 'Expandir programa de curadoria para cobrir mais deals estratégicos.' });
+            diagCards.push({
+              type: 'healthy', iconKey: 'star',
+              title: 'Curadoria de Valor Ativa',
+              metric: { value: Math.round((specTicket / ticketMedio) * 100 - 100) + '%', label: 'Ticket acima da média geral · Sales Specialist' },
+              stats: [
+                { key: 'Deals Curados', val: displaySalesSpecDeals },
+                { key: 'Valor Curado', val: formatMoney(displaySalesSpecGross) },
+                { key: 'Ticket Curado', val: formatMoney(specTicket) },
+                { key: 'Ticket Médio Geral', val: formatMoney(ticketMedio) },
+              ],
+              desc: `Sales Specialist está focando em deals de maior valor — ticket médio curado de ${formatMoney(specTicket)} é ${Math.round((specTicket / ticketMedio) * 100 - 100)}% acima da média geral (${formatMoney(ticketMedio)}). Estratégia correta: concentrar atenção executiva onde o retorno é maior.`,
+              action: 'Expandir programa de curadoria para cobrir mais deals estratégicos acima de 1.3× ticket médio.',
+              drillLabel: 'Ver deals curados',
+              drillFn: "switchExecTab('oportunidades')",
+            });
           }
         } else if (displayPipelineDeals > 15) {
-          diagCards.push({ type: 'warning', icon: '💼', title: 'Curadoria Ausente', impact: `${displayPipelineDeals} deals sem triagem`, desc: `${displayPipelineDeals} deals sem curadoria manual. Alta probabilidade de deals baixo fit consumindo tempo.`, action: `Sales Specialist deve curar top ${Math.min(5, Math.round(displayPipelineDeals * 0.2))} deals para atenção executiva.` });
-          actionSteps.push({ label: 'Curadoria Estratégica', desc: `Sales Specialist: curar top ${Math.min(5, Math.round(displayPipelineDeals * 0.2))} deals por valor + fit para VIP.`, urgent: false });
+          const auditN = Math.min(5, Math.round(displayPipelineDeals * 0.2));
+          diagCards.push({
+            type: 'warning', iconKey: 'layers',
+            title: 'Curadoria Estratégica Ausente',
+            metric: { value: displayPipelineDeals.toString(), label: 'Deals sem triagem executiva' },
+            stats: [
+              { key: 'Deals Abertos', val: displayPipelineDeals },
+              { key: 'Valor Total', val: formatMoney(displayPipelineGross) },
+              { key: 'Meta Curadoria', val: auditN + ' deals' },
+              { key: 'Cobertura Meta', val: Math.round((auditN / displayPipelineDeals) * 100) + '%' },
+            ],
+            desc: `${displayPipelineDeals} deals abertos sem triagem manual de um Sales Specialist. Sem curadoria, há alta probabilidade de deals com baixo fit consumindo tempo desproporcionalmente — é impossível garantir atenção executiva nos deals certos.`,
+            action: `Sales Specialist deve curar top ${auditN} deals por valor + fit estratégico para atenção executiva imediata.`,
+            drillLabel: 'Ver pipeline completo',
+            drillFn: "switchExecTab('oportunidades')",
+          });
+          actionSteps.push({ label: 'Curadoria Estratégica', desc: `Sales Specialist: curar top ${auditN} deals por valor + fit.`, urgent: false });
         }
         if (totalWins > 0 && avgWinCycle < 60) {
-          diagCards.push({ type: 'healthy', icon: '⚡', title: 'Velocidade Competitiva', impact: `Ciclo médio ${Math.round(avgWinCycle)}d`, desc: 'Ciclo de fechamento rápido é uma vantagem competitiva. Identificar padrões replicáveis.', action: 'Mapear perfil dos deals fechados: estágio de entrada, vendedor, região.' });
+          diagCards.push({
+            type: 'healthy', iconKey: 'zap',
+            title: 'Velocidade de Fechamento',
+            metric: { value: Math.round(avgWinCycle) + 'd', label: 'Ciclo médio de ganhos · abaixo de 60d é vantagem competitiva' },
+            stats: [
+              { key: 'Ciclo Médio Ganhos', val: Math.round(avgWinCycle) + ' dias' },
+              { key: 'Total Ganhos', val: totalWins },
+              { key: 'Receita Fechada', val: formatMoney(winsGross) },
+              { key: 'Ticket Médio Ganho', val: formatMoney(ticketGanho) },
+            ],
+            desc: `Ciclo médio de fechamento de ${Math.round(avgWinCycle)} dias é uma vantagem competitiva real — abaixo de 60 dias demonstra agilidade de processo e qualidade de qualificação. Mapear e replicar o perfil desses deals pode escalar esse resultado.`,
+            action: 'Mapear perfil dos deals fechados: estágio de entrada, vendedor, região, vertical. Replicar no playbook.',
+            drillLabel: 'Ver perfil de ganhos',
+            drillFn: "switchExecTab('aprendizados')",
+          });
         }
 
         // ——— FALLBACK ———
         if (diagCards.length === 0) {
-          diagCards.push({ type: 'healthy', icon: '✅', title: 'Performance Dentro do Esperado', impact: '', desc: 'Métricas principais estão saudáveis. Continue monitorando e executando.', action: 'Manter cadência de revisão semanal do pipeline.' });
+          diagCards.push({
+            type: 'healthy', iconKey: 'check',
+            title: 'Performance Dentro do Esperado',
+            metric: { value: displayConversionRate + '%', label: 'Win Rate · pipeline saudável' },
+            stats: [
+              { key: 'Deals', val: totalDeals },
+              { key: 'Ganhos', val: totalWins },
+              { key: 'Pipeline', val: formatMoney(displayPipelineGross) },
+            ],
+            desc: 'Métricas principais estão dentro do esperado. Continue monitorando cadência de pipeline e qualidade de qualificação.',
+            action: 'Manter revisão semanal de pipeline e atualização de MEDDIC.',
+            drillLabel: 'Ver pipeline',
+            drillFn: "switchExecTab('oportunidades')",
+          });
         }
         if (actionSteps.length === 0) {
           actionSteps.push({ label: 'Revisão Semanal', desc: 'Manter cadência de revisão de pipeline e atualização de MEDDIC.', urgent: false });
         }
 
-        // ——— RENDER HTML ———
-        const diagCardHTML = diagCards.map(c => `
-          <div class="diag-card ${c.type}">
-            <div class="diag-icon">${c.icon}</div>
-            <div class="diag-content">
-              <div class="diag-header">
-                <span class="diag-title">${c.title}</span>
-                ${c.impact ? `<span class="diag-impact-tag ${c.type}">${c.impact}</span>` : ''}
-              </div>
-              <p class="diag-desc">${c.desc}</p>
-              <p class="diag-action">→ ${c.action}</p>
-            </div>
-          </div>`).join('');
+        // ——— RENDER HELPERS ———
+        const arrowSVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0;margin-top:2px;opacity:0.6;"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>';
+        const chevronRightSVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:12px;height:12px;flex-shrink:0;"><polyline points="9 18 15 12 9 6"/></svg>';
+        const severityLabel = { critical: 'Crítico', warning: 'Alerta', healthy: 'Saudável' };
 
-        const actionStepHTML = actionSteps.map((s, i) => `
-          <div class="action-step${s.urgent ? ' urgent' : ''}">
-            <div class="step-number">${i + 1}</div>
-            <div class="step-content">
-              <strong>${s.label}</strong>
+        // ——— RENDER: ia-diag-card grid ———
+        const diagCardHTML = diagCards.map(c => {
+          const statsHTML = c.stats && c.stats.length > 0
+            ? `<div class="ia-diag-stats">${c.stats.map(s => `<div class="ia-diag-stat"><span class="ia-diag-stat-key">${s.key}</span><span class="ia-diag-stat-val">${s.val}</span></div>`).join('')}</div>`
+            : '';
+          const drillBtn = c.drillLabel
+            ? `<button class="ia-drill-btn" onclick="${c.drillFn}">${c.drillLabel} ${chevronRightSVG}</button>`
+            : '';
+          return `
+          <div class="ia-diag-card ${c.type}">
+            <div class="ia-diag-top">
+              <span class="ia-diag-severity">${severityLabel[c.type] || c.type}</span>
+              <span class="ia-diag-icon-wrap">${iaIconSVG(c.iconKey)}</span>
+              <div class="ia-diag-title">${c.title}</div>
+            </div>
+            ${c.metric ? `<div class="ia-diag-metric-row"><span class="ia-diag-metric-value">${c.metric.value}</span><span class="ia-diag-metric-label">${c.metric.label}</span></div>` : ''}
+            <p class="ia-diag-desc">${c.desc}</p>
+            ${statsHTML}
+            <div class="ia-diag-footer">
+              <p class="ia-diag-action">${arrowSVG} ${c.action}</p>
+              ${drillBtn}
+            </div>
+          </div>`;
+        }).join('');
+
+        // ——— RENDER: ia-action-item list ———
+        const urgentDot = '<span class="ia-urgent-dot"></span>';
+        const actionHTML = actionSteps.map((s, i) => `
+          <div class="ia-action-item${s.urgent ? ' urgent' : ''}">
+            <div class="ia-action-num">${i + 1}</div>
+            <div class="ia-action-body">
+              <strong>${s.urgent ? urgentDot : ''}${s.label}</strong>
               <p>${s.desc}</p>
             </div>
           </div>`).join('');
 
-        execContentEl.innerHTML = `
-          <div class="diag-layout">
-            <div class="diagnostics-container">${diagCardHTML}</div>
-            <div class="action-plan-container">
-              <div class="action-plan-header">📋 Plano de Ação — 30 dias</div>
-              ${actionStepHTML}
-            </div>
-          </div>`;
+        // ——— INJECT ———
+        execContentEl.innerHTML = diagCardHTML;
+        if (execActionsEl) execActionsEl.innerHTML = actionHTML;
       }
     }
+
+    // Exposição para o botão "Atualizar" da aba
+    window.refreshIAAnalysis = function() {
+      if (typeof renderDashboard === 'function') renderDashboard();
+    };
     
     // SEÇÃO 3: DESTAQUES OPERACIONAIS DO QUARTER
     
@@ -1225,6 +1540,8 @@ function renderDashboard() {
       if (f.month) parts.push(`Mês ${f.month}`);
       if (f.seller) parts.push(`Vendedor ${f.seller}`);
       if (f.segmento_consolidado) parts.push(`Segmento ${f.segmento_consolidado}`);
+      if (f.portfolio) parts.push(`Portfólio ${f.portfolio}`);
+      if (f.portfolio_fdm) parts.push(`Portfólio FDM ${f.portfolio_fdm}`);
       if (f.billing_state) parts.push(`UF ${f.billing_state}`);
       if (f.billing_city) parts.push(`Cidade ${f.billing_city}`);
       return parts.length ? parts.join(' · ') : 'Sem filtros adicionais';
@@ -1339,6 +1656,103 @@ function renderDashboard() {
         gtm2026: deal.gtm_2026 || '',
         suggestedAction: deal.acao_recomendada || deal.Acao_Sugerida || deal.Acao_Recomendada || deal.recomendacao_acao || deal.proxima_acao || ''
       };
+    };
+
+    const normalizeForecastCategory = (rawCategory) => {
+      const text = String(rawCategory || '').toUpperCase();
+      if (text.includes('COMMIT')) return 'COMMIT';
+      if (text.includes('UPSIDE')) return 'UPSIDE';
+      if (text.includes('POTENC')) return 'POTENCIAL';
+      if (text.includes('OMIT')) return 'OMITIDO';
+      if (text.includes('PIPE')) return 'PIPELINE';
+      return 'PIPELINE';
+    };
+
+    const filterRowsByForecastPeriod = (rows) => {
+      const sourceRows = Array.isArray(rows) ? rows : [];
+      const selectedPeriod = String(window.currentForecastHealthPeriod || 'all').toLowerCase();
+      if (!selectedPeriod || selectedPeriod === 'all' || selectedPeriod === 'total') return sourceRows;
+      const fy = String(window.currentFY || 'FY26').toUpperCase();
+      const targetQuarter = `${fy}-${selectedPeriod.toUpperCase()}`;
+      return sourceRows.filter((row) => String(row.quarter || '').toUpperCase() === targetQuarter);
+    };
+
+    const bindForecastHealthBarDrilldown = () => {
+      const openRowsBase = (Array.isArray(allDeals) ? allDeals : []).map((deal) => ({
+        ...normalizeOpenDeal(deal),
+        source: 'pipeline',
+        forecastStatus: normalizeForecastCategory(deal.forecastCategory || deal.Forecast_IA || deal.Forecast_SF || '')
+      }));
+      const ssRowsBase = (Array.isArray(DATA?.salesSpecialist?.deals) ? DATA.salesSpecialist.deals : [])
+        .map(normalizeSalesSpecialistDeal)
+        .map((deal) => ({
+          ...deal,
+          source: 'ss',
+          forecastStatus: normalizeForecastCategory(deal.forecastStatus || deal.stage || '')
+        }));
+
+      const openRows = filterRowsByForecastPeriod(openRowsBase);
+      const ssRows = filterRowsByForecastPeriod(ssRowsBase);
+      const selectedPeriod = String(window.currentForecastHealthPeriod || 'all').toLowerCase();
+      const periodLabel = (selectedPeriod === 'all' || selectedPeriod === 'total')
+        ? 'Todos os períodos'
+        : `${window.currentFY || 'FY26'}-${selectedPeriod.toUpperCase()}`;
+      const filtersLabel = getTopOppsFiltersLabel();
+
+      const openCategoryBars = [
+        { id: 'forecast-commit-bar', category: 'COMMIT' },
+        { id: 'forecast-upside-bar', category: 'UPSIDE' },
+        { id: 'forecast-pipeline-bar', category: 'PIPELINE' },
+        { id: 'forecast-potencial-bar', category: 'POTENCIAL' },
+        { id: 'forecast-omitido-bar', category: 'OMITIDO' }
+      ];
+
+      openCategoryBars.forEach((cfg) => {
+        const barEl = document.getElementById(cfg.id);
+        if (!barEl) return;
+        barEl.style.cursor = 'pointer';
+        barEl.title = `Clique para drill-down (${cfg.category})`;
+        barEl.onclick = () => {
+          if (typeof window.openExecutiveDrilldown !== 'function') return;
+          const rows = openRows.filter((row) => normalizeForecastCategory(row.forecastStatus) === cfg.category);
+          window.openExecutiveDrilldown({
+            title: `Drill-down · Saúde Forecast IA · ${cfg.category}`,
+            subtitle: `${periodLabel} · Categoria ${cfg.category}`,
+            rows,
+            selected: rows[0] || null,
+            rule: `Pipeline aberto classificado na categoria ${cfg.category} (Forecast IA/SF)` ,
+            baseLabel: `${rows.length} deals · ${formatMoney(rows.reduce((sum, row) => sum + (row.value || 0), 0))}`,
+            filtersLabel,
+            sql: 'SELECT * FROM pipeline WHERE forecast_categoria = <categoria> AND <filtros_herdados>'
+          });
+        };
+      });
+
+      const ssCategoryBars = [
+        { id: 'forecast-ss-commit-bar', category: 'COMMIT' },
+        { id: 'forecast-ss-upside-bar', category: 'UPSIDE' }
+      ];
+
+      ssCategoryBars.forEach((cfg) => {
+        const barEl = document.getElementById(cfg.id);
+        if (!barEl) return;
+        barEl.style.cursor = 'pointer';
+        barEl.title = `Clique para drill-down Sales Specialist (${cfg.category})`;
+        barEl.onclick = () => {
+          if (typeof window.openExecutiveDrilldown !== 'function') return;
+          const rows = ssRows.filter((row) => normalizeForecastCategory(row.forecastStatus) === cfg.category);
+          window.openExecutiveDrilldown({
+            title: `Drill-down · Saúde Forecast Sales Specialist · ${cfg.category}`,
+            subtitle: `${periodLabel} · Categoria ${cfg.category}`,
+            rows,
+            selected: rows[0] || null,
+            rule: `Deals de Sales Specialist com forecast ${cfg.category}`,
+            baseLabel: `${rows.length} deals · ${formatMoney(rows.reduce((sum, row) => sum + (row.value || 0), 0))}`,
+            filtersLabel,
+            sql: 'SELECT * FROM sales_specialist_deals WHERE forecast_status = <categoria> AND <filtros_herdados>'
+          });
+        };
+      });
     };
 
     const buildInsight = (kind, deal) => {
@@ -1731,11 +2145,12 @@ function renderDashboard() {
       if (!summaryRoot) return;
       summaryRoot.querySelectorAll('.kpi-card').forEach(card => {
         if (card.dataset.execDdBound === '1') return;
+        const metricNode = card.querySelector('[id^="exec-"]');
+        if (!metricNode) return;
         card.dataset.execDdBound = '1';
         card.style.cursor = 'pointer';
         card.addEventListener('click', () => {
-          const metricNode = card.querySelector('[id^="exec-"]');
-          const metricId = metricNode ? metricNode.id : '';
+          const metricId = metricNode.id;
           const cfg = buildDrilldownRowsFromMetric(metricId);
           const subtitle = `Resumo → Lista → Detalhe${cfg.filterHint || ''}`;
           window.openExecutiveDrilldown({
@@ -1778,6 +2193,7 @@ function renderDashboard() {
     setActiveTopOppsTab(initialTab);
     renderTopOppsTab(initialTab);
     bindExecutiveKpiDrilldown();
+    bindForecastHealthBarDrilldown();
     
     // Armazena todos os deals com quarter para uso global
     window.allDealsWithQuarter = allDeals;
@@ -2067,6 +2483,7 @@ function renderDashboard() {
     setTextSafe('kpi-aging', safe(l10, 'agingPipeline', 0));
     setTextSafe('kpi-predictable', formatMoney(safe(l10, 'predictableRevenue')));
 
+
     // Margem por categoria
     log('[RENDER] Processando margens por categoria...');
     const marginContainer = document.getElementById('margin-container');
@@ -2096,6 +2513,42 @@ function renderDashboard() {
     const activeRepsTable = scorecardTable.filter(r => r.isActive);
     const inactiveReps = scorecardTable.filter(r => !r.isActive);
     log('[DATA] FSR Scorecard:', activeRepsTable.length, 'ativos,', inactiveReps.length, 'inativos');
+
+    // Resumo da aba Score (visão executiva)
+    const onTrack = activeRepsTable.filter(r => (r.ipv || 0) >= 80).length;
+    const atRisk = activeRepsTable.filter(r => (r.ipv || 0) >= 50 && (r.ipv || 0) < 80).length;
+    const offTrack = activeRepsTable.filter(r => (r.ipv || 0) < 50).length;
+    const avgScore = activeRepsTable.length > 0
+      ? Math.round(activeRepsTable.reduce((sum, r) => sum + (r.ipv || 0), 0) / activeRepsTable.length)
+      : 0;
+
+    setTextSafe('exec-score-ontrack', onTrack);
+    setTextSafe('exec-score-atrisk', atRisk);
+    setTextSafe('exec-score-offtrack', offTrack);
+    setTextSafe('exec-score-avg', avgScore + '%');
+
+    const execScoreTableBody = document.getElementById('exec-score-table-body');
+    if (execScoreTableBody) {
+      execScoreTableBody.innerHTML = '';
+      if (activeRepsTable.length > 0) {
+        activeRepsTable.forEach((fsr) => {
+          const ipv = Number(fsr.ipv || 0);
+          const status = ipv >= 80 ? 'On Track' : ipv >= 50 ? 'At Risk' : 'Off Track';
+          const statusColor = ipv >= 80 ? 'var(--success)' : ipv >= 50 ? 'var(--warning)' : 'var(--danger)';
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td style="font-weight:600;color:#fff;">${fsr.name || 'N/A'}</td>
+            <td>${ipv}%</td>
+            <td>${fsr.winRate || 0}%</td>
+            <td>${formatMoney(fsr.totalGrossGenerated || 0)}</td>
+            <td><span style="color:${statusColor};font-weight:700;">${status}</span></td>
+          `;
+          execScoreTableBody.appendChild(tr);
+        });
+      } else {
+        execScoreTableBody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:18px;">Sem dados de score disponíveis</td></tr>';
+      }
+    }
     
     // Popula tabela de IPV (Ranking Geral)
     const ipvTableBody = document.getElementById('fsr-ipv-table');
@@ -2277,6 +2730,305 @@ function renderDashboard() {
         </p>
       </div>
     `;
+  }
+}
+
+// ── Revenue IA — análise estratégica para modo ERP (Gross/Net Revenue) ──────
+function renderIARevenue({ rev, att, top }) {
+  const execContentEl    = document.getElementById('exec-ia-content');
+  const execActionsEl    = document.getElementById('exec-ia-actions');
+  if (!execContentEl) return;
+
+  const mode  = window.execDisplayMode || 'gross';
+  const isNet = (mode === 'net');
+  const fmt   = (v) => typeof formatMoney === 'function' ? formatMoney(v) : String(v);
+
+  // ── Data extraction ─────────────────────────────────────────────────────
+  const totais  = rev?.totais  || {};
+  const semanas = rev?.por_semana || [];
+  const attRes  = att?.resumo  || {};
+  const items   = top?.items   || [];
+
+  const totalRev = isNet ? (totais.net_revenue  || 0) : (totais.gross_revenue  || 0);
+  const pago     = totais.net_pago      || 0;
+  const pendente = totais.net_pendente  || 0;
+  const pagoPend = pago + pendente;
+  const pendPct  = pagoPend > 0 ? Math.round((pendente / pagoPend) * 100) : 0;
+  const pagoPct  = pagoPend > 0 ? Math.round((pago    / pagoPend) * 100) : 0;
+
+  const attKey = isNet ? 'attainment_net_pct' : 'attainment_gross_pct';
+  const attPct = attRes[attKey] != null ? Math.round(Number(attRes[attKey])) : null;
+  const metaKey = isNet ? 'meta_net' : 'meta_gross';
+  const metaVal = attRes[metaKey] || 0;
+
+  // Tendência: últimas 4 semanas vs 4 semanas anteriores (rolling, ignora semanas parciais)
+  let trendPct = null;
+  let trendLabel = null;
+  let lastWeekRev = 0;
+  let recentAvg = 0;
+  let priorAvg = 0;
+  if (semanas.length >= 5) {
+    const revKey = isNet ? 'net_revenue' : 'gross_revenue';
+    const allVals = semanas.map(s => s[revKey] || 0);
+    const fullAvg = allVals.reduce((a, b) => a + b, 0) / allVals.length;
+
+    // Detecta se a última semana é parcial (< 40% da média geral) — exclui da janela
+    const lastVal  = allVals[allVals.length - 1];
+    const isLastPartial = fullAvg > 0 && lastVal < fullAvg * 0.4;
+    const anchor   = isLastPartial ? allVals.length - 1 : allVals.length;
+
+    // Janela recente: [anchor-4 .. anchor-1] e anterior: [anchor-8 .. anchor-5]
+    const recentWindow = allVals.slice(Math.max(0, anchor - 4), anchor);
+    const priorWindow  = allVals.slice(Math.max(0, anchor - 8), Math.max(0, anchor - 4));
+
+    if (recentWindow.length > 0 && priorWindow.length > 0) {
+      recentAvg = recentWindow.reduce((a, b) => a + b, 0) / recentWindow.length;
+      priorAvg  = priorWindow.reduce((a, b) => a + b, 0)  / priorWindow.length;
+      if (priorAvg > 0) {
+        trendPct = Math.round(((recentAvg - priorAvg) / priorAvg) * 100);
+      }
+    }
+    lastWeekRev = isLastPartial
+      ? (allVals.slice(-2)[0] || 0)   // penúltima (última completa)
+      : lastVal;
+    trendLabel = `vs 4 sem. anteriores · últimas ${recentWindow.length} sem. ${typeof formatMoney === 'function' ? 'avg ' + formatMoney(recentAvg) : ''}`;
+  }
+
+  // Top client concentration
+  const top1    = items[0] || null;
+  const top3Sum = items.slice(0,3).reduce((s, r) => s + (isNet ? (r.net_revenue || 0) : (r.gross_revenue || 0)), 0);
+  const top1Rev = top1 ? (isNet ? (top1.net_revenue || 0) : (top1.gross_revenue || 0)) : 0;
+  const top1Pct = totalRev > 0 ? Math.round((top1Rev  / totalRev) * 100) : 0;
+  const top3Pct = totalRev > 0 ? Math.round((top3Sum  / totalRev) * 100) : 0;
+
+  // Top product
+  const prodMap = {};
+  items.forEach(r => {
+    const p = r.produto_principal || 'Outros';
+    const v = isNet ? (r.net_revenue || 0) : (r.gross_revenue || 0);
+    prodMap[p] = (prodMap[p] || 0) + v;
+  });
+  const prodEntries  = Object.entries(prodMap).sort((a,b) => b[1]-a[1]);
+  const topProdName  = prodEntries[0]?.[0] || '—';
+  const topProdVal   = prodEntries[0]?.[1] || 0;
+  const topProdPct   = totalRev > 0 ? Math.round((topProdVal / totalRev) * 100) : 0;
+
+  // ── Drill map (avoids dynamic string escaping issues) ───────────────────
+  window._iaRevDrills = {
+    att:      function() { const el = document.getElementById('erp-kpi-section'); if (el) el.scrollIntoView({behavior:'smooth', block:'start'}); },
+    pendente: function() { if (typeof openRevenueExpandedDrilldown==='function') openRevenueExpandedDrilldown({title:'Revenue Pendente',dimension:'all',value:'all',statusPagamento:'Pendiente,NAO_INFORMADO'}); },
+    pago:     function() { if (typeof openRevenueExpandedDrilldown==='function') openRevenueExpandedDrilldown({title:'Revenue Pago',dimension:'all',value:'all',statusPagamento:'Pagada,Intercompañia'}); },
+    top1:     function() { if (top1 && typeof openRevenueExpandedDrilldown==='function') openRevenueExpandedDrilldown({title:'Top Cliente · '+top1.cliente,dimension:'cliente',value:top1.cliente}); },
+    topProd:  function() { if (topProdName!=='—' && typeof openRevenueExpandedDrilldown==='function') openRevenueExpandedDrilldown({title:'Produto · '+topProdName,dimension:'produto_principal',value:topProdName}); },
+    graficos: function() { if (typeof switchMetricView==='function') switchMetricView('view-graficos', document.getElementById('view-btn-graficos')); },
+    all:      function() { if (typeof openRevenueExpandedDrilldown==='function') openRevenueExpandedDrilldown({title:'Revenue Completo',dimension:'all',value:'all'}); },
+  };
+
+  // ── SVGs ─────────────────────────────────────────────────────────────────
+  const _svgMap = {
+    target:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
+    check:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;"><polyline points="20 6 9 17 4 12"/></svg>',
+    alert:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    zap:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+    bar:     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+    layers:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>',
+    clock:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+  };
+
+  const diagCards  = [];
+  const actionSteps = [];
+
+  // ── CARD 1: Attainment vs Meta ──────────────────────────────────────────
+  if (attPct !== null) {
+    const type    = attPct >= 90 ? 'healthy' : attPct >= 70 ? 'warning' : 'critical';
+    const metaFmt = metaVal > 0 ? fmt(metaVal) : 'não disponível';
+    const gapVal  = metaVal > 0 && attPct < 100 ? metaVal - totalRev : 0;
+    diagCards.push({
+      type, iconKey: 'target',
+      title: 'Attainment vs Meta',
+      metric: { value: attPct + '%', label: `da meta ${metaFmt} · ${isNet ? 'Net' : 'Gross'} Revenue` },
+      stats: [
+        { key: 'Revenue Realizado', val: fmt(totalRev) },
+        { key: 'Meta do Período',   val: metaFmt },
+        { key: 'Attainment',        val: attPct + '%' },
+        ...(gapVal > 0 ? [{ key: 'Gap para Meta', val: fmt(gapVal) }] : []),
+      ],
+      desc: attPct >= 100
+        ? `Meta atingida com ${attPct}% de attainment. ${fmt(totalRev)} realizados no período. Investigar potencial de over-attainment e proteger receita recorrente.`
+        : `Attainment de ${attPct}% — ${gapVal > 0 ? `faltam ${fmt(gapVal)} para fechar a meta.` : 'abaixo da meta.'} ${attPct < 70 ? 'Recuperação urgente necessária para o período.' : 'Aceleração nas próximas semanas pode recuperar o gap.'}`,
+      action: attPct >= 90
+        ? 'Manter ritmo e monitorar receita recorrente com pendência de reconhecimento.'
+        : `Identificar ${attPct < 70 ? 'todas' : 'as principais'} contas com faturamento pendente e acelerar reconhecimento.`,
+      drillLabel: 'Ver KPIs de Attainment',
+      drillFn: 'window._iaRevDrills.att()',
+    });
+    if (attPct < 70) actionSteps.push({ label: 'Recuperação de Meta', desc: `Attainment em ${attPct}%. Priorizar reconhecimento de receita pendente e cobranças em atraso.`, urgent: true });
+  }
+
+  // ── CARD 2: Saúde de Cobrança ─────────────────────────────────────────
+  if (pagoPend > 0) {
+    const cobrType = pendPct > 40 ? 'critical' : pendPct > 20 ? 'warning' : 'healthy';
+    diagCards.push({
+      type: cobrType, iconKey: cobrType === 'healthy' ? 'check' : 'alert',
+      title: 'Saúde de Cobrança',
+      metric: { value: pendPct + '%', label: `do faturado pendente · ${fmt(pendente)} a receber` },
+      stats: [
+        { key: 'Faturado Total', val: fmt(pagoPend) },
+        { key: 'Pago',           val: fmt(pago) },
+        { key: '% Pago',         val: pagoPct + '%' },
+        { key: 'Pendente',       val: fmt(pendente) },
+        { key: '% Pendente',     val: pendPct + '%' },
+      ],
+      desc: pendPct > 40
+        ? `${pendPct}% do faturamento (${fmt(pendente)}) ainda não foi recebido — risco de caixa elevado. De ${fmt(pagoPend)} faturados, apenas ${fmt(pago)} (${pagoPct}%) foram confirmados pagos.`
+        : pendPct > 20
+        ? `${fmt(pendente)} pendentes representam ${pendPct}% do faturamento. Monitoramento ativo recomendado para evitar inadimplência crescente.`
+        : `Cobrança saudável: ${pagoPct}% do faturamento (${fmt(pago)}) já foi recebido. Apenas ${fmt(pendente)} (${pendPct}%) ainda pendentes.`,
+      action: pendPct > 20
+        ? `Acionar time de cobrança nos clientes com pendências — ver lista completa no drill abaixo.`
+        : 'Manter monitoramento semanal da carteira de recebíveis.',
+      drillLabel: `Ver ${fmt(pendente)} pendente por cliente`,
+      drillFn: 'window._iaRevDrills.pendente()',
+    });
+    if (pendPct > 30) actionSteps.push({ label: 'Cobrança Prioritária', desc: `${fmt(pendente)} pendentes (${pendPct}% do faturado). Elaborar lista de cobrança imediata.`, urgent: true });
+  }
+
+  // ── CARD 3: Concentração de Clientes ────────────────────────────────────
+  if (top1 && top1Rev > 0) {
+    const concType = top1Pct > 40 ? 'critical' : top1Pct > 25 ? 'warning' : 'healthy';
+    diagCards.push({
+      type: concType, iconKey: concType === 'healthy' ? 'check' : 'layers',
+      title: 'Concentração de Clientes',
+      metric: { value: top1Pct + '%', label: `do revenue no top cliente · ${top1.cliente}` },
+      stats: [
+        { key: 'Top 1 Cliente',  val: top1.cliente },
+        { key: 'Revenue Top 1',  val: fmt(top1Rev) },
+        { key: '% do Total',     val: top1Pct + '%' },
+        { key: 'Top 3 Clientes', val: fmt(top3Sum) },
+        { key: '% Top 3',        val: top3Pct + '%' },
+        { key: 'Total Clientes', val: String(items.length) },
+      ],
+      desc: top1Pct > 40
+        ? `Concentração crítica: ${top1.cliente} representa ${top1Pct}% do revenue. Qualquer churn ou inadimplência neste cliente impacta diretamente o attainment do período.`
+        : top1Pct > 25
+        ? `Top 3 clientes concentram ${top3Pct}% do revenue. ${top1.cliente} lidera com ${top1Pct}%. Acompanhar saúde desses contratos de forma prioritária.`
+        : `Base diversificada: maior cliente (${top1.cliente}) representa apenas ${top1Pct}% do período — estrutura saudável de distribuição de receita.`,
+      action: top1Pct > 30
+        ? `Mapear riscos de contrato dos top 3 clientes (${top3Pct}% do revenue). Plano de retenção ativo.`
+        : `Avaliar oportunidades de upsell/cross-sell nos ${items.length} clientes ativos do período.`,
+      drillLabel: `Ver detalhes de ${top1.cliente}`,
+      drillFn: 'window._iaRevDrills.top1()',
+    });
+    if (top1Pct > 35) actionSteps.push({ label: 'Risco de Concentração', desc: `${top1.cliente} representa ${top1Pct}% do revenue. Plano de diversificação e retenção necessário.`, urgent: top1Pct > 45 });
+  }
+
+  // ── CARD 4: Tendência Rolling 4 semanas ─────────────────────────────────
+  if (trendPct !== null) {
+    const type4    = trendPct >= 5 ? 'healthy' : trendPct >= -5 ? 'warning' : 'critical';
+    const sign4    = trendPct > 0 ? '+' : '';
+    diagCards.push({
+      type: type4, iconKey: trendPct >= 0 ? 'zap' : 'clock',
+      title: 'Tendência de Receita',
+      metric: { value: sign4 + trendPct + '%', label: `últimas 4 sem. vs 4 sem. anteriores · avg recente ${fmt(recentAvg)}/sem.` },
+      stats: [
+        { key: 'Variação (4s vs 4s)', val: sign4 + trendPct + '%' },
+        { key: 'Avg Recente (4 sem)', val: fmt(recentAvg) + '/sem.' },
+        { key: 'Avg Anterior (4 sem)', val: fmt(priorAvg)  + '/sem.' },
+        { key: 'Revenue Total',       val: fmt(totalRev) },
+        { key: 'Semanas Analisadas',  val: String(semanas.length) },
+        { key: 'Última Semana Completa', val: fmt(lastWeekRev) },
+      ],
+      desc: trendPct >= 10
+        ? `Receita em aceleração: as últimas 4 semanas (média ${fmt(recentAvg)}/sem.) estão ${sign4}${trendPct}% acima das 4 anteriores (${fmt(priorAvg)}/sem.). Ritmo favorável para o período.`
+        : trendPct >= -5
+        ? `Receita estável: variação de ${sign4}${trendPct}% entre as últimas 4 e as 4 semanas anteriores. Médias comparadas: ${fmt(recentAvg)}/sem. recente vs ${fmt(priorAvg)}/sem. anterior.`
+        : `Desaceleração de ${Math.abs(trendPct)}%: as últimas 4 semanas (${fmt(recentAvg)}/sem.) estão abaixo das 4 anteriores (${fmt(priorAvg)}/sem.). Investigar causas e contas em risco.`,
+      action: trendPct < -5
+        ? 'Investigar causas da desaceleração — ver gráfico semanal para identificar o ponto de queda.'
+        : 'Acompanhar ritmo semanal para garantir fechamento do período. Ver gráfico completo.',
+      drillLabel: 'Ver gráfico de evolução semanal',
+      drillFn: 'window._iaRevDrills.graficos()',
+    });
+    if (trendPct < -15) actionSteps.push({ label: 'Desaceleração de Receita', desc: `Revenue das últimas 4 semanas caiu ${Math.abs(trendPct)}% vs as 4 anteriores. Verificar inadimplência e churn.`, urgent: true });
+  }
+
+  // ── CARD 5: Mix de Produtos ──────────────────────────────────────────────
+  if (topProdName !== '—' && topProdPct > 0) {
+    const mixType = topProdPct > 70 ? 'warning' : 'healthy';
+    diagCards.push({
+      type: mixType, iconKey: 'bar',
+      title: 'Mix de Produtos',
+      metric: { value: topProdPct + '%', label: `do revenue em ${topProdName} · ${prodEntries.length} produto${prodEntries.length > 1 ? 's' : ''} ativo${prodEntries.length > 1 ? 's' : ''}` },
+      stats: [
+        { key: 'Top Produto',     val: topProdName },
+        { key: 'Revenue Produto', val: fmt(topProdVal) },
+        { key: '% do Total',      val: topProdPct + '%' },
+        { key: 'Produtos Ativos', val: String(prodEntries.length) },
+        ...(prodEntries[1] ? [{ key: '2º Produto', val: prodEntries[1][0] + ' (' + Math.round((prodEntries[1][1]/totalRev)*100) + '%)' }] : []),
+      ],
+      desc: topProdPct > 70
+        ? `${topProdName} concentra ${topProdPct}% do revenue — alta dependência de um único produto. Diversificação de mix pode reduzir risco de erosão de receita.`
+        : `Mix de ${prodEntries.length} produtos ativos. ${topProdName} lidera com ${topProdPct}% (${fmt(topProdVal)}) — distribuição equilibrada.`,
+      action: topProdPct > 70
+        ? `Analisar oportunidades de cross-sell além de ${topProdName} para diversificar a base de receita.`
+        : `Monitorar evolução de cada produto no período — ver histórico completo no drill.`,
+      drillLabel: `Ver revenue de ${topProdName}`,
+      drillFn: 'window._iaRevDrills.topProd()',
+    });
+  }
+
+  // ── Fallback ────────────────────────────────────────────────────────────
+  if (diagCards.length === 0) {
+    diagCards.push({
+      type: 'healthy', iconKey: 'check',
+      title: 'Revenue Carregado',
+      metric: { value: fmt(totalRev), label: `Total ${isNet ? 'Net' : 'Gross'} Revenue no período` },
+      stats: [],
+      desc: 'Dados carregados. Aplique filtros de período, portfólio, status, produto, tipo de oportunidade ou segmento para análise detalhada.',
+      action: 'Selecionar período e filtros para análise aprofundada.',
+      drillLabel: 'Ver todos os dados de revenue',
+      drillFn: 'window._iaRevDrills.all()',
+    });
+  }
+  if (actionSteps.length === 0) {
+    actionSteps.push({ label: 'Monitoramento Contínuo', desc: 'Manter revisão semanal de attainment, cobrança e tendência de receita.', urgent: false });
+  }
+
+  // ── Render (mesma estrutura CSS que booking IA) ──────────────────────────
+  const arrowSVG   = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0;margin-top:2px;opacity:0.6;"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>';
+  const chevronSVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:12px;height:12px;flex-shrink:0;"><polyline points="9 18 15 12 9 6"/></svg>';
+  const sevLabel   = { critical: 'Crítico', warning: 'Alerta', healthy: 'Saudável' };
+
+  execContentEl.innerHTML = diagCards.map(function(c) {
+    const statsHTML = c.stats && c.stats.length > 0
+      ? '<div class="ia-diag-stats">' + c.stats.map(function(s) { return '<div class="ia-diag-stat"><span class="ia-diag-stat-key">' + s.key + '</span><span class="ia-diag-stat-val">' + s.val + '</span></div>'; }).join('') + '</div>'
+      : '';
+    const drillBtn = c.drillLabel
+      ? '<button class="ia-drill-btn" onclick="' + c.drillFn + '">' + c.drillLabel + ' ' + chevronSVG + '</button>'
+      : '';
+    return '<div class="ia-diag-card ' + c.type + '">'
+      + '<div class="ia-diag-top">'
+      + '<span class="ia-diag-severity">' + (sevLabel[c.type] || c.type) + '</span>'
+      + '<span class="ia-diag-icon-wrap">' + (_svgMap[c.iconKey] || _svgMap.bar) + '</span>'
+      + '<div class="ia-diag-title">' + c.title + '</div>'
+      + '</div>'
+      + (c.metric ? '<div class="ia-diag-metric-row"><span class="ia-diag-metric-value">' + c.metric.value + '</span><span class="ia-diag-metric-label">' + c.metric.label + '</span></div>' : '')
+      + '<p class="ia-diag-desc">' + c.desc + '</p>'
+      + statsHTML
+      + '<div class="ia-diag-footer"><p class="ia-diag-action">' + arrowSVG + ' ' + c.action + '</p>' + drillBtn + '</div>'
+      + '</div>';
+  }).join('');
+
+  if (execActionsEl) {
+    const urgentDot = '<span class="ia-urgent-dot"></span>';
+    execActionsEl.innerHTML = actionSteps.map(function(s, i) {
+      return '<div class="ia-action-item' + (s.urgent ? ' urgent' : '') + '">'
+        + '<div class="ia-action-num">' + (i + 1) + '</div>'
+        + '<div class="ia-action-body">'
+        + '<strong>' + (s.urgent ? urgentDot : '') + s.label + '</strong>'
+        + '<p>' + s.desc + '</p>'
+        + '</div></div>';
+    }).join('');
   }
 }
 

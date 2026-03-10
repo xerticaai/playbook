@@ -221,11 +221,8 @@ function showError(message) {
 // INTEGRATION POINT
 // =================================================================
 
-// Chamar quando a seção FSR for exibida
-function showSection(element, sectionId) {
-  // ... código existente para trocar de seção ...
-  
-  // Se for a seção FSR, carregar dados da API
+// Hook opcional: chama apenas a carga de FSR sem sobrescrever showSection global.
+function onSectionChangedForPerformance(sectionId) {
   if (sectionId === 'fsr') {
     loadPerformanceSection();
   }

@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="pt-PT" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X-Sales Hub | Xertica</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Configuração Customizada do Tailwind para suportar as cores Brand Kit V.2 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        xCyan: '#00BEFF',
+                        xCyanLight: '#5CD5FF',
+                        xPink: '#FF89FF',
+                        xGreen: '#C0FF7D',
+                        xDark: '#03070d',
+                    },
+                    animation: {
+                        'grid-flow': 'gridFlow 20s linear infinite',
+                    },
+                    keyframes: {
+                        gridFlow: {
+                            '0%': { transform: 'translateY(0)' },
+                            '100%': { transform: 'translateY(40px)' } /* Tamanho da célula da grelha */
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <!-- Google Fonts: Poppins e Roboto -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* ============================================================
+           XERTICA.AI BRAND KIT V.2 — DESIGN SYSTEM PREMIUM
+           ============================================================ */
+        :root {
+            /* Backgrounds */
+            --bg-deep: #03070d;
+            --bg-surface: rgba(13, 19, 31, 0.4);
+            --bg-surface-hover: rgba(20, 29, 46, 0.65);
+            
+            /* Glassmorphism */
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-highlight: rgba(255, 255, 255, 0.1);
+            
+            /* Typography */
+            --text-main: #E2E8F0;
+            --text-muted: #94A3B8;
+            --text-white: #ffffff;
+            --text-gray: #8899b0;
+            --font-heading: 'Poppins', sans-serif;
+            --font-body: 'Roboto', sans-serif;
+
+            /* Brand Glows */
+            --x-cyan-50: #00BEFF;
+            --x-cyan-glow: rgba(0, 190, 255, 0.5);
+            
+            --x-green-50: #C0FF7D;
+            --x-green-glow: rgba(192, 255, 125, 0.45);
+            
+            --x-pink-50: #FF89FF;
+            --x-pink-glow: rgba(255, 137, 255, 0.5);
+        }
+
+        * { box-sizing: border-box; }
+
+        body { 
+            margin: 0; 
+            font-family: var(--font-body); 
+            background-color: var(--bg-deep);
+            color: var(--text-main); 
+            display: flex; 
+            flex-direction: column;
+            min-height: 100vh; 
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* ── GRELHA RETRO-FUTURISTA ANIMADA (Inovação) ── */
+        .bg-grid-container {
+            position: fixed;
+            inset: -40px 0 0 0; /* Margem extra para a animação não cortar */
+            z-index: -2;
+            pointer-events: none;
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+            background-size: 40px 40px;
+            /* Máscara radial para focar a grelha no centro */
+            mask-image: radial-gradient(ellipse at top center, black 0%, transparent 80%);
+            -webkit-mask-image: radial-gradient(ellipse at top center, black 0%, transparent 80%);
+        }
+
+        /* ── NOISE OVERLAY (Textura Cinematográfica) ── */
+        .noise-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 999;
+            pointer-events: none;
+            opacity: 0.035;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            mix-blend-mode: overlay;
+        }
+
+        /* ── BACKGROUND ORBS ── */
+        .bg-orbs {
+            position: fixed;
+            inset: 0;
+            overflow: hidden;
+            z-index: -1;
+            pointer-events: none;
+        }
+        .orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(140px);
+            opacity: 0.15;
+            animation: drift 20s infinite alternate ease-in-out;
+        }
+        .orb-1 { width: 50vw; height: 50vw; background: var(--x-cyan-50); top: -20%; left: -10%; }
+        .orb-2 { width: 45vw; height: 45vw; background: var(--x-pink-50); bottom: -10%; right: -10%; animation-delay: -5s; animation-direction: alternate-reverse; }
+        .orb-3 { width: 35vw; height: 35vw; background: var(--x-green-50); top: 30%; left: 40%; animation-delay: -10s; opacity: 0.08; }
+        
+        @keyframes drift {
+            0% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(3vw, 5vh) scale(1.05); }
+            100% { transform: translate(-3vw, 2vh) scale(0.95); }
+        }
+
+        /* ── NAVBAR ── */
+        .hub-navbar {
+            background: rgba(3, 7, 13, 0.4); 
+            backdrop-filter: blur(24px) saturate(150%);
+            -webkit-backdrop-filter: blur(24px) saturate(150%);
+            border-bottom: 1px solid var(--glass-border);
+            box-shadow: 0 4px 40px rgba(0, 0, 0, 0.6);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+
+        /* ── Animações de Entrada ── */
+        .fade-up {
+            opacity: 0;
+            transform: translateY(20px);
+            animation: textFadeUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        }
+        .delay-100 { animation-delay: 0.1s; }
+        .delay-200 { animation-delay: 0.2s; }
+        .delay-300 { animation-delay: 0.3s; }
+
+        @keyframes textFadeUp {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── CARD COMPONENT (3D Tilt + Flashlight Dinâmica) ── */
+        .card-container {
+            perspective: 1200px; 
+        }
+
+        .card {
+            background: var(--bg-surface);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 36px 32px;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.4), inset 0 1px 0 var(--glass-highlight);
+            backdrop-filter: blur(20px) saturate(120%);
+            -webkit-backdrop-filter: blur(20px) saturate(120%);
+            cursor: pointer;
+            text-align: left;
+            outline: none;
+            z-index: 10;
+            
+            /* CSS Variables para o Flashlight via JS */
+            --mouse-x: 50%;
+            --mouse-y: 50%;
+            
+            transform-style: preserve-3d;
+            transition: transform 0.1s ease-out, box-shadow 0.4s, border-color 0.4s;
+            
+            opacity: 0;
+            transform: translateY(40px) scale(0.95);
+            animation: cardReveal 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        }
+        
+        .card-container:nth-child(1) .card { animation-delay: 0.3s; }
+        .card-container:nth-child(2) .card { animation-delay: 0.45s; }
+        .card-container:nth-child(3) .card { animation-delay: 0.6s; }
+
+        @keyframes cardReveal {
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        /* Camadas de Profundidade (3D Parallax) */
+        .card-content-layer {
+            position: relative;
+            z-index: 10;
+            transform: translateZ(30px);
+            transition: transform 0.3s ease-out;
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            pointer-events: none; /* Deixa o evento de rato passar para o card */
+        }
+        .card-icon {
+            transform: translateZ(60px); 
+        }
+
+        /* ── LUZ DINÂMICA (FLASHLIGHT EFFECT) ── */
+        .card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            /* Um gradiente radial que segue a variável X e Y injetada pelo JS */
+            background: radial-gradient(
+                800px circle at var(--mouse-x) var(--mouse-y), 
+                rgba(255, 255, 255, 0.08),
+                transparent 40%
+            );
+            opacity: 0;
+            transition: opacity 0.4s ease;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* Borda Luminosa que segue o rato */
+        .card::after {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            border-radius: inherit;
+            background: radial-gradient(
+                400px circle at var(--mouse-x) var(--mouse-y), 
+                rgba(255, 255, 255, 0.4),
+                transparent 40%
+            );
+            z-index: -1;
+            opacity: 0;
+            transition: opacity 0.4s ease;
+            /* Máscara para manter apenas o traçado na borda */
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            padding: 1px; 
+        }
+
+        .card:hover::before, .card:hover::after {
+            opacity: 1;
+        }
+
+        /* ── CORES DE HOVER ESPECÍFICAS DOS MÓDULOS ── */
+        .card.glow-cyan:hover::after { background: radial-gradient(400px circle at var(--mouse-x) var(--mouse-y), var(--x-cyan-50), transparent 40%); }
+        .card.glow-green:hover::after { background: radial-gradient(400px circle at var(--mouse-x) var(--mouse-y), var(--x-green-50), transparent 40%); }
+        .card.glow-pink:hover::after { background: radial-gradient(400px circle at var(--mouse-x) var(--mouse-y), var(--x-pink-50), transparent 40%); }
+
+        .card.glow-cyan:hover  { box-shadow: 0 30px 60px -15px var(--x-cyan-glow), inset 0 1px 0 rgba(255,255,255,0.1); border-color: transparent; }
+        .card.glow-green:hover { box-shadow: 0 30px 60px -15px var(--x-green-glow), inset 0 1px 0 rgba(255,255,255,0.1); border-color: transparent; }
+        .card.glow-pink:hover  { box-shadow: 0 30px 60px -15px var(--x-pink-glow), inset 0 1px 0 rgba(255,255,255,0.1); border-color: transparent; }
+
+        /* Typography & Layout interno */
+        .card-label {
+            font-family: var(--font-body);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--text-muted);
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .card-value {
+            font-family: var(--font-heading);
+            font-size: 28px;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-bottom: 12px;
+            letter-spacing: -0.5px;
+            color: var(--text-white);
+            transition: color 0.3s, text-shadow 0.3s;
+        }
+
+        .card.glow-cyan:hover .card-value { color: var(--x-cyan-50); text-shadow: 0 0 20px rgba(0,190,255,0.4); }
+        .card.glow-green:hover .card-value { color: var(--x-green-50); text-shadow: 0 0 20px rgba(192,255,125,0.4); }
+        .card.glow-pink:hover .card-value { color: var(--x-pink-50); text-shadow: 0 0 20px rgba(255,137,255,0.4); }
+
+        .card-subtext {
+            font-family: var(--font-body);
+            font-size: 13px;
+            color: var(--text-gray);
+            line-height: 1.6;
+            flex-grow: 1;
+            font-weight: 300;
+        }
+
+        /* ── ÍCONES SOMBREADOS ULTRA-PREMIUM ── */
+        .card-icon {
+            width: 56px;
+            height: 56px;
+            padding: 12px;
+            border-radius: 16px;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.01) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.3), 0 8px 16px rgba(0,0,0,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+            position: relative;
+        }
+
+        .card-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+            opacity: 0.85;
+            filter: drop-shadow(0 8px 10px rgba(0,0,0,0.6));
+        }
+
+        .card.glow-cyan:hover .card-icon  { background: rgba(0,190,255,0.1); border-color: rgba(0,190,255,0.6); box-shadow: inset 0 0 20px rgba(0,190,255,0.3), 0 12px 24px rgba(0,0,0,0.6); }
+        .card.glow-cyan:hover .card-icon img { 
+            opacity: 1;
+            transform: scale(1.15) translateZ(20px);
+            filter: drop-shadow(0 15px 25px rgba(0,0,0,0.8)) drop-shadow(0 0 20px var(--x-cyan-glow)) drop-shadow(0 0 8px var(--x-cyan-50)); 
+        }
+        
+        .card.glow-green:hover .card-icon { background: rgba(192,255,125,0.1); border-color: rgba(192,255,125,0.6); box-shadow: inset 0 0 20px rgba(192,255,125,0.3), 0 12px 24px rgba(0,0,0,0.6); }
+        .card.glow-green:hover .card-icon img { 
+            opacity: 1;
+            transform: scale(1.15) translateZ(20px);
+            filter: drop-shadow(0 15px 25px rgba(0,0,0,0.8)) drop-shadow(0 0 20px var(--x-green-glow)) drop-shadow(0 0 8px var(--x-green-50)); 
+        }
+        
+        .card.glow-pink:hover .card-icon  { background: rgba(255,137,255,0.1); border-color: rgba(255,137,255,0.6); box-shadow: inset 0 0 20px rgba(255,137,255,0.3), 0 12px 24px rgba(0,0,0,0.6); }
+        .card.glow-pink:hover .card-icon img { 
+            opacity: 1;
+            transform: scale(1.15) translateZ(20px);
+            filter: drop-shadow(0 15px 25px rgba(0,0,0,0.8)) drop-shadow(0 0 20px var(--x-pink-glow)) drop-shadow(0 0 8px var(--x-pink-50)); 
+        }
+
+        /* ── BOTÃO DE AÇÃO ANIMADO ── */
+        .action-arrow {
+            margin-top: 32px;
+            font-family: var(--font-heading);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--text-gray);
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 20px;
+            border-radius: 99px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.06);
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            position: relative;
+            overflow: hidden;
+            pointer-events: auto; /* Reativa os eventos do rato apenas para o botão */
+        }
+
+        .action-arrow::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 0%; height: 100%;
+            background: rgba(255,255,255,0.1);
+            transition: width 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            z-index: 0;
+        }
+
+        .card:hover .action-arrow::before { width: 100%; }
+
+        .card.glow-cyan:hover .action-arrow  { color: var(--x-cyan-50); border-color: var(--x-cyan-50); box-shadow: 0 4px 20px var(--x-cyan-glow); }
+        .card.glow-cyan:hover .action-arrow::before { background: rgba(0,190,255,0.1); }
+        
+        .card.glow-green:hover .action-arrow { color: var(--x-green-50); border-color: var(--x-green-50); box-shadow: 0 4px 20px var(--x-green-glow); }
+        .card.glow-green:hover .action-arrow::before { background: rgba(192,255,125,0.1); }
+        
+        .card.glow-pink:hover .action-arrow  { color: var(--x-pink-50); border-color: var(--x-pink-50); box-shadow: 0 4px 20px var(--x-pink-glow); }
+        .card.glow-pink:hover .action-arrow::before { background: rgba(255,137,255,0.1); }
+
+        .action-arrow span, .action-arrow i {
+            position: relative;
+            z-index: 1;
+        }
+
+        .card:hover .action-arrow i {
+            transform: translateX(6px) scale(1.1);
+        }
+
+        /* ── OVERLAY MODAL COM LASER SCANNER ── */
+        #auth-overlay {
+            position: fixed; inset: 0; z-index: 99999;
+            background: rgba(3, 7, 13, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        #auth-overlay.active { display: flex; opacity: 1; }
+
+        .auth-card {
+            background: rgba(10, 15, 26, 0.9);
+            border: 1px solid rgba(0, 190, 255, 0.3);
+            box-shadow: 0 20px 80px rgba(0, 190, 255, 0.2), inset 0 0 30px rgba(0,190,255,0.05);
+            border-radius: 24px; 
+            padding: 48px 40px;
+            text-align: center; 
+            max-width: 440px; 
+            width: 90%;
+            transform: translateY(30px) scale(0.95);
+            transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        #auth-overlay.active .auth-card { transform: translateY(0) scale(1); }
+
+        .scanner-container {
+            position: relative;
+            display: inline-block;
+            margin-bottom: 24px;
+            width: 80px;
+            height: 80px;
+        }
+
+        .scanner-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            filter: drop-shadow(0 0 15px var(--x-cyan-glow));
+            opacity: 0.5;
+        }
+
+        .scanner-line {
+            position: absolute;
+            left: -10%; right: -10%;
+            height: 2px;
+            background: var(--primary-cyan);
+            box-shadow: 0 0 15px 4px var(--x-cyan-glow), 0 0 5px 1px #fff;
+            top: 0;
+            animation: scan 2s cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
+            border-radius: 50%;
+            z-index: 10;
+        }
+
+        @keyframes scan {
+            0% { top: 0%; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { top: 100%; opacity: 0; }
+        }
+
+        .auth-title {
+            font-family: var(--font-heading);
+            font-size: 24px; font-weight: 700;
+            color: #fff; margin: 0 0 8px;
+            letter-spacing: 0.5px;
+        }
+        .auth-subtitle {
+            font-family: var(--font-body);
+            font-size: 14px; color: #8899b0; margin: 0 0 36px; font-weight: 300;
+        }
+
+        .admin-validate-btn {
+            width: 100%;
+            padding: 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(0,190,255,0.3);
+            background: rgba(0,190,255,0.05);
+            color: var(--x-cyan-50);
+            font-family: var(--font-heading);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .admin-validate-btn:hover {
+            background: rgba(0,190,255,0.15);
+            box-shadow: 0 10px 25px rgba(0,190,255,0.25);
+            transform: translateY(-2px);
+            border-color: var(--primary-cyan);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- TEXTURA NOISE PARA ASPETO CINEMATOGRÁFICO -->
+    <div class="noise-overlay"></div>
+    
+    <!-- GRELHA DE FUNDO ANIMADA -->
+    <div class="bg-grid-container animate-grid-flow"></div>
+
+    <!-- LUZES DE FUNDO ANIMADAS -->
+    <div class="bg-orbs">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+    </div>
+
+    <!-- ── NAVBAR ── -->
+    <nav class="hub-navbar py-4 px-6 sm:px-8 fade-up">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <!-- Logo Xertica -->
+            <div class="flex items-center gap-4">
+                <img src="https://storage.googleapis.com/etp-bucket/Logos%20Xertica.ai%20(.png)/X%20-%20simbolo/Copy%20of%20X_symbol_variation3_Blue_white.png" alt="Xertica X" class="h-8 w-8 object-contain drop-shadow-[0_0_8px_rgba(0,190,255,0.4)]">
+                <div class="hidden sm:block">
+                    <img src="https://storage.googleapis.com/etp-bucket/Logos%20Xertica.ai%20(.png)/xertica.ai/Copy%20of%20Logo_XERTICA_white.png" alt="Xertica.ai" class="h-5 object-contain">
+                </div>
+                <div class="h-6 w-px bg-white/10 mx-3 hidden sm:block"></div>
+                <span class="font-poppins text-[11px] font-semibold text-white/50 tracking-[0.25em] uppercase hidden sm:block">Operations Portal</span>
+            </div>
+            
+            <!-- User Profile -->
+            <div class="flex items-center gap-5">
+                <div class="text-right hidden md:block">
+                    <div class="font-poppins text-sm font-semibold text-white">Amália Silva</div>
+                    <div class="font-poppins text-[10px] text-xCyan uppercase tracking-[0.2em] font-bold">Administrador</div>
+                </div>
+                <div class="h-11 w-11 rounded-full bg-gradient-to-br from-white/10 to-transparent border border-white/20 flex items-center justify-center text-white/80 hover:text-white hover:border-xCyan hover:shadow-[0_0_15px_rgba(0,190,255,0.4)] transition-all cursor-pointer">
+                    <i class="ph ph-user text-xl"></i>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- ── MAIN CONTENT ── -->
+    <main class="flex-grow flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 py-16 relative z-10">
+        
+        <!-- Header Section -->
+        <div class="text-center max-w-3xl mb-20">
+            <!-- Pílula Animada superior -->
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-xCyan/10 border border-xCyan/40 text-xCyan text-[10px] font-poppins font-bold uppercase tracking-[0.2em] mb-8 shadow-[0_0_20px_rgba(0,190,255,0.4)] fade-up delay-100">
+                <span class="relative flex h-2 w-2">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-xCyan opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-xCyan"></span>
+                </span>
+                Acesso Seguro
+            </div>
+            
+            <!-- TÍTULO CORRIGIDO: Visível, iluminado e vibrante -->
+            <h1 class="font-poppins text-5xl sm:text-6xl font-bold tracking-tight mb-6 text-white fade-up delay-200 relative inline-block">
+                Selecione o 
+                <span class="relative whitespace-nowrap inline-block mt-2 sm:mt-0">
+                    <!-- Glow Aura Traseiro para garantir legibilidade perfeita -->
+                    <span class="absolute -inset-2 bg-gradient-to-r from-xCyan via-xPink to-xCyan opacity-30 blur-2xl animate-pulse"></span>
+                    <!-- Texto Gradiente Nítido -->
+                    <span class="relative text-transparent bg-clip-text bg-gradient-to-r from-[#80DFFF] via-[#FFB3FF] to-[#80DFFF] drop-shadow-[0_2px_10px_rgba(255,255,255,0.2)]">
+                        Módulo de Visão
+                    </span>
+                </span>
+            </h1>
+            
+            <p class="font-roboto text-sm sm:text-base text-gray-400 leading-relaxed max-w-2xl mx-auto font-light fade-up delay-300">
+                Navegue para o seu painel de operações, acompanhe faturamentos e monitore rotinas automatizadas numa interface otimizada de alta fidelidade visual.
+            </p>
+        </div>
+
+        <!-- ── BENTO GRID STYLE CARDS (3D Parallax & Flashlight) ── -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-[1200px] w-full">
+            
+            <!-- Card 1: Visão Executiva (CYAN BRAND) -->
+            <div class="card-container">
+                <button onclick="mockRedirect('Visão Executiva', 'cyan')" class="card glow-cyan w-full">
+                    <div class="card-content-layer">
+                        <div class="card-label">
+                            <div class="card-icon">
+                                <img src="https://storage.googleapis.com/etp-bucket/Logos%20Xertica.ai%20(.png)/X%20-%20simbolo/Copy%20of%20X_symbol_variation3_Blue_white.png" alt="X Executiva">
+                            </div>
+                            <span>Diretoria / C-Level</span>
+                        </div>
+                        <h3 class="card-value">Visão Executiva</h3>
+                        <p class="card-subtext">
+                            Acesso consolidado ao painel corporativo. Visualize KPIs de receita, pipeline (Won/Lost) e performance geral.
+                        </p>
+                        <div class="action-arrow">
+                            <span>Acessar</span> <i class="ph ph-arrow-right text-lg"></i>
+                        </div>
+                    </div>
+                </button>
+            </div>
+
+            <!-- Card 2: Visão Sales (GREEN BRAND) -->
+            <div class="card-container">
+                <button onclick="mockRedirect('Visão Sales', 'green')" class="card glow-green w-full">
+                    <div class="card-content-layer">
+                        <div class="card-label">
+                            <div class="card-icon">
+                                <img src="https://storage.googleapis.com/etp-bucket/Logos%20Xertica.ai%20(.png)/X%20-%20simbolo/X_symbol_variation8_Green_white.png" alt="X Sales">
+                            </div>
+                            <span>Vendedores / Sales</span>
+                        </div>
+                        <h3 class="card-value">Visão Sales</h3>
+                        <p class="card-subtext">
+                            Espaço restrito para gestão de contas. Acompanhe as suas oportunidades, faturamento e projeção de comissões.
+                        </p>
+                        <div class="action-arrow">
+                            <span>Acessar</span> <i class="ph ph-arrow-right text-lg"></i>
+                        </div>
+                    </div>
+                </button>
+            </div>
+
+            <!-- Card 3: Automation Hub (PINK BRAND) -->
+            <div class="card-container">
+                <button onclick="mockRedirect('Automation Hub', 'pink')" class="card glow-pink w-full">
+                    <div class="card-content-layer">
+                        <div class="card-label">
+                            <div class="card-icon">
+                                <img src="https://storage.googleapis.com/etp-bucket/Logos%20Xertica.ai%20(.png)/X%20-%20simbolo/Copy%20of%20X_symbol_variation6-Pink_white.png" alt="X Automation">
+                            </div>
+                            <span>Data / Operações</span>
+                        </div>
+                        <h3 class="card-value">Automation Hub</h3>
+                        <p class="card-subtext">
+                            Central de rotinas automatizadas. Monitore logs de sincronização e alertas estagnados via Apps Script.
+                        </p>
+                        <div class="action-arrow">
+                            <span>Acessar</span> <i class="ph ph-arrow-right text-lg"></i>
+                        </div>
+                    </div>
+                </button>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- ── FOOTER ── -->
+    <footer class="mt-auto py-8 border-t border-white/5 relative z-10 bg-[var(--bg-deep)]/40 backdrop-blur-2xl fade-up delay-300">
+        <div class="max-w-[1200px] mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3 opacity-60">
+                <img src="https://storage.googleapis.com/etp-bucket/Logos%20Xertica.ai%20(.png)/X%20-%20simbolo/Copy%20of%20X_symbol_variation3_Blue_white.png" alt="Xertica X" class="h-4 w-4 grayscale">
+                <span class="font-roboto text-xs text-white/50 tracking-[0.15em] uppercase font-light">
+                    &copy; 2026 Xertica.ai
+                </span>
+            </div>
+            <div class="flex gap-8 font-poppins text-[10px] font-semibold text-white/50 tracking-[0.2em] uppercase">
+                <a href="#" class="hover:text-xCyan transition-colors">Suporte TI</a>
+                <a href="#" class="hover:text-xCyan transition-colors">Políticas (RBAC)</a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- ── FIREBASE AUTH OVERLAY (Modal de Redirecionamento Animado) ── -->
+    <div id="auth-overlay">
+        <div class="auth-card">
+            <div class="scanner-container">
+                <!-- Símbolo do overlay -->
+                <img id="auth-logo" src="https://storage.googleapis.com/etp-bucket/Logos%20Xertica.ai%20(.png)/X%20-%20simbolo/Copy%20of%20X_symbol_variation3_Blue_white.png" alt="Xertica">
+                <div class="scanner-line"></div>
+            </div>
+            
+            <h2 class="auth-title">Verificação Segura</h2>
+            <p class="auth-subtitle">
+                A estabelecer túnel encriptado e validar permissões para:<br>
+                <strong id="moduleName" class="text-white mt-2 block text-lg tracking-wide font-poppins">Módulo</strong>
+            </p>
+            
+            <button onclick="closeModal()" class="admin-validate-btn">
+                Interromper Conexão
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 3D PARALLAX & DYNAMIC FLASHLIGHT SCRIPT
+        // ==========================================
+        const cards = document.querySelectorAll('.card');
+        
+        cards.forEach(card => {
+            card.addEventListener('mousemove', e => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left; // Coordenada X dentro do card
+                const y = e.clientY - rect.top;  // Coordenada Y dentro do card
+                
+                // Atualiza as CSS Variables para a luz fluir com o rato
+                card.style.setProperty('--mouse-x', `${x}px`);
+                card.style.setProperty('--mouse-y', `${y}px`);
+                
+                const centerX = rect.width / 2;
+                const centerY = rect.height / 2;
+                
+                // Cálculo de rotação 3D responsiva
+                const rotateX = ((y - centerY) / centerY) * -10;
+                const rotateY = ((x - centerX) / centerX) * 10;
+                
+                card.style.transform = `perspective(1200px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`;
+            });
+            
+            card.addEventListener('mouseleave', () => {
+                // Reseta a rotação mas deixa a luz dissipar de forma suave
+                card.style.transform = `perspective(1200px) rotateX(0) rotateY(0) scale3d(1, 1, 1)`;
+            });
+        });
+
+        // ==========================================
+        // MOCK REDIRECT SCRIPT
+        // ==========================================
+        let redirectTimeout;
+
+        // Mapeamento de logos para o Loading baseados na cor
+        const logosByColor = {
+            'cyan': 'https://storage.googleapis.com/etp-bucket/Logos%20Xertica.ai%20(.png)/X%20-%20simbolo/Copy%20of%20X_symbol_variation3_Blue_white.png',
+            'green': 'https://storage.googleapis.com/etp-bucket/Logos%20Xertica.ai%20(.png)/X%20-%20simbolo/X_symbol_variation8_Green_white.png',
+            'pink': 'https://storage.googleapis.com/etp-bucket/Logos%20Xertica.ai%20(.png)/X%20-%20simbolo/Copy%20of%20X_symbol_variation6-Pink_white.png'
+        };
+
+        const themeColors = {
+            'cyan': '#00BEFF',
+            'green': '#C0FF7D',
+            'pink': '#FF89FF'
+        };
+
+        function mockRedirect(moduleName, colorTheme) {
+            const overlay = document.getElementById('auth-overlay');
+            const moduleNameEl = document.getElementById('moduleName');
+            const authLogo = document.getElementById('auth-logo');
+            const scannerLine = document.querySelector('.scanner-line');
+            const authCard = document.querySelector('.auth-card');
+            
+            // Configurar Modal
+            moduleNameEl.textContent = moduleName;
+            moduleNameEl.style.color = themeColors[colorTheme];
+            authLogo.src = logosByColor[colorTheme];
+            
+            // Atualizar cores do scanner baseadas no módulo selecionado
+            scannerLine.style.background = themeColors[colorTheme];
+            scannerLine.style.boxShadow = `0 0 15px 4px ${themeColors[colorTheme]}80, 0 0 5px 1px #fff`;
+            authCard.style.borderColor = `${themeColors[colorTheme]}60`;
+            authCard.style.boxShadow = `0 20px 80px ${themeColors[colorTheme]}30, inset 0 0 30px ${themeColors[colorTheme]}10`;
+
+            // Exibir Modal
+            overlay.classList.add('active');
+            
+            // Simular tempo de carregamento
+            redirectTimeout = setTimeout(() => {
+                closeModal();
+            }, 3500);
+        }
+
+        function closeModal() {
+            const overlay = document.getElementById('auth-overlay');
+            overlay.classList.remove('active');
+            clearTimeout(redirectTimeout);
+            
+            cards.forEach(card => {
+                card.style.transform = `perspective(1200px) rotateX(0) rotateY(0) scale3d(1, 1, 1)`;
+            });
+        }
+    </script>
+</body>
+</html>

@@ -68,21 +68,60 @@ function createSellerOption(name, dealsCount, isActive) {
 }
 
 function toggleSellerDropdown() {
-  const trigger = document.querySelector('.multi-select-trigger');
+  const container = document.getElementById('seller-multi-select');
+  const trigger = container?.querySelector('.multi-select-trigger');
   const dropdown = document.getElementById('seller-dropdown');
-  
+  if (!trigger || !dropdown) return;
+
+  const isOpening = !trigger.classList.contains('open');
   trigger.classList.toggle('open');
   dropdown.classList.toggle('open');
+
+  if (isOpening) {
+    setTimeout(() => {
+      const searchInput = document.getElementById('seller-search');
+      if (searchInput) searchInput.focus();
+    }, 50);
+  } else {
+    const searchInput = document.getElementById('seller-search');
+    if (searchInput) {
+      searchInput.value = '';
+      filterSellerOptions('');
+    }
+  }
+}
+
+function filterSellerOptions(query) {
+  const q = String(query || '').trim().toLowerCase();
+  ['active-sellers-group', 'historical-sellers-group'].forEach(groupId => {
+    const group = document.getElementById(groupId);
+    if (!group) return;
+    const options = group.querySelectorAll('.multi-select-option');
+    let visibleCount = 0;
+    options.forEach(opt => {
+      const label = opt.querySelector('label span')?.textContent?.toLowerCase() || '';
+      const matches = !q || label.includes(q);
+      opt.style.display = matches ? '' : 'none';
+      if (matches) visibleCount++;
+    });
+    // Mostra/oculta o título do grupo se não tiver nenhum resultado
+    const title = group.querySelector('.multi-select-group-title');
+    if (title) title.style.display = visibleCount === 0 && q ? 'none' : '';
+  });
 }
 
 // Close dropdown when clicking outside
 document.addEventListener('click', function(e) {
   const container = document.getElementById('seller-multi-select');
   if (container && !container.contains(e.target)) {
-    const trigger = document.querySelector('.multi-select-trigger');
+    const trigger = container.querySelector('.multi-select-trigger');
     const dropdown = document.getElementById('seller-dropdown');
-    trigger?.classList.remove('open');
-    dropdown?.classList.remove('open');
+    if (trigger?.classList.contains('open')) {
+      trigger.classList.remove('open');
+      dropdown?.classList.remove('open');
+      const searchInput = document.getElementById('seller-search');
+      if (searchInput) { searchInput.value = ''; filterSellerOptions(''); }
+    }
   }
 });
 

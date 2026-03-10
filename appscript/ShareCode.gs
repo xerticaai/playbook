@@ -61,13 +61,15 @@
 // --- CONFIGURAÇÕES GLOBAIS, CONSTANTES E SCHEMAS COMPARTILHADOS ---
 // ================================================================================================
 
-const API_KEY = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY") || "";
+function getGeminiApiKey_() {
+  return PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY") || "";
+}
 
 /** @constant {string} Identificador do modelo generativo (Gemini 2.5 Pro - GA, estável até junho 2026) */
-const MODEL_ID = "gemini-2.5-pro"; 
+const GEMINI_MODEL_ID_SHARED = "gemini-2.5-pro"; 
 
 /** @constant {array} Modelos de fallback caso o principal falhe (em ordem de prioridade) */
-const FALLBACK_MODELS = [
+const GEMINI_FALLBACK_MODELS_SHARED = [
   "gemini-2.5-flash",       // fallback primário: suporta thinkingBudget:0, rápido e barato
   "gemini-2.5-flash-lite"   // fallback leve para casos de quota esgotada
   // REMOVIDOS: gemini-1.5-* (desativados pela Google, retornam 404)
@@ -158,6 +160,8 @@ const SHEETS = {
   RESULTADO_PIPELINE: "🎯 Análise Forecast IA",
 
   ATIVIDADES: "Atividades",
+  SALES_SPECIALIST: "Sales_Specialist_Opps",
+  CONTAS_NOMEADAS: "Contas_Nomeadas",
   DICIONARIO: "📘 Dicionário de Dados",
   LOGS: "Logs_Execucao",
   INTEGRITY_OPEN: "🔐 Snapshot Integridade OPEN",
@@ -253,6 +257,7 @@ const ENUMS = {
     LOW_WIN_RATE: "VENDEDOR COM BAIXA TAXA DE CONVERSÃO",
     TOKEN_TRANSFER: "TRANSFERÊNCIA DE TOKEN DETECTADA",
     GTM_VIP: "OPORTUNIDADE ESTRATÉGICA GTM",
+    FORA_GTM: "FORA GTM",
     STAGE_DRIFT: "DERIVA DE FASE DETECTADA",
     INTEGRITY_ALERT: "EDIÇÃO MANUAL DETECTADA",
     COLD_GATE: "GATE CRÍTICO ATIVO",
@@ -325,6 +330,46 @@ const UF_TO_SELLER_MAP = {
   // Sudeste (MG) -> Alexsandra Junqueira
   'MG': 'ALEXSANDRA JUNQUEIRA'
 };
+
+const CONTAS_NOMEADAS_CACHE_KEY = "CONTAS_NOMEADAS_GTM_V2";
+const VALIDACAO_MANUAL_CACHE_KEY = "VALIDACAO_MANUAL_GTM_SS_V1";
+
+const GTM_SEGMENTO_ALLOWLIST = new Set([
+  "GOBIERNO",
+  "CORPORATE",
+  "MID MARKET",
+  "ENTERPRISE",
+  "EDUCATIVO",
+  "SMB",
+  "DIGITAL NATIVES",
+  "SB"
+]);
+
+const GTM_SEGMENTO_CONSOLIDADO_ALLOWLIST = new Set([
+  "GOBIERNO",
+  "CORPORATE",
+  "MID MARKET",
+  "ENTERPRISE",
+  "EDUCATIVO",
+  "SB",
+  "DIGITAL NATIVES"
+]);
+
+const GTM_FORA_SEGMENTOS = new Set(["MID MARKET", "SB", "SMB", "DIGITAL NATIVES"]);
+const GTM_FORA_SEGMENTOS_CONSOLIDADO = new Set(["MID MARKET", "SB", "DIGITAL NATIVES"]);
+const OPS_ALERT_RECIPIENTS = ["amalia.silva@xertica.com", "barbara.pessoa@xertica.com"];
+const OPS_ALERT_WEBHOOK_PROP_KEY = "OPS_ALERT_WEBHOOK_URL";
+const SS_ALERT_RECIPIENTS_PROP_KEY = "SS_ALERT_RECIPIENTS";
+const SS_ALERT_DEDUP_PREFIX = "OPS_SS_ALERT_";
+const GTM_APPROVAL_REVIEWER_EMAIL_PROP_KEY = "GTM_APPROVAL_REVIEWER_EMAIL";
+const GTM_APPROVAL_REVIEWER_DEFAULT_EMAIL = "";
+const GTM_APPROVAL_WEBAPP_URL_PROP_KEY = "GTM_APPROVAL_WEBAPP_URL";
+const GTM_APPROVAL_SIGNING_SECRET_PROP_KEY = "GTM_APPROVAL_SIGNING_SECRET";
+const GTM_APPROVAL_LOG_SHEET_NAME = "Aprovacoes_GTM";
+const GTM_APPROVAL_WEBAPP_DEFAULT_URL = "https://script.google.com/macros/s/AKfycbyUrKHd-DZMfNI0_1dYl47S7MBAZuv_jnlm12_TD5vxA16WVUlOHLauQMmRtpJsLCF9/exec";
+const CONTAS_NOMEADAS_AUDIT_STATE_PROP_KEY = "CONTAS_NOMEADAS_AUDIT_STATE_V1";
+const CONTAS_NOMEADAS_AUDIT_SHEET = "Conferencia_Contas_Nomeadas";
+const VALIDACAO_MANUAL_DEFAULT_SCOPE = "ALL";
 
 // ================================================================================================
 // --- 1. CAMADA DE INTERFACE DE USUÁRIO (UI LAYER) ---
@@ -403,52 +448,71 @@ function detectGovProcurementStage_(text) {
 function calculateMEDDICScore(item, text) {
   // Limpa HTML e metadados da descrição antes de processar
   const cleanDesc = cleanActivityText_(item.desc || "");
-  const fullContent = item.oppName + " " + cleanDesc + " " + text;
+  const fullContent = [
+    item.oppName || "",
+    cleanDesc,
+    text || "",
+    item.stage || "",
+    item.forecast_sf || "",
+    item.products || "",
+    item.tipoOportunidade || "",
+    item.processoTipo || ""
+  ].join(" ");
   const content = normText_(fullContent);
   
   const criteria = {
-    // Metrics: qualquer menção a valor, resultado, impacto ou métrica
     Metrics: [
-      "ROI","RETORNO","ECONOMIA","REDUCAO","AUMENTO","PAYBACK","KPI","AHORRO",
-      "IMPACTO","BENEFICIO","GANHO","EFICIENCIA","PRODUTIVIDADE","RESULTADO",
-      "CUSTO","SAVING","VALOR","PERCENTUAL","META","OBJETIVO","PERFORMANCE",
-      "CRESCIMENTO","MELHORIA","LICENCA","SEATS","USUARIOS","ESCALA"
+      // Atual
+      "ROI", "RETORNO", "ECONOMIA", "REDUCAO", "AUMENTO", "PAYBACK", "KPI", "RESULTADO", "EFICIENCIA", "META",
+      "SAVING", "TCO", "RECEITA", "MARGEM", "EBITDA", "SLA", "BUSINESS CASE", "CASO DE NEGOCIO",
+      // Traducao do Impacto (SPICED/GPCT) e "Saleses" real
+      "REDUCAO DE CUSTO", "HORAS SALVAS", "IMPACTO FINANCEIRO", "JUSTIFICATIVA DE ECONOMICIDADE",
+      "AUMENTO DE ARRECADACAO", "OTIMIZACAO DE TEMPO", "METRICA DE SUCESSO", "CUSTO TOTAL"
     ],
-    // Buyer: qualquer pessoa com poder de decisão ou envolvimento executivo
     Buyer: [
-      "DECISOR","APROVADOR","CFO","CEO","DIRETOR","SECRETARIO","ORDENADOR","GESTOR","VP",
-      "CTO","CIO","COO","SUPERINTENDENTE","PRESIDENTE","VICE","COORDENADOR","GERENTE",
-      "RESPONSAVEL","STAKEHOLDER","LIDERANCA","EXECUTIVO","TOMADOR","AUTORIDADE",
-      "CHEFE","HEAD","TITULAR","PREFEITO","GOVERNADOR","MINISTRO","PROCURADOR"
+      // Atual (cargos)
+      "DECISOR", "APROVADOR", "CFO", "CEO", "DIRETOR", "SECRETARIO", "ORDENADOR", "GESTOR", "VP", "GERENTE", "LIDER",
+      "CIO", "CTO", "PRESIDENTE", "SUPERINTENDENTE", "EXECUTIVO", "AUTORIDADE", "COMITE", "COMISSAO",
+      "PREFEITO", "GOVERNADOR", "MINISTRO", "SUBSECRETARIO",
+      // Traducao de Economic Buyer e poder de compra
+      "QUEM ASSINA", "ORDENADOR DE DESPESA", "DONO DO ORCAMENTO", "COMITE DIRETOR", "DIRETOR GERAL",
+      "CONSELHO DE ADMINISTRACAO", "QUEM PAGA", "LIBERACAO DE VERBA"
     ],
-    // Criteria: qualquer evidência de critério técnico, processo de compra ou avaliação formal
     Criteria: [
-      "CRITERIO","REQUISITOS","MATRIZ","TERMINOS","PLIEGO","EDITAL","TR","ETP","POC",
-      "AVALIACAO","PROVA DE CONCEITO","TESTE","PILOTO","RFP","RFI","RFQ",
-      "ESPECIFICACAO","BENCHMARK","HOMOLOGAR","VALIDAR","APROVADO","SELECIONADO",
-      "ANALISE TECNICA","DEMONSTRACAO","WORKSHOP","PRESENTA","APRESENTACAO"
+      // Atual
+      "CRITERIO", "REQUISITO", "MATRIZ", "SCORECARD", "EDITAL", "TR", "ETP", "TERMO DE REFERENCIA", "PROJETO BASICO",
+      "POC", "POV", "PILOTO", "DEMONSTRACAO", "PROVA DE CONCEITO", "RFP", "RFI", "ESPECIFICACAO", "ARQUITETURA",
+      "COMPLIANCE", "SEGURANCA", "HOMOLOGACAO", "VALIDACAO", "SOW", "NDA", "DPA", "ISO 27001", "LGPD",
+      // Traducao de decisao tecnica vs negocio (MEDDPICC)
+      "CRITERIOS DE ACEITE", "REQUISITOS OBRIGATORIOS", "CRITERIOS DE DESEMPATE", "AVALIACAO TECNICA",
+      "PARECER TECNICO", "COMPATIBILIDADE", "INTEGRACAO COM SISTEMA"
     ],
-    // Process: qualquer sinal de andamento burocrático, assinatura, jurídico ou próximos passos claros
     Process: [
-      "HOMOLOGACAO","ASSINATURA","PARECER","JURIDICO","ARP","LICIT","COMISSAO","ADJUDICACAO",
-      "CONTRATO","PROPOSTA","NEGOCIACAO","PRAZO","CRONOGRAMA","ETAPA","PROXIMO PASSO",
-      "NEXT STEP","FOLLOWUP","FOLLOW-UP","FOLLOW UP","REUNIAO","AGENDADO","AGENDAMENTO",
-      "APROVACAO","REVISAO","PIPELINE","ORDEM DE COMPRA","OC ","EMPENHO","NOTA FISCAL"
+      // Atual
+      "PROCESSO", "PROCUREMENT", "HOMOLOGACAO", "ASSINATURA", "PARECER", "JURIDICO", "LEGAL", "ARP", "LICITACAO", "COMISSAO",
+      "ADJUDICACAO", "CONTRATO", "PROPOSTA", "NEGOCIACAO", "CRONOGRAMA", "APROVACAO", "COMITE", "REVISAO", "FOLLOW UP",
+      "NEXT STEP", "PROXIMO PASSO", "REUNIAO", "ORDEM DE COMPRA", "PO", "OC", "EMPENHO", "GO LIVE", "KICKOFF",
+      // Traducao do "Paper Process" (burocracia MEDDPICC) e B2G real
+      "TRAMITE INTERNO", "MINUTA CONTRATUAL", "PROCURADORIA", "ANALISE LEGAL", "PUBLICACAO DO EDITAL",
+      "ADESAO A ATA", "DISPENSA DE LICITACAO", "DOD", "FLUXO DE ASSINATURA", "DEPARTAMENTO DE COMPRAS"
     ],
-    // Pain: qualquer menção a problema, necessidade, contexto desafiador ou motivação
     Pain: [
-      "DESAFIO","PROBLEMA","GARGALO","INEFICIENCIA","DOR","URGENCIA","RISCO","MULTA",
-      "NECESSIDADE","DEMANDA","OPORTUNIDADE","MOTIVACAO","CONTEXTO","CENARIO",
-      "DIFICULDADE","OBSTÁCULO","OBSTACULO","CRITICO","PRIORITARIO","ESTRATEGICO",
-      "COMPLIANCE","SEGURANCA","TRANSFORMACAO","MODERNIZACAO","DIGITALIZACAO",
-      "MIGRACAO","PROJETO","INICIATIVA","OBJETIVO"
+      // Atual
+      "DESAFIO", "PROBLEMA", "GARGALO", "INEFICIENCIA", "DOR", "URGENCIA", "RISCO", "MULTA", "NECESSIDADE", "IMPACTO",
+      "CRITICO", "BLOQUEIO", "ATRASO", "PERDA", "CHURN", "RETRABALHO", "CUSTO", "EXCESSO", "LATENCIA", "INDISPONIBILIDADE",
+      "INCIDENTE", "AUDITORIA", "NAO CONFORMIDADE", "VULNERABILIDADE", "PERDA DE RECEITA", "BAIXA PRODUTIVIDADE",
+      // Traducao de Negative Consequences (GPCT) e Implication (SPIN)
+      "CUSTO DE NAO FAZER", "SE NAO FIZER NADA", "APAGAO", "AUDITORIA DO TCU", "RISCO DE PENALIDADE",
+      "FALHA DE SEGURANCA", "PERDA DE VERBA", "IMPLICACAO", "PIOR CENARIO"
     ],
-    // Champion: qualquer pessoa interna ao cliente que apoia, apresenta ou facilita
     Champion: [
-      "CAMPEAO","DEFENSOR","PONTO FOCAL","ALIADO","SPONSOR","PATROCINADOR",
-      "CONTATO","INTERLOCUTOR","FACILITADOR","EMBAIXADOR","APOIADOR",
-      "REFERENCIA","INDICOU","RECOMENDOU","APRESENTOU","CONECTOU",
-      "PARCEIRO INTERNO","FOCAL POINT","KEY USER","USUARIO CHAVE"
+      // Atual
+      "CAMPEAO", "DEFENSOR", "PONTO FOCAL", "ALIADO", "SPONSOR", "PATROCINADOR", "KEY USER", "EMBAIXADOR", "INTERLOCUTOR",
+      "ADVOGADO INTERNO", "POWER USER", "REFERENCIA", "APOIADOR", "INFLUENCIADOR", "CHAMPION", "PARCEIRO INTERNO",
+      "DONO DO PROCESSO", "AGENTE DE MUDANCA", "EVANGELISTA", "PROMOTOR INTERNO",
+      // Traducao do "Mobilizer" (Challenger) em jargao de vendas BR
+      "VAI BANCAR", "COMPRADOR TECNICO", "QUEM PUXA O PROJETO", "LIDER DO COMITE", "PATROCINADOR DO PROJETO",
+      "COMPROU A IDEIA", "VENDENDO INTERNAMENTE"
     ]
   };
 
@@ -480,37 +544,51 @@ function calculateMEDDICScore(item, text) {
 function calculateBANTScore_(item, activity) {
   // Limpa HTML e metadados da descrição antes de processar
   const cleanDesc = cleanActivityText_(item.desc || "");
-  const fullContent = cleanDesc + " " + (activity.fullText || "");
+  const fullContent = [
+    cleanDesc,
+    activity.fullText || "",
+    item.oppName || "",
+    item.stage || "",
+    item.forecast_sf || "",
+    item.nextStep || ""
+  ].join(" ");
   const content = normText_(fullContent);
   
   const criteria = {
-    // Budget: qualquer sinal de valor, verba, preço ou discussão financeira
     Budget: [
-      "BUDGET", "ORCAMENTO", "VERBA", "CAPEX", "OPEX", "PRICING", "PRECO", "COTACAO",
-      "VALOR", "CUSTO", "INVESTIMENTO", "RECURSOS", "FINANCEIRO", "LICENCA",
-      "CONTRATO", "PROPOSTA", "DESCONTO", "APROVADO", "DOTACAO", "EMPENHO",
-      "SEATS", "USUARIOS", "ESCALA", "TOTAL"
+      // Atual
+      "BUDGET", "ORCAMENTO", "VERBA", "CAPEX", "OPEX", "PRICING", "PRECO", "COTACAO", "INVESTIMENTO", "CUSTO", "VALOR",
+      "FINANCEIRO", "DOTACAO", "EMPENHO", "APROVACAO DE VERBA", "TCO", "PAYBACK", "DESCONTO", "CREDIT", "FUNDING",
+      "ALOCACAO", "PLANO ORCAMENTARIO", "LIMITE ORCAMENTARIO", "MARGEM", "CASH FLOW", "FLUXO DE CAIXA",
+      // Traducao de Budget avancado (GPCT)
+      "TEM RECURSO", "REMANEJAMENTO DE VERBA", "FONTE DE RECURSO", "FUNDO DE DIREITOS", "SALDO ORCAMENTARIO",
+      "PROVISAO DE GASTO", "VERBA LIBERADA", "PREVISAO ORCAMENTARIA"
     ],
-    // Authority: qualquer pessoa com poder ou envolvimento em decisão
     Authority: [
-      "DECISOR", "APROVADOR", "CFO", "CEO", "DIRETOR", "COMPRADOR", "OWNER", "SPONSOR", "PATROCINADOR",
-      "CTO", "CIO", "VP", "SUPERINTENDENTE", "GERENTE", "COORDENADOR", "SECRETARIO",
-      "RESPONSAVEL", "TOMADOR", "LIDERANCA", "PREFEITO", "MINISTRO", "PROCURADOR",
-      "AUTORIDADE", "TITULAR", "HEAD", "CHEFE"
+      // Atual
+      "DECISOR", "APROVADOR", "CFO", "CEO", "DIRETOR", "COMPRADOR", "OWNER", "SPONSOR", "PATROCINADOR", "GERENTE",
+      "RESPONSAVEL", "STAKEHOLDER", "CIO", "CTO", "COO", "PRESIDENTE", "SECRETARIO", "SUPERINTENDENTE", "COMITE",
+      "CONSELHO", "TOMADOR", "AUTORIDADE", "PROCUREMENT", "VICE PRESIDENTE", "DIRETORIA", "BOARD", "PMO", "HEAD",
+      "AREA DE COMPRAS", "PREFEITO", "GOVERNADOR", "MINISTRO", "SUBSECRETARIO",
+      // Autoridade na pratica
+      "DECISAO FINAL", "QUEM DA A CANETADA", "PODER DE COMPRA", "COMITE DE APROVACAO", "DE ACORDO FINAL"
     ],
-    // Need: qualquer sinal de motivação, contexto ou objetivo de negócio
     Need: [
-      "DOR", "PROBLEMA", "DESAFIO", "NECESSIDADE", "GAP", "INEFICIENCIA", "IMPACTO",
-      "OBJETIVO", "META", "MOTIVACAO", "CONTEXTO", "PROJETO", "INICIATIVA",
-      "MIGRACAO", "MODERNIZACAO", "DIGITALIZACAO", "TRANSFORMACAO", "MELHORIA",
-      "CONFORMIDADE", "COMPLIANCE", "SEGURANCA", "DEMANDA", "URGENCIA", "ESTRATEGIA"
+      // Atual
+      "DOR", "PROBLEMA", "DESAFIO", "NECESSIDADE", "GAP", "INEFICIENCIA", "IMPACTO", "OBJETIVO", "MELHORIA", "COMPLIANCE",
+      "RISCO", "URGENCIA", "TRANSFORMACAO", "MODERNIZACAO", "MIGRACAO", "SEGURANCA", "PERFORMANCE", "ESCALABILIDADE", "SLA",
+      "CRITICO", "CONTINUIDADE", "DISPONIBILIDADE", "QUALIDADE", "EXPERIENCIA", "GOVERNANCA", "REDUCAO DE CUSTOS", "AUMENTO DE RECEITA",
+      // Necessidades estrategicas (GPCT Plans)
+      "INICIATIVA ESTRATEGICA", "PLANO DIRETOR", "PROJETO PRIORITARIO", "PLANO DE ACAO", "METAS DO ORGAO", "ROADMAP"
     ],
-    // Timing: qualquer sinal de prazo, data, andamento ou próximos passos
     Timing: [
-      "PRAZO", "TIMING", "ATE", "DATA", "CRONOGRAMA", "JANELA", "URGENCIA",
-      "FECHAMENTO", "CLOSE DATE", "PROXIMO PASSO", "NEXT STEP", "AGENDADO",
-      "REUNIAO", "PREVISAO", "TRIMESTRE", "QUARTER", "SEMANA", "MES",
-      "ENTREGA", "GO LIVE", "LANCAMENTO", "DEPLOY", "IMPLANTACAO"
+      // Atual
+      "PRAZO", "TIMING", "ATE", "DATA", "CRONOGRAMA", "JANELA", "URGENCIA", "FECHAMENTO", "NEXT STEP", "REUNIAO", "Q1",
+      "Q2", "Q3", "Q4", "TRIMESTRE", "SEMANA", "MES", "GO LIVE", "KICKOFF", "ASSINATURA", "IMPLANTACAO", "CUTOVER",
+      "ROADMAP", "MILESTONE", "MARCO", "DEADLINE", "PRAZO FINAL", "SPRINT", "FIM DO MES", "FIM DO TRIMESTRE", "FIM DO ANO",
+      // Traducao de "Critical Event" (SPICED)
+      "PRAZO FATAL", "VENCIMENTO DO CONTRATO", "RENOVACAO OBRIGATORIA", "VIRADA DE ANO FISCAL", "FECHAMENTO DE EMPENHO",
+      "JANELA DE COMPRAS", "TEMPO HABIL"
     ]
   };
 
@@ -633,9 +711,8 @@ function getOpenPrompt(item, profile, fiscal, activity, meddic, bant, personas, 
   const _champRaw       = (personas && personas.champion) ? String(personas.champion) : '';
   const _buyerRaw       = (personas && personas.economicBuyer) ? String(personas.economicBuyer) : '';
   const _isUnknown      = (s) => !s || /n.o identificado|not identified|n\/a/i.test(s);
-  const _firstName      = (s) => s.trim().split(/\s+/)[0].toLowerCase();
-  const _champMissing   = !_isUnknown(_champRaw) && activity.count > 3 && !_recentText.includes(_firstName(_champRaw));
-  const _buyerMissing   = !_isUnknown(_buyerRaw) && activity.count > 3 && !_recentText.includes(_firstName(_buyerRaw));
+  const _champMissing   = !_isUnknown(_champRaw) && activity.count > 3 && !isPersonaReferencedInRecentText_(_recentText, _champRaw);
+  const _buyerMissing   = !_isUnknown(_buyerRaw) && activity.count > 3 && !isPersonaReferencedInRecentText_(_recentText, _buyerRaw);
   const _ghostNames     = [
     _champMissing ? 'Champion "' + _champRaw + '"' : '',
     _buyerMissing ? 'Economic Buyer "' + _buyerRaw + '"' : ''
@@ -707,7 +784,7 @@ Champion: ${personas && personas.champion ? personas.champion : "Não identifica
 Economic Buyer: ${personas && personas.economicBuyer ? personas.economicBuyer : "Não identificado"}
 Influenciadores-chave: ${personas && personas.keyPersonas && personas.keyPersonas.length ? personas.keyPersonas.join(", ") : "Nenhum identificado"}
 Personas Ocultas (nomes recorrentes nas atividades): ${personas && personas.hiddenPersonas && personas.hiddenPersonas.length ? personas.hiddenPersonas.join(", ") : "Nenhuma detectada"}
-INSTRUÇÃO PERSONAS: Se encontrar nomes próprios recorrentes nas atividades que não estão explicitamente mapeados como Champion/Buyer, considere-os como potenciais Champions e recomende validação no campo 'personas_assessment'.
+INSTRUÇÃO PERSONAS: Se encontrar nomes próprios recorrentes nas atividades que não estão explicitamente mapeados como Champion/Buyer, considere-os como potenciais Champions e recomende validação no campo 'personas_assessment'. Ao validar presença de decisor, aceite também menções por pronome de tratamento/cargo (ex: "Secretário", "Presidente", "Diretor", "Desembargador").
 
 VALIDAÇÃO DE PRÓXIMO PASSO:
 Next Step vs Última Atividade: ${nextStepCheck && nextStepCheck.alert ? nextStepCheck.alert : "N/A"}
@@ -1031,6 +1108,25 @@ function validateNextStepConsistency(nextStep, lastActivityText, lastActivityDat
  */
 function checkInactivityGate(idleDaysValue, forecastCategory, lastActivityDate, currentStage, daysInFunnel) {
   const idleDays = typeof idleDaysValue === 'string' ? parseInt(idleDaysValue) : idleDaysValue;
+  const item = arguments.length > 5 ? arguments[5] : null;
+
+  // Circuit breaker: renovações/adicionais GWS são geradas automaticamente e não devem cair como zumbi/estagnação.
+  const hasGws = !!(item && isGwsProductLine_(item.products, item.productFamily));
+  const tipoRaw = normText_(item && item.tipoOportunidade);
+  const procRaw = normText_(item && item.processoTipo);
+  const isRenewalLike = /RENOV|RENEW|RETEN|TRANSFER[\s_]?TOKEN|TRANSFERTOKEN|ADICIONAL/.test(`${tipoRaw} ${procRaw}`);
+  const isGwsAutoRenewal = hasGws && isRenewalLike;
+
+  if (isGwsAutoRenewal) {
+    return {
+      isBlocked: false,
+      severity: "CLEAR",
+      alert: "✅ ISENCAO GWS: Renovação/retencao GWS em fluxo automático. Hard gate de inatividade desativado para evitar falso zumbi.",
+      recommendedAction: null,
+      suggestedConfidence: null,
+      isGwsExempt: true
+    };
+  }
   
   // Identifica se está em fase inicial (qualificação)
   const stageNorm = currentStage ? normText_(currentStage) : '';
@@ -1096,12 +1192,72 @@ function checkInactivityGate(idleDaysValue, forecastCategory, lastActivityDate, 
     severity: "CLEAR",
     alert: "OK",
     recommendedAction: null,
-    suggestedConfidence: null
+    suggestedConfidence: null,
+    isGwsExempt: false
   };
 }
 
+function getPersonaAliasCandidates_(rawPersonaName) {
+  const name = String(rawPersonaName || '').trim();
+  if (!name) return [];
+
+  const cleaned = name
+    .replace(/\([^\)]*\)/g, ' ')
+    .replace(/[,:;|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleaned) return [];
+
+  const titles = [
+    'SECRETARIO', 'SECRETARIA', 'PRESIDENTE', 'DIRETOR', 'DIRETORA',
+    'DESEMBARGADOR', 'DESEMBARGADORA', 'MINISTRO', 'MINISTRA',
+    'PREFEITO', 'PREFEITA', 'GOVERNADOR', 'GOVERNADORA', 'SUPERINTENDENTE',
+    'COORDENADOR', 'COORDENADORA', 'GERENTE', 'VICE PRESIDENTE', 'VP'
+  ];
+
+  const tokens = cleaned
+    .split(/\s+/)
+    .map(t => normText_(t))
+    .filter(Boolean);
+
+  const first = tokens[0] || '';
+  const last = tokens.length > 1 ? tokens[tokens.length - 1] : '';
+  const candidates = new Set();
+
+  if (first && first.length >= 3) candidates.add(first);
+  if (last && last.length >= 3) candidates.add(last);
+
+  const fullNorm = normText_(cleaned).replace(/\s+/g, ' ').trim();
+  if (fullNorm.length >= 6) candidates.add(fullNorm);
+
+  tokens.forEach(tok => {
+    if (titles.indexOf(tok) > -1) candidates.add(tok);
+  });
+
+  return Array.from(candidates);
+}
+
+function isPersonaReferencedInRecentText_(recentText, rawPersonaName) {
+  const hay = normText_(String(recentText || '')).replace(/\s+/g, ' ').trim();
+  if (!hay) return false;
+
+  const aliases = getPersonaAliasCandidates_(rawPersonaName);
+  if (!aliases.length) return false;
+
+  for (let i = 0; i < aliases.length; i++) {
+    const token = aliases[i];
+    if (!token) continue;
+    const re = new RegExp('(^|\\W)' + token.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&') + '(\\W|$)');
+    if (re.test(hay)) return true;
+  }
+
+  return false;
+}
+
 function callGeminiAPI(prompt, optionalConfig) {
-  if (!API_KEY) throw new Error("API KEY não configurada.");
+  const GEMINI_API_KEY = getGeminiApiKey_();
+  if (!GEMINI_API_KEY) throw new Error("API KEY não configurada.");
   
   const props = PropertiesService.getScriptProperties();
   const throttleKey = "GEMINI_LAST_CALL";
@@ -1125,13 +1281,18 @@ function callGeminiAPI(prompt, optionalConfig) {
   const options = { method: "post", contentType: "application/json", payload: JSON.stringify(payload), muteHttpExceptions: true };
 
   // Lista de modelos para tentar (principal + fallbacks)
-  const modelsToTry = [MODEL_ID, ...(typeof FALLBACK_MODELS !== 'undefined' ? FALLBACK_MODELS : ["gemini-1.5-flash"])];
+  const modelsToTry = [
+    GEMINI_MODEL_ID_SHARED,
+    ...(typeof GEMINI_FALLBACK_MODELS_SHARED !== 'undefined'
+      ? GEMINI_FALLBACK_MODELS_SHARED
+      : ["gemini-1.5-flash"])
+  ];
   
   let lastErr = "";
   
   // Tentar cada modelo
   for (const modelId of modelsToTry) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${API_KEY}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${GEMINI_API_KEY}`;
     
     for (let attempt = 0; attempt < 3; attempt++) {
       const res = UrlFetchApp.fetch(url, options);
@@ -1165,7 +1326,7 @@ function callGeminiAPI(prompt, optionalConfig) {
           console.log(`   ✅ Extracted text (${extractedText.length} chars): ${extractedText.substring(0, 200)}`);
           
           // Se não é o modelo principal, logar que estamos usando fallback
-          if (modelId !== MODEL_ID) {
+          if (modelId !== GEMINI_MODEL_ID_SHARED) {
             logToSheet("INFO", "AI", `Usando modelo fallback: ${modelId}`);
           }
           
@@ -1198,6 +1359,16 @@ function callGeminiAPI(prompt, optionalConfig) {
       break;
     }
   }
+
+  notifyOpsCritical_(
+    "Falha crítica no Gemini",
+    lastErr || "Falha Gemini: nenhum modelo disponível funcionou.",
+    {
+      module: "AI",
+      functionName: "callGeminiAPI",
+      model: GEMINI_MODEL_ID_SHARED
+    }
+  );
 
   throw new Error(lastErr || "Falha Gemini: nenhum modelo disponível funcionou.");
 }
@@ -1270,7 +1441,8 @@ function cleanAndParseJSON(s) {
   }
 }
 
-function buildOpenOutputRow(runId, item, profile, fiscal, activity, meddic, ia, labels, overrideCat, idle, inconsistency, forcedAction, rulesApplied, detailedChanges, isCorrectTerritory, designatedSeller, quarterRecognition) {
+function buildOpenOutputRow(runId, item, profile, statusGtm, motivoStatusGtm, statusCliente, flagAprovacao, fiscal, activity, meddic, ia, labels, overrideCat, idle, inconsistency, forcedAction, rulesApplied, detailedChanges, isCorrectTerritory, designatedSeller, quarterRecognition, ssGovernance) {
+  const ss = ssGovernance || {};
   const finalCat = overrideCat || mapEnum(ia.forecast_cat, ENUMS.FORECAST_IA, ENUMS.FORECAST_IA.PIPELINE);
   const finalActionCode = forcedAction || ia.acao_code || "AUDITORIA-CRM";
   const perguntas = Array.isArray(ia.perguntas_auditoria) ? ia.perguntas_auditoria.join(" | ") : "Gerar perguntas na próxima revisão.";
@@ -1323,11 +1495,42 @@ function buildOpenOutputRow(runId, item, profile, fiscal, activity, meddic, ia, 
   const subSubVerticalIA = item.subSubVerticalIA || "-";
   const lastUpdateFormatted = formatDateRobust(new Date());
 
+  // Notificação automática: oportunidade elegível para SS, porém sem SS válido na governança.
+  notifySalesSpecialistEligibilityAlert_({
+    runId: runId,
+    oportunidade: item.oppName,
+    conta: item.accName,
+    perfilCliente: profile,
+    statusGtm: statusGtm,
+    motivoStatusGtm: motivoStatusGtm,
+    statusCliente: statusCliente,
+    flagAprovacaoPrevia: flagAprovacao,
+    produtos: item.products,
+    vendedor: item.owner,
+    gross: item.gross,
+    net: item.net,
+    faseAtual: item.stage,
+    forecastSf: item.forecast_sf || '-',
+    fiscalQ: fiscal && fiscal.label ? fiscal.label : '-',
+    dataPrevista: closedDateFormatted,
+    dataCriacao: createdDateFormatted,
+    cicloDias: cicloDias,
+    diasFunil: diasFunil,
+    salesSpecialistEnvolvido: ss.salesSpecialistEnvolvido || 'Nenhum',
+    elegibilidadeSs: ss.elegibilidadeSS || 'NAO ELEGIVEL',
+    justificativaElegibilidadeSs: ss.justificativaElegibilidadeSS || '-',
+    statusGovernancaSs: ss.statusGovernancaSS || '-'
+  });
+
   return [
     runId,
     item.oppName,             
     item.accName,             
-    profile,                  
+    profile,
+    statusGtm || "-",
+    motivoStatusGtm || "-",
+    statusCliente || "-",
+    flagAprovacao || "OK",
     item.products || "N/A",   
     item.owner,               
     item.gross,
@@ -1393,6 +1596,10 @@ function buildOpenOutputRow(runId, item, profile, fiscal, activity, meddic, ia, 
     ia.personas_assessment || "-",
     item.tipoOportunidade || "-",
     item.processoTipo || "-",
+    ss.salesSpecialistEnvolvido || 'Nenhum',
+    ss.elegibilidadeSS || 'NAO ELEGIVEL',
+    ss.justificativaElegibilidadeSS || '-',
+    ss.statusGovernancaSS || '-',
     lastUpdateFormatted
   ];
 }
@@ -1884,6 +2091,18 @@ function isAlexAraujoOpportunity_(item) {
 }
 
 /**
+ * Indica se a oportunidade deve ser isenta do gate de aprovacao previa fora GTM.
+ * Regra solicitada: tipo de oportunidade de renovacao nao entra no alerta.
+ */
+function isRenewalOpportunityForApproval_(item) {
+  const tipoRaw = normText_((item && item.tipoOportunidade) || '');
+  const processoRaw = normText_((item && item.processoTipo) || '');
+  const oppRaw = normText_((item && item.oppName) || '');
+  const haystack = `${tipoRaw} ${processoRaw} ${oppRaw}`;
+  return /RENOVACAO|RENOVACION|RENEW|RETENCAO|RETENCION/.test(haystack);
+}
+
+/**
  * Encontra o vendedor designado para uma oportunidade.
  * Considera tanto território geográfico quanto tipo de deal (Alex Araújo).
  * @param {string} locationNameFromCrm - O valor da coluna "Estado/Província de cobrança" ou "Cidade de cobrança".
@@ -2365,6 +2584,7 @@ function getColumnMapping(headers) {
     p_stage: find(["Stage", "Fase", "Fase Atual", "Proceso", "Estado"]),
     p_desc: find(["Description", "Descrição", "Descripción", "Descripción de la pérdida"]),
     p_prod: find(["Product Name", "Nome do produto", "Produtos", "Products", "Produto", "Producto"]),
+    p_quantity: find(["Quantity", "Quantidade", "Qtd", "Licencas", "Licenças", "Qty"]),
     p_prob: find(["Probability (%)", "Probabilidade (%)", "Probabilidad (%)"]),
     p_reason: find(["Razón de pérdida", "Razao de perda", "Razón de pérdida"]),
     p_created: find([
@@ -2434,7 +2654,17 @@ function getColumnMapping(headers) {
       "Billing Calendar", "Billing Schedule", "Payment Calendar", "Payment Schedule",
       "Invoicing Calendar", "Revenue Recognition Calendar"
     ]),
-    p_tipo_oportunidad: find(["Tipo De Oportunidad", "Tipo Oportunidad", "Tipo de Oportunidade", "Tipo Oportunidade"]),
+    p_tipo_oportunidad: find([
+      "Tipo De Oportunidad",
+      "Tipo de oportunidad",
+      "Tipo Oportunidad",
+      "Tipo De Oportunidade",
+      "Tipo de Oportunidade",
+      "Tipo de oportunidade",
+      "Tipo Oportunidade",
+      "Tipo oportunidade",
+      "Opportunity Type"
+    ]),
     p_proceso_tipo: find(["Proceso"]),
     p_account_last_activity: find(["Account: Last Activity", "Última Atividade da Conta", "Last Account Activity", "Ult. Atividade Conta"]),
     p_last_stage_change_date: find(["Last Stage Change Date", "Data Última Mudança Fase", "Data Mudança Fase", "Stage Change Date"])
@@ -2541,6 +2771,9 @@ function aggregateOpportunities(values, cols, mode = 'UNKNOWN') {
     const key = (mode === 'OPEN') ? `${baseKey}|FQ:${fiscalBucket}` : baseKey;
     
     const curProd = cols.p_prod > -1 ? String(row[cols.p_prod] || "").trim() : "";
+    const curQuantity = cols.p_quantity > -1
+      ? (parseFloat(String(row[cols.p_quantity] || "0").replace(',', '.')) || 0)
+      : 0;
     const curGross = parseMoney(row[cols.p_gross]);
     const curNet = parseMoney(row[cols.p_net]);
     const stage = String(row[cols.p_stage] || "");
@@ -2604,13 +2837,15 @@ function aggregateOpportunities(values, cols, mode = 'UNKNOWN') {
     const subsegmentoMercado = cols.p_subsegmento_mercado > -1 ? String(row[cols.p_subsegmento_mercado] || "") : "";
     const segmentoConsolidado = cols.p_segmento_consolidado > -1 ? String(row[cols.p_segmento_consolidado] || "") : "";
     const productFamily = cols.p_prod_family > -1 ? String(row[cols.p_prod_family] || "") : "";
+    const isGwsLine = isGwsProductLine_(curProd, productFamily);
     const billingState = cols.p_billing_state > -1 ? String(row[cols.p_billing_state] || "").trim() : "";
     const billingCity = cols.p_billing_city > -1 ? String(row[cols.p_billing_city] || "").trim() : "";
     const billingCalendar      = cols.p_billing_calendar   > -1 ? String(row[cols.p_billing_calendar]   || "").trim() : "";
     const tipoOportunidadRaw    = cols.p_tipo_oportunidad   > -1 ? String(row[cols.p_tipo_oportunidad]   || "").trim() : "";
     const processoTipoRaw       = cols.p_proceso_tipo       > -1 ? String(row[cols.p_proceso_tipo]       || "").trim() : "";
-    const tipoOportunidade         = TIPO_OPOR_MAP_[tipoOportunidadRaw]  || tipoOportunidadRaw;
     const processoTipo             = PROCESO_TIPO_MAP_[processoTipoRaw]  || processoTipoRaw;
+    const tipoOportunidadeBase     = TIPO_OPOR_MAP_[tipoOportunidadRaw]  || tipoOportunidadRaw;
+    const tipoOportunidade         = tipoOportunidadeBase || processoTipo || "";
     const accountLastActivity      = cols.p_account_last_activity  > -1 ? parseDate(row[cols.p_account_last_activity])  : null;
     const lastStageChangeDate      = cols.p_last_stage_change_date > -1 ? parseDate(row[cols.p_last_stage_change_date]) : null;
     
@@ -2663,6 +2898,8 @@ function aggregateOpportunities(values, cols, mode = 'UNKNOWN') {
         gross: curGross, 
         net: curNet, 
         products: curProd,
+        totalQuantity: curQuantity,
+        gwsQuantity: isGwsLine ? curQuantity : 0,
         stage: stage, 
         probabilidad: prob,
         closed: closeDate,
@@ -2716,6 +2953,8 @@ function aggregateOpportunities(values, cols, mode = 'UNKNOWN') {
       const item = map.get(key);
       item.gross += curGross;
       item.net += curNet;
+      item.totalQuantity = (item.totalQuantity || 0) + curQuantity;
+      if (isGwsLine) item.gwsQuantity = (item.gwsQuantity || 0) + curQuantity;
       // Atualiza atividades se maior
       if (activities > item.aiActivities) {
         item.aiActivities = activities;
@@ -3610,6 +3849,1511 @@ function normalizeList(arr, enumObj) {
   return [...new Set(normalized.filter(x => x && x !== "UNDEFINED"))];
 }
 
+function isGwsProductLine_(productName, productFamily) {
+  const raw = normText_(`${productName || ''} ${productFamily || ''}`).replace(/\s+/g, ' ').trim();
+  if (!raw) return false;
+
+  if (/(^|\W)GWS(\W|$)/.test(raw)) return true;
+  if (raw.indexOf('GWORKSPACE') > -1) return true;
+  if (raw.indexOf('GOOGLE WORKSPACE') > -1) return true;
+
+  // Captura variações observadas no BigQuery: "WORKSPACE BUSINESS/ENTERPRISE/..."
+  // sem depender do prefixo "GOOGLE".
+  if (/\bWORKSPACE\b/.test(raw)) {
+    if (/\b(BUSINESS|ENTERPRISE|FRONTLINE|EDUCATION|STARTER|STANDARD|PLUS|ESSENTIALS|LICENSING|SERVICES|SERVICIOS|IMPLEMENTACION|IMPLEMENTACAO|ENTRENAMIENTO|ENTRENAMIENTOS|TREINAMENTO)\b/.test(raw)) {
+      return true;
+    }
+    if (/\b(TRANSFERTOKEN|RENOVACAO|RENOVACION|NUEVA|NUEVO|ADICIONAL|UPGRADE)\b/.test(raw)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function normalizeSegmentValue_(value) {
+  const raw = normText_(String(value || '')).replace(/\s+/g, ' ').trim();
+  if (!raw) return '';
+
+  if (/^GOV|^GOBIERNO|GOVERNO/.test(raw)) return 'GOBIERNO';
+  if (/^CORP/.test(raw)) return 'CORPORATE';
+  if (raw === 'MIDMARKET' || raw === 'MID-MARKET') return 'MID MARKET';
+  if (/^MID MARKET/.test(raw)) return 'MID MARKET';
+  if (/^ENTERPRISE/.test(raw)) return 'ENTERPRISE';
+  if (/^EDUCATIVO|^EDUCACAO|^EDUCACI/.test(raw)) return 'EDUCATIVO';
+  if (raw === 'SMB') return 'SMB';
+  if (raw === 'SB') return 'SB';
+  if (/DIGITAL NATIVES|DIGITALNATIVES/.test(raw)) return 'DIGITAL NATIVES';
+
+  return raw;
+}
+
+function resolveValidacaoManualSheetName_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const preferred = (typeof SHEETS !== 'undefined' && SHEETS.RESULTADO_PIPELINE)
+    ? SHEETS.RESULTADO_PIPELINE
+    : '🎯 Análise Forecast IA';
+  if (ss.getSheetByName(preferred)) return preferred;
+  return null;
+}
+
+function setupValidacaoManualGtmSs() {
+  return 'INFO: validacao manual por prefixo foi descontinuada. Use corrigirGovernancaGtmSsEmLote() para corrigir tudo de uma vez.';
+}
+
+function refreshValidacaoManualGtmSsCache() {
+  clearValidacaoManualCache_();
+  return 'INFO: cache de validacao manual limpo (fluxo de prefixo descontinuado).';
+}
+
+function clearValidacaoManualCache_() {
+  CacheService.getScriptCache().remove(VALIDACAO_MANUAL_CACHE_KEY);
+}
+
+function serializeDateKey_(value) {
+  const d = parseDate(value);
+  if (!d) return '';
+  return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function getValidacaoManualCache_(options) {
+  return { rows: [] };
+}
+
+function getValidacaoManualForItem_(item, scope) {
+  return null;
+}
+
+/**
+ * Correção one-shot de governança GTM/SS na aba OPEN já processada.
+ * Recalcula os campos de governança para todas as linhas existentes,
+ * grava nas colunas atuais e depois permite seguir com autosync normal.
+ */
+function corrigirGovernancaGtmSsEmLote() {
+  const sheetName = resolveValidacaoManualSheetName_();
+  if (!sheetName) {
+    return 'ERRO: aba OPEN de analise nao encontrada.';
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sh = ss.getSheetByName(sheetName);
+  if (!sh) return `ERRO: aba '${sheetName}' nao encontrada.`;
+
+  invalidateSheetCache_();
+  const data = getSheetData(sheetName);
+  if (!data || !Array.isArray(data.headers) || !Array.isArray(data.values) || !data.values.length) {
+    return `OK: sem linhas para corrigir em '${sheetName}'.`;
+  }
+
+  const headers = data.headers;
+  const rows = data.values;
+  const find = (cands) => findColumnIndexByName_(headers, cands);
+
+  const colOpp = find(['Oportunidade', 'Opportunity Name']);
+  const colConta = find(['Conta', 'Account Name']);
+  const colOwner = find(['Owner', 'Opportunity Owner', 'Proprietario da oportunidade']);
+  const colSegmento = find(['Segment', 'Segmento']);
+  const colSegmentoConsolidado = find(['Segmento_Consolidado', 'Segmento Consolidado', 'Segmento de Mercado Consolidado']);
+  const colProducts = find(['Produtos', 'Products', 'Product']);
+  const colProductFamily = find(['Product Family', 'Familia de Produto', 'Product Family Name']);
+  const colCommercialFamily = find(['Commercial_Family', 'Commercial Family']);
+  const colServicesModel = find(['Services_Model', 'Services Model']);
+  const colQtdTotal = find(['Quantidade_Total', 'Total Quantity', 'Qtd Total']);
+  const colQtdGws = find(['Quantidade_GWS', 'GWS Quantity', 'Qtd GWS']);
+  const colTipoOportunidade = find(['Tipo_Oportunidade', 'Tipo Oportunidade']);
+
+  const outPerfil = find(['Perfil_Cliente', 'Perfil Cliente']);
+  const outStatusGtm = find(['Status_GTM', 'Status GTM']);
+  const outMotivoGtm = find(['Motivo_Status_GTM', 'Motivo Status GTM']);
+  const outFlagAprov = find(['Flag_Aprovacao_Previa', 'Flag Aprovacao Previa']);
+  const outStatusCliente = find(['Status_Cliente', 'Status Cliente']);
+  const outSsEnv = find(['Sales_Specialist_Envolvido', 'Sales Specialist Envolvido', 'SS Envolvido']);
+  const outEleg = find(['Elegibilidade_SS', 'Elegibilidade SS']);
+  const outJust = find(['Justificativa_Elegibilidade_SS', 'Justificativa Elegibilidade SS']);
+  const outStatusSs = find(['Status_Governanca_SS', 'Status Governanca SS']);
+
+  if (colOpp === -1 && colConta === -1) {
+    return `ERRO: colunas de chave (Oportunidade/Conta) nao encontradas em '${sheetName}'.`;
+  }
+
+  const rawSalesSpecialist = getSalesSpecialistSheetData_();
+  const salesSpecialistMap = buildSalesSpecialistIndex_(rawSalesSpecialist);
+  const contasNomeadasCache = getContasNomeadasCacheForGtm_({ forceRefresh: true, audit: true });
+  const baseClientsCache = getBaseClientsCache();
+
+  const resultCols = {
+    perfil: rows.map((r, i) => [outPerfil > -1 ? r[outPerfil] : '']),
+    statusGtm: rows.map((r, i) => [outStatusGtm > -1 ? r[outStatusGtm] : '']),
+    motivoGtm: rows.map((r, i) => [outMotivoGtm > -1 ? r[outMotivoGtm] : '']),
+    flagAprov: rows.map((r, i) => [outFlagAprov > -1 ? r[outFlagAprov] : '']),
+    statusCliente: rows.map((r, i) => [outStatusCliente > -1 ? r[outStatusCliente] : '']),
+    ssEnv: rows.map((r, i) => [outSsEnv > -1 ? r[outSsEnv] : '']),
+    eleg: rows.map((r, i) => [outEleg > -1 ? r[outEleg] : '']),
+    just: rows.map((r, i) => [outJust > -1 ? r[outJust] : '']),
+    statusSs: rows.map((r, i) => [outStatusSs > -1 ? r[outStatusSs] : ''])
+  };
+
+  let totalCorrigidas = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const oppName = colOpp > -1 ? safeString_(row[colOpp]) : '';
+    const accName = colConta > -1 ? safeString_(row[colConta]) : '';
+    if (!normText_(oppName) && !normText_(accName)) continue;
+
+    const item = {
+      oppName: oppName,
+      accName: accName,
+      owner: colOwner > -1 ? safeString_(row[colOwner]) : '',
+      segment: colSegmento > -1 ? safeString_(row[colSegmento]) : '',
+      segmentoConsolidado: colSegmentoConsolidado > -1 ? safeString_(row[colSegmentoConsolidado]) : '',
+      products: colProducts > -1 ? safeString_(row[colProducts]) : '',
+      productFamily: colProductFamily > -1 ? safeString_(row[colProductFamily]) : '',
+      commercialFamily: colCommercialFamily > -1 ? safeString_(row[colCommercialFamily]) : '',
+      servicesModel: colServicesModel > -1 ? safeString_(row[colServicesModel]) : '',
+      totalQuantity: colQtdTotal > -1 ? parseMoney(row[colQtdTotal]) : 0,
+      gwsQuantity: colQtdGws > -1 ? parseMoney(row[colQtdGws]) : 0,
+      tipoOportunidade: colTipoOportunidade > -1 ? safeString_(row[colTipoOportunidade]) : ''
+    };
+
+    const gtmCheck = evaluateGtmComplianceForItem_(item, contasNomeadasCache);
+    const ssRows = salesSpecialistMap.get(normText_(item.oppName || '')) || salesSpecialistMap.get(normText_(item.accName || '')) || [];
+    const ssGovernance = evaluateSalesSpecialistGovernance(item, ssRows);
+
+    const statusGtm = gtmCheck.statusGtm || 'DADOS INSUFICIENTES';
+    const motivoBase = gtmCheck.motivoStatusGtm || '';
+    const skipApprovalPrevia = typeof isRenewalOpportunityForApproval_ === 'function' && isRenewalOpportunityForApproval_(item);
+    const flagAprovacao = (!skipApprovalPrevia && !gtmCheck.isNamed && statusGtm === 'FORA GTM') ? 'APROVACAO PREVIA' : 'OK';
+    const motivoStatusGtm = flagAprovacao === 'APROVACAO PREVIA'
+      ? (motivoBase ? `${motivoBase}, APROVACAO PREVIA OBRIGATORIA` : 'APROVACAO PREVIA OBRIGATORIA')
+      : motivoBase;
+
+    const accountKeyNorm = normText_(item.accName || '');
+    const isBaseByHistory = baseClientsCache.has(accountKeyNorm);
+    const namedTipoNorm = normText_(gtmCheck.tipoContaNomeada || '');
+    let statusCliente = isBaseByHistory ? 'BASE INSTALADA' : 'NOVO CLIENTE';
+    if (gtmCheck.isNamed && namedTipoNorm) {
+      if (/BASE/.test(namedTipoNorm)) statusCliente = 'BASE INSTALADA';
+      else if (/NOVO|NEW|TARGET/.test(namedTipoNorm)) statusCliente = 'NOVO CLIENTE';
+    }
+
+    if (outPerfil > -1) resultCols.perfil[i][0] = gtmCheck.profileCliente || '';
+    if (outStatusGtm > -1) resultCols.statusGtm[i][0] = statusGtm;
+    if (outMotivoGtm > -1) resultCols.motivoGtm[i][0] = motivoStatusGtm;
+    if (outFlagAprov > -1) resultCols.flagAprov[i][0] = flagAprovacao;
+    if (outStatusCliente > -1) resultCols.statusCliente[i][0] = statusCliente;
+    if (outSsEnv > -1) resultCols.ssEnv[i][0] = ssGovernance.salesSpecialistEnvolvido || '';
+    if (outEleg > -1) resultCols.eleg[i][0] = ssGovernance.elegibilidadeSS || '';
+    if (outJust > -1) resultCols.just[i][0] = ssGovernance.justificativaElegibilidadeSS || '';
+    if (outStatusSs > -1) resultCols.statusSs[i][0] = ssGovernance.statusGovernancaSS || '';
+    totalCorrigidas++;
+  }
+
+  const totalRows = rows.length;
+  if (outPerfil > -1) sh.getRange(2, outPerfil + 1, totalRows, 1).setValues(resultCols.perfil);
+  if (outStatusGtm > -1) sh.getRange(2, outStatusGtm + 1, totalRows, 1).setValues(resultCols.statusGtm);
+  if (outMotivoGtm > -1) sh.getRange(2, outMotivoGtm + 1, totalRows, 1).setValues(resultCols.motivoGtm);
+  if (outFlagAprov > -1) sh.getRange(2, outFlagAprov + 1, totalRows, 1).setValues(resultCols.flagAprov);
+  if (outStatusCliente > -1) sh.getRange(2, outStatusCliente + 1, totalRows, 1).setValues(resultCols.statusCliente);
+  if (outSsEnv > -1) sh.getRange(2, outSsEnv + 1, totalRows, 1).setValues(resultCols.ssEnv);
+  if (outEleg > -1) sh.getRange(2, outEleg + 1, totalRows, 1).setValues(resultCols.eleg);
+  if (outJust > -1) sh.getRange(2, outJust + 1, totalRows, 1).setValues(resultCols.just);
+  if (outStatusSs > -1) sh.getRange(2, outStatusSs + 1, totalRows, 1).setValues(resultCols.statusSs);
+
+  invalidateSheetCache_();
+  clearValidacaoManualCache_();
+  const summary = `OK: ${totalCorrigidas} linhas corrigidas em '${sheetName}'.`;
+  logToSheet('INFO', 'CorrecaoGtmSsLote', summary);
+  return summary;
+}
+
+function resolveContasNomeadasSheetNameForGtm_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const candidates = [
+    SHEETS.CONTAS_NOMEADAS,
+    'Contas Nomeadas',
+    'Contas nomeadas',
+    'CONTAS_NOMEADAS'
+  ];
+
+  for (let i = 0; i < candidates.length; i++) {
+    if (ss.getSheetByName(candidates[i])) return candidates[i];
+  }
+
+  const fallback = ss.getSheets()
+    .map(s => s.getName())
+    .find(name => {
+      const n = normText_(name);
+      return n.indexOf('CONTAS') > -1 && n.indexOf('NOMEADAS') > -1;
+    });
+
+  return fallback || null;
+}
+
+function findColumnIndexByName_(headers, candidates) {
+  if (!headers || !headers.length || !candidates || !candidates.length) return -1;
+  const normalized = headers.map(h => normText_(h));
+  for (let i = 0; i < candidates.length; i++) {
+    const idx = normalized.indexOf(normText_(candidates[i]));
+    if (idx > -1) return idx;
+  }
+  return -1;
+}
+
+function getContasNomeadasCacheForGtm_(options) {
+  const opts = options || {};
+  const forceRefresh = !!opts.forceRefresh;
+  const enableAudit = !!opts.audit;
+  const c = CacheService.getScriptCache();
+  const cached = forceRefresh ? null : c.get(CONTAS_NOMEADAS_CACHE_KEY);
+  if (cached) {
+    const parsed = JSON.parse(cached);
+    return {
+      keys: new Set(parsed.keys || []),
+      rows: parsed.rows || []
+    };
+  }
+
+  const sheetName = resolveContasNomeadasSheetNameForGtm_();
+  if (!sheetName) {
+    return { keys: new Set(), rows: [] };
+  }
+
+  const data = getSheetData(sheetName);
+  if (!data || !data.headers || !data.values) {
+    return { keys: new Set(), rows: [] };
+  }
+
+  const colConta = findColumnIndexByName_(data.headers, [
+    'Nome_da_Conta',
+    'Nome da Conta',
+    'Conta',
+    'Account Name'
+  ]);
+  const colSegmento = findColumnIndexByName_(data.headers, ['Segmento']);
+  const colSegmentoConsolidado = findColumnIndexByName_(data.headers, ['Segmento Consolidado']);
+  const colComercial = findColumnIndexByName_(data.headers, [
+    'Comercial',
+    'Responsavel',
+    'Responsável',
+    'Owner'
+  ]);
+  const colStatus = findColumnIndexByName_(data.headers, [
+    'Status',
+    'Situacao',
+    'Situação',
+    'Estado',
+    'Ativo'
+  ]);
+  const colTipo = findColumnIndexByName_(data.headers, ['Tipo']);
+
+  const keys = new Set();
+  const rows = [];
+
+  data.values.forEach(row => {
+    const conta = colConta > -1 ? String(row[colConta] || '').trim() : '';
+    if (!conta) return;
+    const key = normText_(conta);
+    keys.add(key);
+    rows.push({
+      conta: conta,
+      key: key,
+      segmento: colSegmento > -1 ? String(row[colSegmento] || '').trim() : '',
+      segmentoConsolidado: colSegmentoConsolidado > -1 ? String(row[colSegmentoConsolidado] || '').trim() : '',
+      comercial: colComercial > -1 ? String(row[colComercial] || '').trim() : '',
+      status: colStatus > -1 ? String(row[colStatus] || '').trim() : '',
+      tipo: colTipo > -1 ? String(row[colTipo] || '').trim() : ''
+    });
+  });
+
+  if (enableAudit) {
+    try {
+      auditContasNomeadasChanges_(rows);
+    } catch (err) {
+      console.warn(`⚠️ Falha na conferência de Contas Nomeadas: ${err.message || err}`);
+    }
+  }
+
+  c.put(
+    CONTAS_NOMEADAS_CACHE_KEY,
+    JSON.stringify({ keys: Array.from(keys), rows: rows }),
+    21600
+  );
+
+  return { keys: keys, rows: rows };
+}
+
+function getContaNomeadaMatchForGtm_(accountName, contasNomeadasCache) {
+  const key = normText_(String(accountName || ''));
+  if (!key) return null;
+
+  function normalizeAccountMatchKey_(value) {
+    return normText_(String(value || ''))
+      .replace(/\b(LTDA|EIRELI|S\/A|SA|INC|LLC|ME|EPP|HOLDING|GROUP|GRUPO)\b/g, ' ')
+      .replace(/[^A-Z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  const normalizedKey = normalizeAccountMatchKey_(key);
+
+  const rows = (contasNomeadasCache && contasNomeadasCache.rows) ? contasNomeadasCache.rows : [];
+  if (!rows.length) return null;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row) continue;
+    const rowKey = row.key || '';
+    if (rowKey === key) return row;
+
+    const normalizedNamedKey = normalizeAccountMatchKey_(rowKey);
+    if (normalizedKey && normalizedNamedKey && normalizedNamedKey === normalizedKey) return row;
+  }
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const namedKey = row && row.key;
+    if (!namedKey) continue;
+    const normalizedNamedKey = normalizeAccountMatchKey_(namedKey);
+    const containsDirect = key.indexOf(namedKey) > -1 || namedKey.indexOf(key) > -1;
+    const containsNormalized = normalizedKey && normalizedNamedKey
+      ? (normalizedKey.indexOf(normalizedNamedKey) > -1 || normalizedNamedKey.indexOf(normalizedKey) > -1)
+      : false;
+
+    if (containsDirect || containsNormalized) {
+      if (Math.min(key.length, namedKey.length) >= 6 || Math.min(normalizedKey.length, normalizedNamedKey.length) >= 6) return row;
+    }
+  }
+
+  // Fallback robusto: match por sigla (ex.: MPMA) + sobreposição de tokens relevantes.
+  const STOPWORDS = new Set([
+    'DE', 'DO', 'DA', 'DOS', 'DAS', 'E', 'THE', 'OF', 'A', 'O', 'NA', 'NO',
+    'MINISTERIO', 'PUBLICO', 'ESTADO', 'TRIBUNAL', 'MUNICIPIO', 'PREFEITURA',
+    'SECRETARIA', 'GOVERNO', 'SERVICO', 'APOIO', 'INSTITUTO', 'FUNDAcao', 'FUNDACAO'
+  ]);
+
+  function tokens_(txt) {
+    return normText_(txt)
+      .replace(/[^A-Z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(t => t && t.length >= 3 && !STOPWORDS.has(t));
+  }
+
+  function acronymTokens_(txt) {
+    return normText_(txt)
+      .replace(/[^A-Z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter(t => t && /^[A-Z]{3,6}$/.test(t));
+  }
+
+  const accountTokens = new Set(tokens_(key));
+  const accountAcronyms = new Set(acronymTokens_(key));
+
+  let best = null;
+  let bestScore = 0;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || !row.key) continue;
+
+    const namedTokens = tokens_(row.key);
+    const namedAcronyms = acronymTokens_(row.key);
+
+    let score = 0;
+
+    // Boost forte quando há sigla igual (MPMA, TJGO, etc.).
+    for (let a = 0; a < namedAcronyms.length; a++) {
+      if (accountAcronyms.has(namedAcronyms[a])) {
+        score += 4;
+      }
+    }
+
+    // Sobreposição de tokens relevantes.
+    for (let t = 0; t < namedTokens.length; t++) {
+      if (accountTokens.has(namedTokens[t])) {
+        score += 1;
+      }
+    }
+
+    // Match mínimo para reduzir falso positivo: sigla igual OU 2+ tokens relevantes.
+    const hasAcronymHit = score >= 4;
+    const hasStrongTokenHit = score >= 2;
+    if ((hasAcronymHit || hasStrongTokenHit) && score > bestScore) {
+      best = row;
+      bestScore = score;
+    }
+  }
+
+  if (best) return best;
+
+  return null;
+}
+
+function getOrCreateContasNomeadasAuditSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(CONTAS_NOMEADAS_AUDIT_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(CONTAS_NOMEADAS_AUDIT_SHEET);
+  }
+
+  if (sh.getLastRow() < 1) {
+    sh.getRange(1, 1, 1, 10).setValues([[
+      'Timestamp',
+      'Evento',
+      'Conta_Key',
+      'Conta_Atual',
+      'Conta_Anterior',
+      'Tipo_Atual',
+      'Tipo_Anterior',
+      'Status_Atual',
+      'Status_Anterior',
+      'Comercial_Atual'
+    ]]);
+  }
+
+  return sh;
+}
+
+function buildContasNomeadasSnapshotMap_(rows) {
+  const map = {};
+  (rows || []).forEach(r => {
+    const key = normText_(r && r.key);
+    if (!key) return;
+    map[key] = {
+      conta: safeString_(r.conta),
+      tipo: safeString_(r.tipo),
+      status: safeString_(r.status),
+      comercial: safeString_(r.comercial)
+    };
+  });
+  return map;
+}
+
+function auditContasNomeadasChanges_(rows) {
+  const currentMap = buildContasNomeadasSnapshotMap_(rows);
+  const propSvc = PropertiesService.getScriptProperties();
+  const stateRaw = propSvc.getProperty(CONTAS_NOMEADAS_AUDIT_STATE_PROP_KEY);
+
+  let previousMap = {};
+  if (stateRaw) {
+    try {
+      const parsed = JSON.parse(stateRaw);
+      previousMap = (parsed && parsed.byKey) ? parsed.byKey : {};
+    } catch (e) {
+      previousMap = {};
+    }
+  }
+
+  const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+  const changes = [];
+
+  const currentKeys = Object.keys(currentMap);
+  const previousKeys = Object.keys(previousMap);
+
+  currentKeys.forEach((k) => {
+    const cur = currentMap[k] || {};
+    const prev = previousMap[k];
+    if (!prev) {
+      changes.push([now, 'NOVA_CONTA', k, cur.conta || '-', '-', cur.tipo || '-', '-', cur.status || '-', '-', cur.comercial || '-']);
+      return;
+    }
+
+    const contaChanged = safeString_(cur.conta) !== safeString_(prev.conta);
+    const tipoChanged = safeString_(cur.tipo) !== safeString_(prev.tipo);
+    const statusChanged = safeString_(cur.status) !== safeString_(prev.status);
+    const comercialChanged = safeString_(cur.comercial) !== safeString_(prev.comercial);
+
+    if (contaChanged || tipoChanged || statusChanged || comercialChanged) {
+      changes.push([
+        now,
+        'ALTERACAO_CADASTRAL',
+        k,
+        cur.conta || '-',
+        prev.conta || '-',
+        cur.tipo || '-',
+        prev.tipo || '-',
+        cur.status || '-',
+        prev.status || '-',
+        cur.comercial || '-'
+      ]);
+    }
+  });
+
+  previousKeys.forEach((k) => {
+    if (currentMap[k]) return;
+    const prev = previousMap[k] || {};
+    changes.push([
+      now,
+      'CONTA_REMOVIDA',
+      k,
+      '-',
+      prev.conta || '-',
+      '-',
+      prev.tipo || '-',
+      '-',
+      prev.status || '-',
+      '-'
+    ]);
+  });
+
+  if (changes.length > 0) {
+    const sh = getOrCreateContasNomeadasAuditSheet_();
+    sh.getRange(sh.getLastRow() + 1, 1, changes.length, 10).setValues(changes);
+    console.log(`🔎 Conferência Contas_Nomeadas: ${changes.length} mudança(s) detectada(s).`);
+  }
+
+  const snapshot = {
+    updatedAt: now,
+    byKey: currentMap
+  };
+
+  try {
+    propSvc.setProperty(CONTAS_NOMEADAS_AUDIT_STATE_PROP_KEY, JSON.stringify(snapshot));
+  } catch (e) {
+    console.warn('⚠️ Snapshot de Contas_Nomeadas excedeu limite de propriedade; mantendo somente auditoria em aba.');
+  }
+}
+
+function isContaNomeadaForGtm_(accountName, contasNomeadasCache) {
+  return !!getContaNomeadaMatchForGtm_(accountName, contasNomeadasCache);
+}
+
+function evaluateGtmComplianceForItem_(item, contasNomeadasCache) {
+  const namedMatch = getContaNomeadaMatchForGtm_(item && item.accName, contasNomeadasCache);
+  const isNamed = !!namedMatch;
+  const segmento = normalizeSegmentValue_(item && item.segment);
+  const segmentoConsolidado = normalizeSegmentValue_(item && item.segmentoConsolidado);
+  const hasSegmento = !!segmento;
+  const hasSegmentoConsolidado = !!segmentoConsolidado;
+  const segmentoValido = hasSegmento && GTM_SEGMENTO_ALLOWLIST.has(segmento);
+  const segmentoConsolidadoValido = hasSegmentoConsolidado && GTM_SEGMENTO_CONSOLIDADO_ALLOWLIST.has(segmentoConsolidado);
+
+  const qtdTotal = Number(item && item.totalQuantity) || 0;
+  const qtdGws = Number(item && item.gwsQuantity) || 0;
+  const hasGws = qtdGws > 0 || isGwsProductLine_(item && item.products, item && item.productFamily);
+  const gwsBelow500 = hasGws && qtdGws > 0 && qtdGws < 500;
+
+  const outsideBySegment = GTM_FORA_SEGMENTOS.has(segmento) || GTM_FORA_SEGMENTOS_CONSOLIDADO.has(segmentoConsolidado);
+  const reasons = [];
+  let statusGtm = 'DENTRO GTM';
+  const ownerNorm = normText_(item && item.owner);
+  const comercialNomeada = namedMatch ? String(namedMatch.comercial || '').trim() : '';
+  const comercialNorm = normText_(comercialNomeada);
+  let ownerMatchesComercial = null;
+
+  if (isNamed) {
+    statusGtm = 'EXCECAO CONTA NOMEADA';
+    reasons.push('CONTA NOMEADA EXCECAO');
+
+    if (!comercialNorm) {
+      ownerMatchesComercial = false;
+      reasons.push('COMERCIAL NAO INFORMADO');
+    } else {
+      ownerMatchesComercial = ownerNorm === comercialNorm;
+      if (!ownerMatchesComercial) {
+        reasons.push(`COMERCIAL DIVERGENTE(${comercialNomeada})`);
+      }
+    }
+  } else {
+    if (!hasSegmento) reasons.push('SEGMENTO AUSENTE');
+    if (!hasSegmentoConsolidado) reasons.push('SEGMENTO CONSOLIDADO AUSENTE');
+
+    if (!hasSegmento || !hasSegmentoConsolidado) {
+      statusGtm = 'DADOS INSUFICIENTES';
+    } else {
+      if (outsideBySegment) reasons.push('SEGMENTO FORA GTM');
+      if (!segmentoValido) reasons.push('SEGMENTO INVALIDO');
+      if (!segmentoConsolidadoValido) reasons.push('SEGMENTO CONSOLIDADO INVALIDO');
+      if (gwsBelow500) reasons.push(`GWS < 500 LICENCAS(${qtdGws})`);
+
+      if (outsideBySegment || !segmentoValido || !segmentoConsolidadoValido || gwsBelow500) {
+        statusGtm = 'FORA GTM';
+      }
+    }
+  }
+
+  const perfilCliente = isNamed ? 'CONTA NOMEADA' : 'CONTA NAO NOMEADA';
+  const foraGtm = statusGtm === 'FORA GTM';
+
+  const manual = getValidacaoManualForItem_(item, 'GTM');
+  const manualFieldsApplied = [];
+
+  let finalProfileCliente = perfilCliente;
+  let finalStatusGtm = statusGtm;
+  let finalMotivoStatusGtm = reasons.join(', ');
+
+  if (manual) {
+    if (manual.profileCliente) {
+      finalProfileCliente = manual.profileCliente;
+      manualFieldsApplied.push('Perfil_Cliente');
+    }
+    if (manual.statusGtm) {
+      finalStatusGtm = manual.statusGtm;
+      manualFieldsApplied.push('Status_GTM');
+    }
+
+    const manualMotivo = manual.motivoStatusGtm || manual.justificativaOverride;
+    if (manualMotivo) {
+      finalMotivoStatusGtm = manualMotivo;
+      manualFieldsApplied.push('Motivo_Status_GTM');
+    }
+  }
+
+  const finalForaGtm = normText_(finalStatusGtm) === 'FORA GTM';
+
+  return {
+    profileCliente: finalProfileCliente,
+    statusGtm: finalStatusGtm,
+    motivoStatusGtm: finalMotivoStatusGtm,
+    isNamed: isNamed,
+    matchedContaNomeada: namedMatch ? namedMatch.conta : '',
+    comercialContaNomeada: comercialNomeada,
+    tipoContaNomeada: namedMatch ? String(namedMatch.tipo || '').trim() : '',
+    ownerMatchesComercial: ownerMatchesComercial,
+    foraGtm: finalForaGtm,
+    segmento: segmento,
+    segmentoConsolidado: segmentoConsolidado,
+    hasSegmento: hasSegmento,
+    hasSegmentoConsolidado: hasSegmentoConsolidado,
+    segmentoValido: segmentoValido,
+    segmentoConsolidadoValido: segmentoConsolidadoValido,
+    totalQuantity: qtdTotal,
+    gwsQuantity: qtdGws,
+    gwsBelow500: gwsBelow500,
+    reasons: reasons,
+    manualValidationApplied: !!manual,
+    manualValidationFields: manualFieldsApplied,
+    manualValidationScope: manual ? manual.scope : '',
+    manualValidationApprovedBy: manual ? (manual.approvedBy || '') : ''
+  };
+}
+
+function buildSalesSpecialistIndex_(sheetObj) {
+  const map = new Map();
+  if (!sheetObj || !Array.isArray(sheetObj.headers) || !Array.isArray(sheetObj.values)) return map;
+
+  const headers = sheetObj.headers || [];
+  const normHeaders = getNormalizedHeaders_(headers);
+  const find = (cands) => {
+    for (let i = 0; i < cands.length; i++) {
+      const idx = normHeaders.indexOf(normText_(cands[i]));
+      if (idx > -1) return idx;
+    }
+    return -1;
+  };
+
+  const colOppName = find([
+    "Nome da oportunidade",
+    "Nome oportunidade",
+    "Opportunity Name",
+    "Oportunidade",
+    "Opportunity"
+  ]);
+  const colOppAccount = find([
+    "Oportunidade: Conta",
+    "Oportunidade Conta",
+    "Opportunity: Account",
+    "Opportunity Account",
+    "Conta"
+  ]);
+  const colTeamMember = find([
+    "Nome do membro da equipe",
+    "Nome membro da equipe",
+    "Team Member Name",
+    "Nome miembro de equipo",
+    "Membro da equipe"
+  ]);
+  const colOppOwner = find([
+    "Proprietário da oportunidade",
+    "Proprietario da oportunidade",
+    "Owner da oportunidade",
+    "Opportunity Owner"
+  ]);
+  const colReceitaEsperada = find(["Receita esperada (convertido)", "Receita esperada", "Expected Revenue (converted)"]);
+  const colValorConvertido = find(["Valor (convertido)", "Total Price (converted)", "Gross"]);
+  const colTipo = find(["Tipo"]);
+  const colProdutosInteresse = find(["Productos de interés", "Produtos de interesse", "Products of interest"]);
+
+  sheetObj.values.forEach((row) => {
+    const oppName = colOppName > -1 ? String(row[colOppName] || '').trim() : '';
+    const oppAccount = colOppAccount > -1 ? String(row[colOppAccount] || '').trim() : '';
+    const keys = [];
+    if (oppName) keys.push(normText_(oppName));
+    if (oppAccount) keys.push(normText_(oppAccount));
+    const uniqueKeys = Array.from(new Set(keys.filter(Boolean)));
+    if (!uniqueKeys.length) return;
+
+    const payload = {
+      oppName: oppName,
+      oppAccount: oppAccount,
+      teamMember: colTeamMember > -1 ? String(row[colTeamMember] || '').trim() : '',
+      oppOwner: colOppOwner > -1 ? String(row[colOppOwner] || '').trim() : '',
+      receitaEsperada: colReceitaEsperada > -1 ? row[colReceitaEsperada] : null,
+      valorConvertido: colValorConvertido > -1 ? row[colValorConvertido] : null,
+      tipo: colTipo > -1 ? String(row[colTipo] || '').trim() : '',
+      produtosInteresse: colProdutosInteresse > -1 ? String(row[colProdutosInteresse] || '').trim() : ''
+    };
+
+    uniqueKeys.forEach((k) => {
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(payload);
+    });
+  });
+
+  return map;
+}
+
+function isLikelySalesSpecialistSourceSheet_(sheetObj) {
+  if (!sheetObj || !Array.isArray(sheetObj.headers)) return false;
+  const normHeaders = getNormalizedHeaders_(sheetObj.headers);
+  const hasOppName = normHeaders.indexOf(normText_('Nome da oportunidade')) > -1 || normHeaders.indexOf(normText_('Opportunity Name')) > -1;
+  const hasOppAccount = normHeaders.indexOf(normText_('Oportunidade: Conta')) > -1 || normHeaders.indexOf(normText_('Opportunity: Account')) > -1;
+  const hasTeamMember = normHeaders.indexOf(normText_('Nome do membro da equipe')) > -1 || normHeaders.indexOf(normText_('Team Member Name')) > -1;
+  return !!((hasOppName || hasOppAccount) && hasTeamMember);
+}
+
+function getSalesSpecialistSheetData_() {
+  const candidates = [
+    'Análise Sales Specialist',
+    'Analise Sales Specialist',
+    'Opps_Sales_Specialist',
+    'Opps Sales Specialist',
+    (typeof SHEETS !== 'undefined' && SHEETS.SALES_SPECIALIST) ? SHEETS.SALES_SPECIALIST : '',
+    'Sales_Specialist_Opps',
+    'Sales Specialist Opps',
+    'Sales_Specialist',
+    'Sales Specialist'
+  ].filter(Boolean);
+
+  for (let i = 0; i < candidates.length; i++) {
+    const data = getSheetData(candidates[i]);
+    if (data && isLikelySalesSpecialistSourceSheet_(data)) return data;
+  }
+
+  // Fallback defensivo: procura qualquer aba com assinatura de cabeçalhos da base SS.
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheets = ss.getSheets();
+    for (let i = 0; i < sheets.length; i++) {
+      const name = sheets[i].getName();
+      const data = getSheetData(name);
+      if (data && isLikelySalesSpecialistSourceSheet_(data)) return data;
+    }
+  } catch (e) {
+    console.warn(`⚠️ Falha ao procurar aba fonte de Sales Specialist: ${e.message}`);
+  }
+
+  return null;
+}
+
+function evaluateSalesSpecialistGovernance(item, teamMemberRows) {
+  const result = {
+    salesSpecialistEnvolvido: 'Nenhum',
+    elegibilidadeSS: 'NAO ELEGIVEL',
+    justificativaElegibilidadeSS: 'Oportunidade sem registro na aba SS.',
+    statusGovernancaSS: 'ERRO SEM REGISTRO SS'
+  };
+
+  const rows = Array.isArray(teamMemberRows) ? teamMemberRows : [];
+  if (!rows.length) return result;
+
+  const ownerNorm = normText_(item && item.owner ? item.owner : '');
+  const canonicalAllowed = {
+    [normText_('Emilio Goncalves')]: 'Emilio Goncalves',
+    [normText_('Gabriele Oliveira')]: 'Gabriele Oliveira'
+  };
+
+  const rawMembers = rows
+    .map(r => safeString_(r && r.teamMember))
+    .filter(Boolean);
+
+  if (!rawMembers.length) {
+    result.justificativaElegibilidadeSS = 'Membro da equipe não informado.';
+    result.statusGovernancaSS = 'ERRO SEM MEMBRO EQUIPE';
+  }
+
+  const allNormMembers = rawMembers.map(m => normText_(m));
+  const uniqueAllowed = [];
+  Object.keys(canonicalAllowed).forEach((normName) => {
+    if (allNormMembers.includes(normName)) uniqueAllowed.push(canonicalAllowed[normName]);
+  });
+
+  if (uniqueAllowed.length > 0) {
+    result.salesSpecialistEnvolvido = uniqueAllowed.join(', ');
+  } else if (rawMembers.length > 0) {
+    result.salesSpecialistEnvolvido = Array.from(new Set(rawMembers)).join(', ');
+  }
+
+  const hasMemberEqualToOwner = rows.some((r) => {
+    const memberNorm = normText_(safeString_(r && r.teamMember));
+    const rowOwnerNorm = normText_(safeString_(r && r.oppOwner));
+    return (memberNorm && ownerNorm && memberNorm === ownerNorm) || (memberNorm && rowOwnerNorm && memberNorm === rowOwnerNorm);
+  });
+
+  if (hasMemberEqualToOwner) {
+    result.statusGovernancaSS = 'ERRO SS IGUAL OWNER';
+    result.justificativaElegibilidadeSS = 'Membro da equipe igual ao owner da oportunidade.';
+  } else if (rawMembers.length > 0 && uniqueAllowed.length === 0) {
+    result.statusGovernancaSS = 'ERRO SS NAO AUTORIZADO';
+    result.justificativaElegibilidadeSS = 'Membro da equipe fora da whitelist de SS.';
+  } else if (rawMembers.length > 0) {
+    result.statusGovernancaSS = 'OK';
+  }
+
+  const values = rows.map((r) => {
+    const receita = parseMoney(r && r.receitaEsperada);
+    if (isFinite(receita) && receita > 0) return receita;
+    const valor = parseMoney(r && r.valorConvertido);
+    if (isFinite(valor) && valor > 0) return valor;
+    return null;
+  }).filter(v => v !== null);
+
+  const valueRef = values.length ? Math.max.apply(null, values) : null;
+  const tipoBlob = rows.map((r) => `${safeString_(r && r.tipo)} ${safeString_(r && r.produtosInteresse)}`).join(' ');
+  const itemBlob = `${safeString_(item && item.products)} ${safeString_(item && item.productFamily)} ${safeString_(item && item.commercialFamily)} ${safeString_(item && item.servicesModel)}`;
+  const eligibilityBlob = normText_(`${tipoBlob} ${itemBlob}`);
+  const tipoElegivel = /SERVICOS|SERVICIOS|SERVICES|PROFESSIONAL SERVICES|SOLUCAO|SOLUCOES|SOLUCION|SOLUCIONES|CONSULTOR|IMPLEMENTA|MIGRAC|TREINAMENTO|ENTRENAMIENTO|SUPORTE|SUPPORT|MSP|FDM|ACELERADOR/.test(eligibilityBlob);
+
+  if (valueRef === null) {
+    result.elegibilidadeSS = 'NAO ELEGIVEL';
+    if (result.statusGovernancaSS === 'OK') {
+      result.justificativaElegibilidadeSS = 'Valor de referência ausente ou inválido.';
+    }
+  } else if (valueRef < 50000) {
+    result.elegibilidadeSS = 'NAO ELEGIVEL';
+    result.justificativaElegibilidadeSS = 'Valor de referência abaixo de 50.000.';
+  } else if (!tipoElegivel) {
+    result.elegibilidadeSS = 'NAO ELEGIVEL';
+    result.justificativaElegibilidadeSS = 'Tipo não elegível (somente plataforma).';
+  } else {
+    result.elegibilidadeSS = 'ELEGIVEL';
+    result.justificativaElegibilidadeSS = 'Valor de referência >= 50.000 e tipo elegível (serviços/soluções).';
+  }
+
+  const invalidStatusesForEligible = new Set([
+    'ERRO SEM REGISTRO SS',
+    'ERRO SEM MEMBRO EQUIPE',
+    'ERRO SS NAO AUTORIZADO',
+    'ERRO SS IGUAL OWNER'
+  ]);
+  if (result.elegibilidadeSS === 'ELEGIVEL' && invalidStatusesForEligible.has(result.statusGovernancaSS)) {
+    result.statusGovernancaSS = 'ALERTA ELEGIVEL SEM SS VALIDO';
+  }
+
+  const manual = getValidacaoManualForItem_(item, 'SS');
+  const manualFieldsApplied = [];
+  if (manual) {
+    if (manual.salesSpecialistEnvolvido) {
+      result.salesSpecialistEnvolvido = manual.salesSpecialistEnvolvido;
+      manualFieldsApplied.push('Sales_Specialist_Envolvido');
+    }
+    if (manual.elegibilidadeSS) {
+      result.elegibilidadeSS = manual.elegibilidadeSS;
+      manualFieldsApplied.push('Elegibilidade_SS');
+    }
+    if (manual.justificativaElegibilidadeSS || manual.justificativaOverride) {
+      result.justificativaElegibilidadeSS = manual.justificativaElegibilidadeSS || manual.justificativaOverride;
+      manualFieldsApplied.push('Justificativa_Elegibilidade_SS');
+    }
+    if (manual.statusGovernancaSS) {
+      result.statusGovernancaSS = manual.statusGovernancaSS;
+      manualFieldsApplied.push('Status_Governanca_SS');
+    }
+  }
+
+  result.manualValidationApplied = !!manual;
+  result.manualValidationFields = manualFieldsApplied;
+  result.manualValidationScope = manual ? manual.scope : '';
+  result.manualValidationApprovedBy = manual ? (manual.approvedBy || '') : '';
+
+  return result;
+}
+
+function notifyOpsCritical_(subject, message, metadata) {
+  try {
+    const c = CacheService.getScriptCache();
+    const rawKey = `${subject}|${message}`;
+    const dedupKey = "OPS_ALERT_" + Utilities.base64EncodeWebSafe(rawKey).substring(0, 80);
+    if (c.get(dedupKey)) return;
+    c.put(dedupKey, "1", 1800); // 30min
+
+    const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
+    const meta = metadata ? JSON.stringify(metadata) : "{}";
+    const body =
+      `Timestamp: ${now}\n` +
+      `Assunto: ${subject}\n` +
+      `Mensagem: ${message}\n` +
+      `Metadata: ${meta}`;
+
+    if (typeof MailApp !== 'undefined' && OPS_ALERT_RECIPIENTS.length) {
+      MailApp.sendEmail({
+        to: OPS_ALERT_RECIPIENTS.join(','),
+        subject: `[ALERTA CRITICO OPS] ${subject}`,
+        body: body
+      });
+    }
+
+    const webhookUrl = PropertiesService.getScriptProperties().getProperty(OPS_ALERT_WEBHOOK_PROP_KEY);
+    if (webhookUrl) {
+      UrlFetchApp.fetch(webhookUrl, {
+        method: 'post',
+        contentType: 'application/json',
+        payload: JSON.stringify({ text: `[ALERTA CRITICO OPS] ${subject}\n${body}` }),
+        muteHttpExceptions: true
+      });
+    }
+  } catch (e) {
+    console.error(`Falha ao enviar notifyOpsCritical_: ${e.message}`);
+  }
+}
+
+function notifyApprovalRequiredForLooseAccount_(item, gtmCheck, mode) {
+  try {
+    if (!item || !gtmCheck) return;
+    const isLoose = !gtmCheck.isNamed && gtmCheck.statusGtm === 'FORA GTM';
+    if (!isLoose) return;
+
+    const c = CacheService.getScriptCache();
+    const dedupRaw = `${mode}|${item.oppName}|${item.accName}|${gtmCheck.statusGtm}`;
+    const dedupKey = "OPS_APPROVAL_" + Utilities.base64EncodeWebSafe(dedupRaw).substring(0, 80);
+    if (c.get(dedupKey)) return;
+    c.put(dedupKey, '1', 21600); // 6h
+
+    const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
+    const reviewerEmail = normalizeEmail_(
+      PropertiesService.getScriptProperties().getProperty(GTM_APPROVAL_REVIEWER_EMAIL_PROP_KEY)
+      || GTM_APPROVAL_REVIEWER_DEFAULT_EMAIL
+    );
+
+    const msg =
+      `Conta fora de GTM e nao nomeada detectada (aprovacao previa obrigatoria).\n` +
+      `Timestamp: ${now}\n` +
+      `Modo: ${mode}\n` +
+      `Oportunidade: ${item.oppName || '-'}\n` +
+      `Conta: ${item.accName || '-'}\n` +
+      `Owner: ${item.owner || '-'}\n` +
+      `Status GTM: ${gtmCheck.statusGtm || '-'}\n` +
+      `Motivo: ${gtmCheck.motivoStatusGtm || '-'}`;
+
+    const approvalMailto = reviewerEmail ? buildApprovalDecisionMailtoLink_(reviewerEmail, item, gtmCheck, now, 'APROVADO') : '';
+    const rejectionMailto = reviewerEmail ? buildApprovalDecisionMailtoLink_(reviewerEmail, item, gtmCheck, now, 'REPROVADO') : '';
+    const approvalActionUrl = buildApprovalDecisionActionUrl_(item, gtmCheck, mode, now, 'APROVADO');
+    const rejectionActionUrl = buildApprovalDecisionActionUrl_(item, gtmCheck, mode, now, 'REPROVADO');
+    const htmlBody = buildApprovalRequiredHtml_(item, gtmCheck, mode, now, {
+      reviewerEmail: reviewerEmail,
+      approvalMailto: approvalMailto,
+      rejectionMailto: rejectionMailto,
+      approvalActionUrl: approvalActionUrl,
+      rejectionActionUrl: rejectionActionUrl
+    });
+
+    if (typeof MailApp !== 'undefined' && OPS_ALERT_RECIPIENTS.length) {
+      MailApp.sendEmail({
+        to: OPS_ALERT_RECIPIENTS.join(','),
+        subject: `[ALERTA APROVACAO GTM] ${item.accName || item.oppName || 'Conta fora de GTM'}`,
+        body: msg,
+        htmlBody: htmlBody,
+        name: 'Xertica.ai Sales Intelligence',
+        noReply: true
+      });
+    }
+
+    const webhookUrl = PropertiesService.getScriptProperties().getProperty(OPS_ALERT_WEBHOOK_PROP_KEY);
+    if (webhookUrl) {
+      UrlFetchApp.fetch(webhookUrl, {
+        method: 'post',
+        contentType: 'application/json',
+        payload: JSON.stringify({ text: `[ALERTA APROVACAO GTM]\n${msg}` }),
+        muteHttpExceptions: true
+      });
+    }
+  } catch (e) {
+    console.error(`Falha ao enviar notifyApprovalRequiredForLooseAccount_: ${e.message}`);
+  }
+}
+
+function getSalesSpecialistAlertRecipients_() {
+  const fromPropRaw = safeString_(PropertiesService.getScriptProperties().getProperty(SS_ALERT_RECIPIENTS_PROP_KEY));
+  const candidates = fromPropRaw
+    ? fromPropRaw.split(/[;,]/).map(x => safeString_(x)).filter(Boolean)
+    : OPS_ALERT_RECIPIENTS.slice();
+
+  const normalized = candidates
+    .map((e) => (typeof normalizeEmail_ === 'function' ? normalizeEmail_(e) : safeString_(e).toLowerCase()))
+    .filter(Boolean);
+
+  return Array.from(new Set(normalized));
+}
+
+function configurarDestinatariosAlertaSsPadrao() {
+  const recipients = [
+    'amalia.silva@xertica.com',
+    'barbara.pessoa@xertica.com'
+  ];
+  PropertiesService.getScriptProperties().setProperty(SS_ALERT_RECIPIENTS_PROP_KEY, recipients.join(','));
+  return `OK: destinatarios de alerta SS configurados em ${SS_ALERT_RECIPIENTS_PROP_KEY} = ${recipients.join(', ')}`;
+}
+
+function verDestinatariosAlertaSs() {
+  const fromProp = safeString_(PropertiesService.getScriptProperties().getProperty(SS_ALERT_RECIPIENTS_PROP_KEY));
+  if (fromProp) return `Destinatarios SS (property ${SS_ALERT_RECIPIENTS_PROP_KEY}): ${fromProp}`;
+  return `Destinatarios SS (fallback OPS_ALERT_RECIPIENTS): ${OPS_ALERT_RECIPIENTS.join(', ')}`;
+}
+
+function notifySalesSpecialistEligibilityAlert_(payload) {
+  try {
+    const p = payload || {};
+    const eleg = normText_(p.elegibilidadeSs || '');
+    const statusGov = normText_(p.statusGovernancaSs || '');
+    const isAlertCase = eleg === 'ELEGIVEL' && statusGov === 'ALERTA ELEGIVEL SEM SS VALIDO';
+    if (!isAlertCase) return { status: 'skipped' };
+
+    const recipients = getSalesSpecialistAlertRecipients_();
+    if (!recipients.length) return { status: 'no_recipients' };
+
+    const dedupRaw = [
+      safeString_(p.runId || ''),
+      safeString_(p.oportunidade || ''),
+      safeString_(p.conta || ''),
+      safeString_(p.statusGovernancaSs || '')
+    ].join('|');
+    const dedupKey = SS_ALERT_DEDUP_PREFIX + Utilities.base64EncodeWebSafe(dedupRaw).substring(0, 120);
+    const c = CacheService.getScriptCache();
+    if (c.get(dedupKey)) return { status: 'duplicate' };
+    c.put(dedupKey, '1', 21600); // 6h
+
+    const subject = `[ALERTA SS ELEGIVEL SEM SS VALIDO] ${p.conta || p.oportunidade || 'Oportunidade sem conta'}`;
+    const explainAlert =
+      `Por que este alerta foi enviado:\n` +
+      `- A oportunidade foi classificada como ELEGIVEL para SS\n` +
+      `- Mas a governanca de SS nao ficou valida (status: ${p.statusGovernancaSs || '-'})\n` +
+      `\n` +
+      `Regras resumidas:\n` +
+      `- Elegibilidade SS: valor de referencia >= 50.000 e tipo elegivel (servicos/solucoes)\n` +
+      `- SS valido: membro na whitelist autorizada e diferente do owner\n` +
+      `\n` +
+      `Causas comuns de invalidacao:\n` +
+      `- SS igual ao owner (ERRO SS IGUAL OWNER)\n` +
+      `- Membro fora da whitelist (ERRO SS NAO AUTORIZADO)\n` +
+      `- Sem registro/membro de equipe SS\n`;
+
+    const body =
+      `${explainAlert}\n` +
+      `Run ID: ${p.runId || '-'}\n` +
+      `Oportunidade: ${p.oportunidade || '-'}\n` +
+      `Conta: ${p.conta || '-'}\n` +
+      `Perfil Cliente: ${p.perfilCliente || '-'}\n` +
+      `Status GTM: ${p.statusGtm || '-'}\n` +
+      `Motivo Status GTM: ${p.motivoStatusGtm || '-'}\n` +
+      `Status Cliente: ${p.statusCliente || '-'}\n` +
+      `Flag Aprovação Prévia: ${p.flagAprovacaoPrevia || '-'}\n` +
+      `Produtos: ${p.produtos || '-'}\n` +
+      `Vendedor: ${p.vendedor || '-'}\n` +
+      `Gross: ${p.gross || 0}\n` +
+      `Net: ${p.net || 0}\n` +
+      `Fase Atual: ${p.faseAtual || '-'}\n` +
+      `Forecast SF: ${p.forecastSf || '-'}\n` +
+      `Fiscal Q: ${p.fiscalQ || '-'}\n` +
+      `Data Prevista: ${p.dataPrevista || '-'}\n` +
+      `Data de criação: ${p.dataCriacao || '-'}\n` +
+      `Ciclo (dias): ${p.cicloDias || 0}\n` +
+      `Dias Funil: ${p.diasFunil || 0}\n` +
+      `Sales Specialist Envolvido: ${p.salesSpecialistEnvolvido || '-'}\n` +
+      `Elegibilidade SS: ${p.elegibilidadeSs || '-'}\n` +
+      `Justificativa Elegibilidade SS: ${p.justificativaElegibilidadeSs || '-'}\n` +
+      `Status Governança SS: ${p.statusGovernancaSs || '-'}\n`;
+
+    if (typeof MailApp !== 'undefined') {
+      MailApp.sendEmail({
+        to: recipients.join(','),
+        subject: subject,
+        body: body,
+        name: 'Xertica.ai Sales Intelligence',
+        noReply: true
+      });
+    }
+
+    const webhookUrl = PropertiesService.getScriptProperties().getProperty(OPS_ALERT_WEBHOOK_PROP_KEY);
+    if (webhookUrl) {
+      UrlFetchApp.fetch(webhookUrl, {
+        method: 'post',
+        contentType: 'application/json',
+        payload: JSON.stringify({ text: `${subject}\n${body}` }),
+        muteHttpExceptions: true
+      });
+    }
+
+    return { status: 'sent' };
+  } catch (e) {
+    console.error(`Falha ao enviar notifySalesSpecialistEligibilityAlert_: ${e.message}`);
+    return { status: 'error', error: e.message };
+  }
+}
+
+/**
+ * Envia alertas para casos já existentes na aba OPEN onde:
+ * Elegibilidade SS = ELEGIVEL e Status Governança SS = ALERTA ELEGIVEL SEM SS VALIDO.
+ */
+function enviarAlertasSsElegivelSemValidoOpen() {
+  const sheetName = resolveValidacaoManualSheetName_();
+  if (!sheetName) return 'ERRO: aba OPEN de analise nao encontrada.';
+
+  const data = getSheetData(sheetName);
+  if (!data || !Array.isArray(data.headers) || !Array.isArray(data.values) || !data.values.length) {
+    return `OK: sem linhas para varrer em '${sheetName}'.`;
+  }
+
+  const h = data.headers;
+  const find = (cands) => findColumnIndexByName_(h, cands);
+
+  const colRunId = find(['Run ID']);
+  const colOpp = find(['Oportunidade', 'Opportunity Name']);
+  const colConta = find(['Conta', 'Account Name']);
+  const colPerfil = find(['Perfil Cliente', 'Perfil_Cliente']);
+  const colStatusGtm = find(['Status GTM', 'Status_GTM']);
+  const colMotivoGtm = find(['Motivo Status GTM', 'Motivo_Status_GTM']);
+  const colStatusCliente = find(['Status Cliente', 'Status_Cliente']);
+  const colFlag = find(['Flag Aprovação Prévia', 'Flag Aprovacao Previa', 'Flag_Aprovacao_Previa']);
+  const colProdutos = find(['Produtos', 'Products']);
+  const colVendedor = find(['Vendedor', 'Owner', 'Opportunity Owner']);
+  const colGross = find(['Gross']);
+  const colNet = find(['Net']);
+  const colFase = find(['Fase Atual', 'Stage']);
+  const colForecast = find(['Forecast SF']);
+  const colFiscalQ = find(['Fiscal Q']);
+  const colDataPrev = find(['Data Prevista', 'Close Date']);
+  const colDataCriacao = find(['Data de criação', 'Data de criacao', 'Created Date']);
+  const colCiclo = find(['Ciclo (dias)', 'Ciclo']);
+  const colDiasFunil = find(['Dias Funil']);
+  const colSsEnv = find(['Sales Specialist Envolvido', 'Sales_Specialist_Envolvido']);
+  const colEleg = find(['Elegibilidade SS', 'Elegibilidade_SS']);
+  const colJust = find(['Justificativa Elegibilidade SS', 'Justificativa_Elegibilidade_SS']);
+  const colStatusSs = find(['Status Governança SS', 'Status Governanca SS', 'Status_Governanca_SS']);
+
+  if (colEleg === -1 || colStatusSs === -1) {
+    return `ERRO: colunas de SS nao encontradas em '${sheetName}'.`;
+  }
+
+  let totalCasos = 0;
+  let enviados = 0;
+  let duplicados = 0;
+
+  data.values.forEach((row) => {
+    const eleg = colEleg > -1 ? safeString_(row[colEleg]) : '';
+    const status = colStatusSs > -1 ? safeString_(row[colStatusSs]) : '';
+    if (normText_(eleg) !== 'ELEGIVEL' || normText_(status) !== 'ALERTA ELEGIVEL SEM SS VALIDO') return;
+    totalCasos++;
+
+    const result = notifySalesSpecialistEligibilityAlert_({
+      runId: colRunId > -1 ? safeString_(row[colRunId]) : '',
+      oportunidade: colOpp > -1 ? safeString_(row[colOpp]) : '',
+      conta: colConta > -1 ? safeString_(row[colConta]) : '',
+      perfilCliente: colPerfil > -1 ? safeString_(row[colPerfil]) : '',
+      statusGtm: colStatusGtm > -1 ? safeString_(row[colStatusGtm]) : '',
+      motivoStatusGtm: colMotivoGtm > -1 ? safeString_(row[colMotivoGtm]) : '',
+      statusCliente: colStatusCliente > -1 ? safeString_(row[colStatusCliente]) : '',
+      flagAprovacaoPrevia: colFlag > -1 ? safeString_(row[colFlag]) : '',
+      produtos: colProdutos > -1 ? safeString_(row[colProdutos]) : '',
+      vendedor: colVendedor > -1 ? safeString_(row[colVendedor]) : '',
+      gross: colGross > -1 ? row[colGross] : '',
+      net: colNet > -1 ? row[colNet] : '',
+      faseAtual: colFase > -1 ? safeString_(row[colFase]) : '',
+      forecastSf: colForecast > -1 ? safeString_(row[colForecast]) : '',
+      fiscalQ: colFiscalQ > -1 ? safeString_(row[colFiscalQ]) : '',
+      dataPrevista: colDataPrev > -1 ? safeString_(row[colDataPrev]) : '',
+      dataCriacao: colDataCriacao > -1 ? safeString_(row[colDataCriacao]) : '',
+      cicloDias: colCiclo > -1 ? row[colCiclo] : '',
+      diasFunil: colDiasFunil > -1 ? row[colDiasFunil] : '',
+      salesSpecialistEnvolvido: colSsEnv > -1 ? safeString_(row[colSsEnv]) : '',
+      elegibilidadeSs: eleg,
+      justificativaElegibilidadeSs: colJust > -1 ? safeString_(row[colJust]) : '',
+      statusGovernancaSs: status
+    });
+
+    if (result && result.status === 'sent') enviados++;
+    if (result && result.status === 'duplicate') duplicados++;
+  });
+
+  const summary = `OK: casos=${totalCasos}, enviados=${enviados}, duplicados=${duplicados}, aba='${sheetName}'.`;
+  logToSheet('INFO', 'AlertaSS', summary);
+  return summary;
+}
+
+function buildApprovalDecisionMailtoLink_(reviewerEmail, item, gtmCheck, nowStr, decision) {
+  const decisionTxt = safeString_(decision || 'APROVADO').toUpperCase();
+  const subject = `[APROVACAO GTM] ${item.oppName || item.accName || 'Conta fora de GTM'}`;
+  const body = [
+    'Aprovacao GTM solicitada.',
+    '',
+    `Timestamp: ${nowStr}`,
+    `Oportunidade: ${item.oppName || '-'}`,
+    `Conta: ${item.accName || '-'}`,
+    `Owner: ${item.owner || '-'}`,
+    `Status GTM: ${gtmCheck.statusGtm || '-'}`,
+    `Motivo: ${gtmCheck.motivoStatusGtm || '-'}`,
+    '',
+    `Decisao: ${decisionTxt}`,
+    'Observacao: '
+  ].join('\n');
+
+  const cc = encodeURIComponent(OPS_ALERT_RECIPIENTS.join(','));
+  return `mailto:${encodeURIComponent(reviewerEmail)}?cc=${cc}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+function buildApprovalMailtoLink_(reviewerEmail, item, gtmCheck, nowStr) {
+  return buildApprovalDecisionMailtoLink_(reviewerEmail, item, gtmCheck, nowStr, 'APROVADO');
+}
+
+function buildApprovalRequiredHtml_(item, gtmCheck, mode, nowStr, links) {
+  const safeLinks = links || {};
+  const approvalMailto = safeString_(safeLinks.approvalMailto || '');
+  const rejectionMailto = safeString_(safeLinks.rejectionMailto || '');
+  const approvalActionUrl = safeString_(safeLinks.approvalActionUrl || '');
+  const rejectionActionUrl = safeString_(safeLinks.rejectionActionUrl || '');
+  const reviewerEmail = safeString_(safeLinks.reviewerEmail || '');
+  const opp = escapeHtml_(safeString_(item.oppName || '-'));
+  const acc = escapeHtml_(safeString_(item.accName || '-'));
+  const owner = escapeHtml_(safeString_(item.owner || '-'));
+  const stage = escapeHtml_(safeString_(item.stage || '-'));
+  const fiscal = escapeHtml_(safeString_(item.fiscalQ || '-'));
+  const segmento = escapeHtml_(safeString_(item.segment || '-'));
+  const segCons = escapeHtml_(safeString_(item.segmentoConsolidado || '-'));
+  const gross = Number(item.gross || 0) || 0;
+  const net = Number(item.net || 0) || 0;
+  const grossFmt = gross.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const netFmt = net.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  const products = escapeHtml_(truncateTextForEmail_(safeString_(item.products || '-'), 180));
+  const reason = escapeHtml_(safeString_(gtmCheck.motivoStatusGtm || '-'));
+  const reviewer = escapeHtml_(safeString_(reviewerEmail || ''));
+
+  const resumo = escapeHtml_(
+    `Opp ${safeString_(item.oppName || '-')} em ${safeString_(item.stage || '-')} (${safeString_(item.fiscalQ || '-')}) com Gross R$ ${grossFmt} e Net R$ ${netFmt}. Conta classificada como FORA GTM e nao nomeada; exige aprovacao previa.`
+  );
+
+  return '<!doctype html>' +
+    '<html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#0B1020;font-family:Arial,sans-serif;color:#E2E8F0;">' +
+    '<div style="max-width:760px;margin:24px auto;border:1px solid #1F2937;border-radius:14px;overflow:hidden;background:#111827;">' +
+    '<div style="padding:18px 22px;background:linear-gradient(135deg,#00BEFF22,#8B5CF622);border-bottom:1px solid #1F2937;">' +
+    '<div style="font-size:12px;letter-spacing:.08em;color:#67E8F9;font-weight:700;text-transform:uppercase;">Xertica.ai · Approval Gate</div>' +
+    '<h2 style="margin:8px 0 0;font-size:20px;line-height:1.3;color:#F8FAFC;">Conta fora de GTM requer aprovacao previa</h2>' +
+    '</div>' +
+    '<div style="padding:20px 22px;">' +
+    '<p style="margin:0 0 12px;font-size:14px;color:#CBD5E1;">Um deal foi classificado como <b>FORA GTM</b> e <b>CONTA NAO NOMEADA</b>. Solicitamos aprovacao do responsavel antes de manter no pipeline.</p>' +
+    '<div style="border:1px solid #263247;border-radius:10px;padding:14px;background:#0F172A;">' +
+    '<div style="font-size:15px;font-weight:700;color:#F8FAFC;line-height:1.4;">' + opp + '</div>' +
+    '<div style="margin-top:6px;font-size:13px;color:#94A3B8;">Conta: ' + acc + ' · Owner: ' + owner + ' · Modo: ' + escapeHtml_(mode) + '</div>' +
+    '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">' +
+    '<span style="padding:4px 10px;border-radius:999px;border:1px solid #F59E0B55;background:#F59E0B1A;color:#FCD34D;font-size:12px;font-weight:700;">Status GTM: FORA GTM</span>' +
+    '<span style="padding:4px 10px;border-radius:999px;border:1px solid #EF444455;background:#EF44441A;color:#FCA5A5;font-size:12px;font-weight:700;">Aprovacao previa: obrigatoria</span>' +
+    '</div>' +
+    '</div>' +
+    '<table style="width:100%;margin-top:14px;border-collapse:collapse;font-size:13px;">' +
+    '<tr><td style="padding:8px;border-bottom:1px solid #1F2937;color:#94A3B8;">Timestamp</td><td style="padding:8px;border-bottom:1px solid #1F2937;color:#F8FAFC;font-weight:700;">' + escapeHtml_(nowStr) + '</td></tr>' +
+    '<tr><td style="padding:8px;border-bottom:1px solid #1F2937;color:#94A3B8;">Fase / Fiscal Q</td><td style="padding:8px;border-bottom:1px solid #1F2937;color:#F8FAFC;font-weight:700;">' + stage + ' / ' + fiscal + '</td></tr>' +
+    '<tr><td style="padding:8px;border-bottom:1px solid #1F2937;color:#94A3B8;">Segmento</td><td style="padding:8px;border-bottom:1px solid #1F2937;color:#F8FAFC;font-weight:700;">' + segmento + ' / ' + segCons + '</td></tr>' +
+    '<tr><td style="padding:8px;border-bottom:1px solid #1F2937;color:#94A3B8;">Gross / Net</td><td style="padding:8px;border-bottom:1px solid #1F2937;color:#F8FAFC;font-weight:700;">R$ ' + grossFmt + ' / R$ ' + netFmt + '</td></tr>' +
+    '<tr><td style="padding:8px;border-bottom:1px solid #1F2937;color:#94A3B8;">Motivo</td><td style="padding:8px;border-bottom:1px solid #1F2937;color:#F8FAFC;font-weight:700;">' + reason + '</td></tr>' +
+    '<tr><td style="padding:8px;color:#94A3B8;">Produtos</td><td style="padding:8px;color:#F8FAFC;font-weight:700;">' + products + '</td></tr>' +
+    '</table>' +
+    '<div style="margin-top:12px;padding:12px;border:1px solid #334155;border-radius:8px;background:#0F172A;">' +
+    '<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#94A3B8;font-weight:700;">Resumo da oportunidade</div>' +
+    '<div style="margin-top:6px;font-size:13px;line-height:1.55;color:#E2E8F0;">' + resumo + '</div>' +
+    '</div>' +
+    '<div style="margin-top:10px;padding:12px;border:1px solid #334155;border-radius:8px;background:#0F172A;">' +
+    '<div style="font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#94A3B8;font-weight:700;">Decisao esperada</div>' +
+    '<div style="margin-top:6px;font-size:13px;line-height:1.55;color:#E2E8F0;">Registrar <b>APROVADO</b> ou <b>REPROVADO</b> e incluir uma observacao curta com criterio comercial.</div>' +
+    '</div>' +
+    '<div style="margin-top:16px;">' +
+    (approvalActionUrl
+      ? ('<a href="' + approvalActionUrl + '" style="display:inline-block;padding:10px 16px;border-radius:10px;background:#00BEFF;color:#001018;text-decoration:none;font-weight:700;font-size:13px;margin-right:8px;">Aprovar conta</a>' +
+         (rejectionActionUrl ? ('<a href="' + rejectionActionUrl + '" style="display:inline-block;padding:10px 16px;border-radius:10px;background:#F59E0B;color:#1F2937;text-decoration:none;font-weight:700;font-size:13px;">Reprovar conta</a>') : '') +
+         '<div style="margin-top:8px;font-size:12px;color:#94A3B8;">Botoes registram a decisao diretamente na planilha <b>' + escapeHtml_(GTM_APPROVAL_LOG_SHEET_NAME) + '</b>.</div>')
+      : (approvalMailto
+          ? ('<a href="' + approvalMailto + '" style="display:inline-block;padding:10px 16px;border-radius:10px;background:#00BEFF;color:#001018;text-decoration:none;font-weight:700;font-size:13px;margin-right:8px;">Aprovar conta</a>' +
+             (rejectionMailto ? ('<a href="' + rejectionMailto + '" style="display:inline-block;padding:10px 16px;border-radius:10px;background:#F59E0B;color:#1F2937;text-decoration:none;font-weight:700;font-size:13px;">Reprovar conta</a>') : '') +
+             '<div style="margin-top:8px;font-size:12px;color:#94A3B8;">Botoes enviam email pre-preenchido para ' + reviewer + ' com a decisao.</div>')
+          : '<div style="font-size:12px;color:#94A3B8;">Aprovacao deve ser registrada manualmente pela liderança (fluxo sem aprovador fixo).</div>')) +
+    '</div>' +
+    '</div></div></body></html>';
+}
+
+function getGtmApprovalWebAppBaseUrl_() {
+  const fromProp = safeString_(PropertiesService.getScriptProperties().getProperty(GTM_APPROVAL_WEBAPP_URL_PROP_KEY));
+  if (fromProp) return fromProp;
+  if (GTM_APPROVAL_WEBAPP_DEFAULT_URL) return GTM_APPROVAL_WEBAPP_DEFAULT_URL;
+  if (typeof ScriptApp !== 'undefined' && ScriptApp.getService) {
+    const serviceUrl = safeString_(ScriptApp.getService().getUrl());
+    if (serviceUrl) return serviceUrl;
+  }
+  return '';
+}
+
+function getGtmApprovalSigningSecret_() {
+  const fromProp = safeString_(PropertiesService.getScriptProperties().getProperty(GTM_APPROVAL_SIGNING_SECRET_PROP_KEY));
+  if (fromProp) return fromProp;
+  return safeString_(ScriptApp.getScriptId());
+}
+
+function bytesToHex_(bytes) {
+  return (bytes || []).map(function(b) {
+    const v = (b < 0) ? b + 256 : b;
+    return ('0' + v.toString(16)).slice(-2);
+  }).join('');
+}
+
+function signGtmApprovalPayload_(payloadB64) {
+  const secret = getGtmApprovalSigningSecret_();
+  const signatureBytes = Utilities.computeHmacSha256Signature(payloadB64, secret);
+  return bytesToHex_(signatureBytes);
+}
+
+function buildApprovalDecisionActionUrl_(item, gtmCheck, mode, nowStr, decision) {
+  try {
+    const baseUrl = getGtmApprovalWebAppBaseUrl_();
+    if (!baseUrl) return '';
+
+    const payloadObj = {
+      decision: safeString_(decision || 'APROVADO').toUpperCase(),
+      timestamp: safeString_(nowStr),
+      mode: safeString_(mode),
+      opp: safeString_(item && item.oppName),
+      acc: safeString_(item && item.accName),
+      owner: safeString_(item && item.owner),
+      statusGtm: safeString_(gtmCheck && gtmCheck.statusGtm),
+      motivoStatusGtm: safeString_(gtmCheck && gtmCheck.motivoStatusGtm),
+      products: safeString_(item && item.products),
+      fiscalQ: safeString_(item && item.fiscalQ)
+    };
+
+    const payloadJson = JSON.stringify(payloadObj);
+    const payloadB64 = Utilities.base64EncodeWebSafe(payloadJson);
+    const sig = signGtmApprovalPayload_(payloadB64);
+
+    const sep = baseUrl.indexOf('?') > -1 ? '&' : '?';
+    return `${baseUrl}${sep}approval_action=1&p=${encodeURIComponent(payloadB64)}&sig=${encodeURIComponent(sig)}`;
+  } catch (e) {
+    console.warn(`Falha ao gerar URL de aprovacao GTM: ${e.message}`);
+    return '';
+  }
+}
+
+function getOrCreateGtmApprovalSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(GTM_APPROVAL_LOG_SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(GTM_APPROVAL_LOG_SHEET_NAME);
+  }
+
+  if (sh.getLastRow() < 1) {
+    sh.getRange(1, 1, 1, 12).setValues([[
+      'Timestamp_Decisao',
+      'Decisao',
+      'Oportunidade',
+      'Conta',
+      'Owner',
+      'Modo',
+      'Status_GTM',
+      'Motivo_Status_GTM',
+      'Timestamp_Solicitacao',
+      'Revisor_Email',
+      'Origem',
+      'Payload_Signature'
+    ]]);
+  }
+
+  return sh;
+}
+
+function registerGtmApprovalDecisionFromPayload_(payloadObj, signature) {
+  const decision = safeString_(payloadObj && payloadObj.decision).toUpperCase();
+  if (decision !== 'APROVADO' && decision !== 'REPROVADO') {
+    throw new Error('Decisao invalida.');
+  }
+
+  const scriptCache = CacheService.getScriptCache();
+  const dedupKey = `GTM_APPROVAL_CLICK_${safeString_(signature).substring(0, 64)}`;
+  if (scriptCache.get(dedupKey)) {
+    return { status: 'duplicate' };
+  }
+  scriptCache.put(dedupKey, '1', 86400);
+
+  const reviewer = normalizeEmail_(Session.getActiveUser().getEmail && Session.getActiveUser().getEmail());
+  const sh = getOrCreateGtmApprovalSheet_();
+  sh.appendRow([
+    Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'),
+    decision,
+    safeString_(payloadObj.opp || '-'),
+    safeString_(payloadObj.acc || '-'),
+    safeString_(payloadObj.owner || '-'),
+    safeString_(payloadObj.mode || '-'),
+    safeString_(payloadObj.statusGtm || '-'),
+    safeString_(payloadObj.motivoStatusGtm || '-'),
+    safeString_(payloadObj.timestamp || '-'),
+    reviewer || '-',
+    'EMAIL_BUTTON_WEBAPP',
+    safeString_(signature)
+  ]);
+
+  return { status: 'ok' };
+}
+
+function renderGtmApprovalResponseHtml_(title, message, isError) {
+  const safeTitle = escapeHtml_(safeString_(title || 'Aprovacao GTM'));
+  const safeMsg = escapeHtml_(safeString_(message || ''));
+  const accent = isError ? '#EF4444' : '#10B981';
+  return HtmlService.createHtmlOutput(
+    '<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>' +
+    '<body style="margin:0;background:#0B1020;font-family:Arial,sans-serif;color:#E2E8F0;">' +
+    '<div style="max-width:720px;margin:40px auto;padding:24px;border:1px solid #1F2937;border-radius:14px;background:#111827;">' +
+    `<div style="font-size:12px;letter-spacing:.08em;color:${accent};font-weight:700;text-transform:uppercase;">Xertica.ai · Approval Gate</div>` +
+    `<h2 style="margin:10px 0 6px;color:#F8FAFC;">${safeTitle}</h2>` +
+    `<p style="margin:0;color:#CBD5E1;line-height:1.55;">${safeMsg}</p>` +
+    '</div></body></html>'
+  ).setTitle('Aprovacao GTM');
+}
+
+function doGet(e) {
+  try {
+    const p = (e && e.parameter) ? e.parameter : {};
+    if (p.approval_action !== '1') {
+      return renderGtmApprovalResponseHtml_('Endpoint ativo', 'Use os botoes do email para registrar a decisao de aprovacao GTM.', false);
+    }
+
+    const payloadB64 = safeString_(p.p);
+    const receivedSig = safeString_(p.sig).toLowerCase();
+    if (!payloadB64 || !receivedSig) {
+      return renderGtmApprovalResponseHtml_('Requisicao invalida', 'Parametros obrigatorios ausentes.', true);
+    }
+
+    const expectedSig = signGtmApprovalPayload_(payloadB64).toLowerCase();
+    if (expectedSig !== receivedSig) {
+      return renderGtmApprovalResponseHtml_('Assinatura invalida', 'Nao foi possivel validar a origem desta aprovacao.', true);
+    }
+
+    const payloadJson = Utilities.newBlob(Utilities.base64DecodeWebSafe(payloadB64)).getDataAsString();
+    const payloadObj = JSON.parse(payloadJson || '{}');
+    const reg = registerGtmApprovalDecisionFromPayload_(payloadObj, receivedSig);
+
+    if (reg && reg.status === 'duplicate') {
+      return renderGtmApprovalResponseHtml_('Decisao ja registrada', 'Este clique ja foi processado anteriormente e nao sera duplicado.', false);
+    }
+
+    return renderGtmApprovalResponseHtml_(
+      `Decisao registrada: ${safeString_(payloadObj.decision || '-').toUpperCase()}`,
+      `A oportunidade ${safeString_(payloadObj.opp || '-')} foi registrada na aba ${GTM_APPROVAL_LOG_SHEET_NAME}.`,
+      false
+    );
+  } catch (err) {
+    return renderGtmApprovalResponseHtml_('Falha ao registrar decisao', safeString_(err && err.message || err), true);
+  }
+}
+
+function truncateTextForEmail_(txt, maxLen) {
+  const raw = safeString_(txt);
+  const lim = Number(maxLen || 0) || 0;
+  if (!lim || raw.length <= lim) return raw;
+  return raw.substring(0, lim - 3) + '...';
+}
+
 function getBaseClientsCache() {
   const c = CacheService.getScriptCache();
   const cached = c.get(BASE_CLIENTS_CACHE_KEY);
@@ -3619,7 +5363,7 @@ function getBaseClientsCache() {
   const data = getSheetData(SHEETS.GANHAS);
   if (data) {
     const idx = getColumnMapping(data.headers).p_acc;
-    if (idx > -1) data.values.forEach(r => base.add(String(r[idx] || "").trim().toLowerCase()));
+    if (idx > -1) data.values.forEach(r => base.add(normText_(String(r[idx] || "").trim())));
   }
   
   c.put(BASE_CLIENTS_CACHE_KEY, JSON.stringify(Array.from(base)), 21600);

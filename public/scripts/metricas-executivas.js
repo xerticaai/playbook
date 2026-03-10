@@ -1,4 +1,24 @@
 // Métricas executivas: updateExecutiveMetricsFromAPI, updateConversionMetrics, SalesSpecialist, etc.
+function setExecutiveForecastAndConfidenceCards(payload) {
+  if (payload && (payload.forecastGross !== undefined || payload.forecastNet !== undefined || payload.avgConfidence !== undefined)) {
+    const forecastGross = Number(payload?.forecastGross || 0);
+    const forecastNet = Number(payload?.forecastNet || 0);
+    const avgConfidence = Number(payload?.avgConfidence || 0);
+    setTextSafe('exec-forecast-weighted', formatMoney(forecastGross));
+    setTextSafe('exec-forecast-percent', Math.round(avgConfidence) + '% confiança média');
+    setTextSafe('exec-forecast-net', 'Net: ' + formatMoney(forecastNet));
+  }
+
+  if (payload && (payload.highConfGross !== undefined || payload.highConfNet !== undefined || payload.highConfCount !== undefined)) {
+    const highConfGross = Number(payload?.highConfGross || 0);
+    const highConfNet = Number(payload?.highConfNet || 0);
+    const highConfCount = Number(payload?.highConfCount || 0);
+    setTextSafe('exec-above50-value', formatMoney(highConfGross));
+    setTextSafe('exec-above50-count', highConfCount + ' deals');
+    setTextSafe('exec-above50-net', 'Net: ' + formatMoney(highConfNet));
+  }
+}
+
 function updateExecutiveMetricsFromAPI(metrics) {
   if (!metrics) {
     log('[EXEC METRICS] ⚠ Nenhum dado de metrics disponível');
@@ -54,25 +74,19 @@ function updateExecutiveMetricsFromAPI(metrics) {
     const forecastWeighted = pipelineGross * (avgConf / 100);
     const forecastNet = (metrics.pipeline_filtered.net || 0) * (avgConf / 100);
     
-    setTextSafe('exec-forecast-total', formatMoney(forecastWeighted));
-    setTextSafe('exec-forecast-avg', Math.round(avgConf) + '% confiança média');
-    setTextSafe('exec-forecast-net', 'Net: ' + formatMoney(forecastNet));
+    setExecutiveForecastAndConfidenceCards({
+      forecastGross: forecastWeighted,
+      forecastNet,
+      avgConfidence: avgConf,
+      highConfGross: metrics.high_confidence?.gross || 0,
+      highConfNet: metrics.high_confidence?.net || 0,
+      highConfCount: metrics.high_confidence?.deals_count || 0,
+    });
     log('[FORECAST WEIGHTED] ✓ Atualizado da API:', formatMoney(forecastWeighted));
   }
-  
-  // DEALS ≥50% CONFIANÇA IA
+
   if (metrics.high_confidence) {
-    const highConfGross = metrics.high_confidence.gross;
-    const highConfNet = metrics.high_confidence.net;
-    const highConfCount = metrics.high_confidence.deals_count;
-    const highConfAvg = metrics.high_confidence.avg_confidence || 0;
-    
-    if (highConfGross !== null && highConfGross !== undefined) {
-      setTextSafe('exec-above50-total', formatMoney(highConfGross));
-      setTextSafe('exec-above50-deals', highConfCount + ' deals');
-      setTextSafe('exec-above50-net', 'Net: ' + formatMoney(highConfNet));
-      log('[HIGH CONFIDENCE] ✓ Atualizado da API:', formatMoney(highConfGross), highConfCount, 'deals');
-    }
+    log('[HIGH CONFIDENCE] ✓ Atualizado da API:', formatMoney(metrics.high_confidence.gross || 0), metrics.high_confidence.deals_count || 0, 'deals');
   }
   
   // IDLE DAYS (do pipeline)
@@ -417,6 +431,42 @@ function updateSalesSpecialistMetrics() {
     log('[SALES SPECIALIST] Dados não disponíveis');
     return;
   }
+
+  const normalizeForecastCategory = (rawCategory) => {
+    const text = String(rawCategory || '').toUpperCase();
+    if (text.includes('COMMIT')) return 'COMMIT';
+    if (text.includes('UPSIDE')) return 'UPSIDE';
+    if (text.includes('POTENC')) return 'POTENCIAL';
+    if (text.includes('OMIT')) return 'OMITIDO';
+    if (text.includes('PIPE')) return 'PIPELINE';
+    return 'PIPELINE';
+  };
+
+  const animateSalesSpecialistBars = () => {
+    ['forecast-ss-commit-bar', 'forecast-ss-upside-bar'].forEach((barId, idx) => {
+      const el = document.getElementById(barId);
+      if (!el) return;
+      el.style.transition = 'width 620ms cubic-bezier(0.22, 1, 0.36, 1), opacity 260ms ease, transform 260ms ease, filter 220ms ease';
+      el.style.opacity = '0.84';
+      el.style.transform = 'translateY(3px)';
+      setTimeout(() => {
+        el.style.opacity = '1';
+        el.style.transform = 'translateY(0)';
+      }, idx * 55);
+
+      if (el.dataset.forecastHoverBound !== '1') {
+        el.dataset.forecastHoverBound = '1';
+        el.addEventListener('mouseenter', () => {
+          el.style.filter = 'brightness(1.06)';
+          el.style.transform = 'translateY(-1px)';
+        });
+        el.addEventListener('mouseleave', () => {
+          el.style.filter = 'none';
+          el.style.transform = 'translateY(0)';
+        });
+      }
+    });
+  };
   
   const ss = DATA.salesSpecialist;
   const pipelineTotal = DATA?.cloud_analysis?.pipeline_analysis?.metrics?.pipeline_total?.gross || 74523512;
@@ -470,6 +520,50 @@ function updateSalesSpecialistMetrics() {
   
   setTextSafe('forecast-ss-upside-value', `${formatMoney(ss.byStatus.UPSIDE.gross)} (${upsidePercent.toFixed(0)}%)`);
   setTextSafe('forecast-ss-upside-net', 'Net: ' + formatMoney(ss.byStatus.UPSIDE.net));
+
+  animateSalesSpecialistBars();
+
+  const ssDealsRows = (Array.isArray(DATA?.salesSpecialist?.deals) ? DATA.salesSpecialist.deals : []).map((deal) => {
+    const gross = Number(deal.booking_total_gross || deal.Gross || deal.gross || 0);
+    const net = Number(deal.booking_total_net || deal.Net || deal.net || 0);
+    const closeDate = deal.closed_date || deal.close_date || deal.closeDate || deal.Data_Fechamento || '';
+    return {
+      source: 'ss',
+      name: deal.opportunity_name || deal.Oportunidade || deal.oportunidade || deal.name || 'Deal sem nome',
+      account: deal.account_name || deal.Conta || deal.conta || deal.account || 'Conta nao informada',
+      owner: deal.vendedor || deal.Vendedor || deal.owner || 'N/A',
+      value: Number.isNaN(gross) ? 0 : gross,
+      netValue: Number.isNaN(net) ? 0 : net,
+      stage: String(deal.forecast_status || deal.opportunity_status || deal.Status || '').toUpperCase(),
+      quarter: deal.fiscal_quarter || deal.Fiscal_Q || deal.fiscalQ || 'Quarter N/A',
+      closeDate,
+      forecastStatus: normalizeForecastCategory(deal.forecast_status || deal.opportunity_status || deal.Status || ''),
+      suggestedAction: deal.acao_recomendada || deal.Acao_Sugerida || deal.Acao_Recomendada || deal.recomendacao_acao || deal.proxima_acao || ''
+    };
+  });
+
+  const bindSalesSpecialistBarDrilldown = (barId, category) => {
+    const barEl = document.getElementById(barId);
+    if (!barEl) return;
+    barEl.style.cursor = 'pointer';
+    barEl.title = `Clique para drill-down Sales Specialist (${category})`;
+    barEl.onclick = () => {
+      if (typeof window.openExecutiveDrilldown !== 'function') return;
+      const rows = ssDealsRows.filter((row) => normalizeForecastCategory(row.forecastStatus) === category);
+      window.openExecutiveDrilldown({
+        title: `Drill-down · Saúde Forecast Sales Specialist · ${category}`,
+        subtitle: `Categoria ${category}`,
+        rows,
+        selected: rows[0] || null,
+        rule: `Deals de Sales Specialist com forecast ${category}`,
+        baseLabel: `${rows.length} deals · ${formatMoney(rows.reduce((sum, row) => sum + (row.value || 0), 0))}`,
+        sql: 'SELECT * FROM sales_specialist_deals WHERE forecast_status = <categoria> AND <filtros_herdados>'
+      });
+    };
+  };
+
+  bindSalesSpecialistBarDrilldown('forecast-ss-commit-bar', 'COMMIT');
+  bindSalesSpecialistBarDrilldown('forecast-ss-upside-bar', 'UPSIDE');
   
   log('[SALES SPECIALIST] Métricas atualizadas:', ss);
 }
@@ -536,10 +630,7 @@ function updateForecastPrediction(period, pipelineData) {
     'previsão': formatMoney(forecastGross)
   });
   
-  // Atualiza cards
-  setTextSafe('exec-forecast-weighted', formatMoney(forecastGross));
-  setTextSafe('exec-forecast-percent', Math.round(avgConfidence) + '% confiança média');
-  setTextSafe('exec-forecast-net', 'Net: ' + formatMoney(forecastNet));
+  setExecutiveForecastAndConfidenceCards({ forecastGross, forecastNet, avgConfidence });
 }
 
 // ============================================================================
@@ -577,17 +668,281 @@ function updateHighConfidenceDeals(period) {
     'net': formatMoney(highConfNet)
   });
   
-  // Atualiza cards
-  setTextSafe('exec-above50-value', formatMoney(highConfGross));
-  setTextSafe('exec-above50-count', highConfCount + ' deals');
-  setTextSafe('exec-above50-net', 'Net: ' + formatMoney(highConfNet));
+  setExecutiveForecastAndConfidenceCards({ highConfGross, highConfNet, highConfCount });
 }
 
 // ─── OPORTUNIDADES ESTAGNADAS ────────────────────────────────────────────────
 // Regra: Ciclo_dias >= 90 (no pipeline há 90+ dias) E Idle_Dias >= 30 (sem atividade há 30+ dias)
+function mapDealToStagnantAlertPayload_(deal) {
+  var safe = function(value) {
+    return value === null || value === undefined ? '' : String(value).trim();
+  };
+  var num = function(value) {
+    var parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  return {
+    oportunidade: safe(deal.Oportunidade || deal.name || deal.opportunityName || deal.opportunity_name),
+    conta: safe(deal.Conta || deal.account || deal.account_name),
+    vendedor: safe(deal.Vendedor || deal.seller || deal.owner),
+    fase_atual: safe(deal.Fase_Atual || deal.stage),
+    fiscal_q: safe(deal.Fiscal_Q || deal.fiscal_q || deal.quarter || deal.fiscalQ),
+    data_prevista: safe(deal.Data_Prevista || deal.close_date || deal.closeDate || deal.Data_Fechamento),
+    dias_funil: num(deal.Ciclo_dias || deal.ciclo_dias || deal.Ciclo_Dias || deal.cycle),
+    idle_dias: num(deal.Idle_Dias || deal.Dias_Idle || deal.idle_dias || deal.idleDays),
+    atividades: num(deal.Atividades || deal.activities),
+    gross: num(deal.Gross || deal.gross || deal.value),
+    net: num(deal.Net || deal.net || deal.netValue),
+    confianca: num(deal.Confianca || deal.confidence),
+    risco_score: num(deal.Risco_Score || deal.riskScore || deal.risk_score),
+    meddic_score: num(deal.MEDDIC_Score || deal.meddic || deal.meddic_score),
+    tipo_oportunidade: safe(deal.Tipo_Oportunidade || deal.tipo_oportunidade),
+    portfolio: safe(deal.Portfolio || deal.portfolio || deal.Portfolio_FDM || deal.portfolio_fdm),
+    acao_sugerida: safe(deal.Acao_Sugerida || deal.acao_sugerida || deal.suggestedAction || deal.suggested_action),
+    risco_principal: safe(deal.Risco_Principal || deal.mainRisk || deal.main_risk)
+  };
+}
+
+async function sendStagnantAlertRequest_(deal, source) {
+  var ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+  var ALERT_MAX_ATTEMPTS = 3;
+  var ALERT_RETRY_DELAYS_MS = [700, 1500];
+  var API_PROXY_URL = String(window.API_BASE_URL || '') + '/api/stagnant-alert/send';
+
+  var makeDealKey = function(payloadDeal) {
+    var rawKey = [
+      payloadDeal.oportunidade || '',
+      payloadDeal.conta || '',
+      payloadDeal.vendedor || ''
+    ].join('|').toLowerCase().trim();
+    return rawKey || 'unknown_deal';
+  };
+
+  var getCooldownStorageKey = function(dealKey) {
+    return 'stagnant_alert_last_sent:' + dealKey;
+  };
+
+  var readCooldownTs = function(storageKey) {
+    try {
+      var value = localStorage.getItem(storageKey);
+      if (!value) return 0;
+      var ts = Number(value);
+      return Number.isFinite(ts) ? ts : 0;
+    } catch (_err) {
+      return 0;
+    }
+  };
+
+  var writeCooldownTs = function(storageKey, ts) {
+    try {
+      localStorage.setItem(storageKey, String(ts));
+    } catch (_err) {
+      // Ignore storage errors silently
+    }
+  };
+
+  var formatRemaining = function(ms) {
+    var totalMin = Math.max(1, Math.ceil(ms / 60000));
+    var hh = Math.floor(totalMin / 60);
+    var mm = totalMin % 60;
+    if (hh > 0) return hh + 'h' + (mm > 0 ? ' ' + mm + 'min' : '');
+    return mm + 'min';
+  };
+
+  var sleep = function(ms) {
+    return new Promise(function(resolve) {
+      setTimeout(resolve, ms);
+    });
+  };
+
+  var webhookUrl = String(window.STAGNANT_ALERT_WEBHOOK_URL || '').trim();
+  var secret = String(window.STAGNANT_ALERT_SECRET || '').trim();
+
+  if (!webhookUrl) {
+    if (typeof showToast === 'function') {
+      showToast('Configuração ausente: defina STAGNANT_ALERT_WEBHOOK_URL para enviar alertas.', 'warning');
+    }
+    return { success: false, reason: 'missing_webhook' };
+  }
+
+  var actor = String(window.currentUserEmail || '').trim() || 'frontend';
+  var mappedDeal = mapDealToStagnantAlertPayload_(deal || {});
+  var dealKey = makeDealKey(mappedDeal);
+  var storageKey = getCooldownStorageKey(dealKey);
+  var nowTs = Date.now();
+  var lastSentTs = readCooldownTs(storageKey);
+  var elapsedMs = nowTs - lastSentTs;
+
+  if (lastSentTs > 0 && elapsedMs < ALERT_COOLDOWN_MS) {
+    var remainingMs = ALERT_COOLDOWN_MS - elapsedMs;
+    if (typeof showToast === 'function') {
+      showToast('Alerta já enviado recentemente. Aguarde ' + formatRemaining(remainingMs) + ' para reenviar.', 'info');
+    }
+    return { success: false, reason: 'cooldown_active', remainingMs: remainingMs };
+  }
+
+  var payload = {
+    secret: secret,
+    source: source || 'stagnant_card',
+    actor: actor,
+    deal: mappedDeal
+  };
+
+  var pushClientLog = function(entry) {
+    try {
+      var key = 'stagnant_alert_client_logs';
+      var list = JSON.parse(localStorage.getItem(key) || '[]');
+      if (!Array.isArray(list)) list = [];
+      list.push(entry);
+      if (list.length > 150) list = list.slice(list.length - 150);
+      localStorage.setItem(key, JSON.stringify(list));
+    } catch (_err) {
+      // ignore
+    }
+  };
+
+  for (var attempt = 1; attempt <= ALERT_MAX_ATTEMPTS; attempt++) {
+    try {
+      var response = await fetch(API_PROXY_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      var responseData = {};
+      try {
+        responseData = await response.json();
+      } catch (_parseErr) {
+        responseData = {};
+      }
+
+      if (!response.ok || responseData.success === false) {
+        var serverReason = (responseData && (responseData.message || responseData.error || responseData.detail)) || ('HTTP ' + response.status);
+        throw new Error(typeof serverReason === 'string' ? serverReason : JSON.stringify(serverReason));
+      }
+
+      writeCooldownTs(storageKey, Date.now());
+      pushClientLog({
+        timestamp: new Date().toISOString(),
+        success: true,
+        source: payload.source,
+        actor: payload.actor,
+        opportunity: mappedDeal.oportunidade,
+        seller: mappedDeal.vendedor,
+        attempt: attempt,
+        server: responseData.log || null
+      });
+      if (typeof showToast === 'function') {
+        showToast('Alerta disparado para envio por email.', 'success');
+      }
+      return { success: true, data: responseData, attempt: attempt };
+    } catch (error) {
+      var isLastAttempt = attempt >= ALERT_MAX_ATTEMPTS;
+      if (isLastAttempt) {
+        pushClientLog({
+          timestamp: new Date().toISOString(),
+          success: false,
+          source: payload.source,
+          actor: payload.actor,
+          opportunity: mappedDeal.oportunidade,
+          seller: mappedDeal.vendedor,
+          attempt: attempt,
+          reason: String(error && error.message ? error.message : error)
+        });
+        if (typeof showToast === 'function') {
+          showToast('Erro ao enviar alerta de estagnação.', 'warning');
+        }
+        return { success: false, reason: String(error && error.message ? error.message : error), attempt: attempt };
+      }
+      var waitMs = ALERT_RETRY_DELAYS_MS[attempt - 1] || 1200;
+      await sleep(waitMs);
+    }
+  }
+
+  return { success: false, reason: 'send_unexpected_failure' };
+}
+
+window.openStagnantAlertLogs = async function() {
+  var container = document.getElementById('exec-stagnant-log-list');
+  var panel = document.getElementById('exec-stagnant-log-panel');
+  if (!container || !panel) return;
+
+  panel.style.display = 'block';
+  container.innerHTML = '<div class="exec-dd-empty" style="padding:12px;">Carregando logs de envio...</div>';
+
+  try {
+    var response = await fetch((String(window.API_BASE_URL || '') + '/api/stagnant-alert/logs?limit=50'));
+    var data = await response.json();
+    var items = Array.isArray(data && data.items) ? data.items : [];
+
+    if (!items.length) {
+      container.innerHTML = '<div class="exec-dd-empty" style="padding:12px;">Sem logs no servidor ainda.</div>';
+      return;
+    }
+
+    container.innerHTML = items.map(function(item) {
+      var ok = !!item.success;
+      var statusLabel = ok ? 'Enviado' : 'Falha';
+      var statusColor = ok ? 'var(--accent-green)' : 'var(--danger)';
+      var ts = String(item.timestamp || '').replace('T', ' ').replace('Z', '');
+      var opp = String(item.opportunity || '-');
+      var seller = String(item.seller || '-');
+      var source = String(item.source || '-');
+      var err = String(item.error || '-');
+      var code = item.webhook_status != null ? String(item.webhook_status) : '-';
+
+      return '<div style="padding:10px 12px;border:1px solid rgba(255,255,255,0.10);border-radius:10px;background:rgba(255,255,255,0.03);">'
+        + '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">'
+        + '<strong style="color:' + statusColor + ';font-size:12px;">' + statusLabel + '</strong>'
+        + '<span style="font-size:11px;color:var(--text-gray);">' + ts + '</span>'
+        + '</div>'
+        + '<div style="font-size:12px;color:var(--text-main);margin-top:6px;"><strong>Oportunidade:</strong> ' + opp + '</div>'
+        + '<div style="font-size:11px;color:var(--text-gray);margin-top:3px;">Vendedor: ' + seller + ' · Origem: ' + source + ' · HTTP: ' + code + '</div>'
+        + (!ok ? '<div style="font-size:11px;color:var(--danger);margin-top:4px;">Erro: ' + err + '</div>' : '')
+        + '</div>';
+    }).join('');
+  } catch (error) {
+    container.innerHTML = '<div class="exec-dd-empty" style="padding:12px;">Falha ao carregar logs do servidor.</div>';
+  }
+};
+
+window.hideStagnantAlertLogs = function() {
+  var panel = document.getElementById('exec-stagnant-log-panel');
+  if (panel) panel.style.display = 'none';
+};
+
+window.sendStagnantAlertFromDeal = async function(deal, source) {
+  return sendStagnantAlertRequest_(deal, source || 'stagnant_card');
+};
+
+window.sendStagnantAlertFromIndex = async function(idx) {
+  var list = window._stagnantDeals || [];
+  var deal = list[idx];
+  if (!deal) {
+    if (typeof showToast === 'function') {
+      showToast('Não foi possível localizar a oportunidade para envio do alerta.', 'warning');
+    }
+    return { success: false, reason: 'deal_not_found' };
+  }
+  return sendStagnantAlertRequest_(deal, 'stagnant_card');
+};
+
 function buildStagnantCard() {
   var pipe = window.pipelineDataRaw || [];
-  if (!pipe.length) return;
+  var section = document.getElementById('exec-stagnant-section');
+  if (!section) return;
+  var listEl = document.getElementById('exec-stagnant-list');
+  var badge = document.getElementById('exec-stagnant-badge');
+  if (!pipe.length) {
+    if (badge) badge.textContent = '0';
+    if (listEl) {
+      listEl.innerHTML = '<div class="exec-dd-empty" style="padding:16px;">Sem dados de pipeline para avaliar estagnação.</div>';
+    }
+    return;
+  }
 
   // Try multiple field name variants for cycle days
   var hasCycleData = pipe.some(function(d) {
@@ -603,17 +958,14 @@ function buildStagnantCard() {
     return idle >= 30;
   });
 
-  var section = document.getElementById('exec-stagnant-section');
-  if (!section) return;
-
   if (!stagnant.length) {
-    section.style.display = 'none';
+    if (badge) badge.textContent = '0';
+    if (listEl) {
+      listEl.innerHTML = '<div class="exec-dd-empty" style="padding:16px;">Nenhuma oportunidade estagnada no recorte atual.</div>';
+    }
     return;
   }
 
-  section.style.display = 'block';
-
-  var badge = document.getElementById('exec-stagnant-badge');
   if (badge) badge.textContent = stagnant.length;
 
   // Update rule label dynamically
@@ -633,7 +985,6 @@ function buildStagnantCard() {
   window._stagnantDeals = stagnant;
 
   var top = stagnant.slice(0, 5);
-  var listEl = document.getElementById('exec-stagnant-list');
   if (!listEl) return;
 
   listEl.innerHTML = top.map(function(d, idx) {
@@ -653,6 +1004,7 @@ function buildStagnantCard() {
       + '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">'
       + '<span class="stagnant-idle-badge ' + idleClass + '">' + idle + 'd idle</span>'
       + (cycle > 0 ? '<span class="stagnant-cycle-badge">' + cycle + 'd pipeline</span>' : '')
+      + '<button class="stagnant-inline-alert-btn" onclick="event.stopPropagation();window.sendStagnantAlertFromIndex(' + idx + ')">Avisar vendedor</button>'
       + '</div>'
       + '<div class="stagnant-deal-value">' + (typeof formatMoney === 'function' ? formatMoney(gross) : 'R$' + gross) + '</div>'
       + '</div>';

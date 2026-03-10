@@ -11,7 +11,15 @@ const FIREBASE_CONFIG = {
 };
 
 const ALLOWED_EMAILS = [
+  "lorena.ortizdezevallos@xertica.com",
   "amalia.silva@xertica.com",
+  "andrea.velarde@xertica.com",
+  "cesar.guerrero@xertica.com",
+  "fernando.alfaro@xertica.com",
+  "julio.berrospi@xertica.com",
+  "miguel.perez@xertica.com",
+  "pablo.jauregui@xertica.com",
+  "wiston.narro@xertica.com",
   "barbara.pessoa@xertica.com",
   "gustavo.paula@xertica.com",
   "renato.rodrigues@xertica.com"

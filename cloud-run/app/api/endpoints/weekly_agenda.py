@@ -356,6 +356,19 @@ def _quarter_bounds_from_label(quarter_label: Optional[str]) -> Optional[tuple[d
     return (start, end)
 
 
+def _next_fiscal_quarter_label(quarter_label: Optional[str]) -> Optional[str]:
+    if not quarter_label:
+        return None
+    m = re.match(r"^FY(\d{2})-Q([1-4])$", str(quarter_label).strip().upper())
+    if not m:
+        return None
+    fiscal_year = int(m.group(1))
+    quarter_num = int(m.group(2))
+    if quarter_num < 4:
+        return f"FY{fiscal_year:02d}-Q{quarter_num + 1}"
+    return f"FY{(fiscal_year + 1) % 100:02d}-Q1"
+
+
 def parse_audit_questions(value: Any) -> List[str]:
     if value is None:
         return []
@@ -404,6 +417,31 @@ def _split_tokens(value: Any) -> List[str]:
     return tokens
 
 
+def _first_non_empty(record: Dict[str, Any], candidates: List[str]) -> str:
+    for key in candidates:
+        val = record.get(key)
+        if val is None:
+            continue
+        txt = str(val).strip()
+        if txt and txt not in {"-", "N/A", "NA", "NONE", "NULL"}:
+            return txt
+    return ""
+
+
+def _split_sales_specialist_names(value: Any) -> List[str]:
+    text = str(value or "").strip()
+    if not text:
+        return []
+    parts = [p.strip() for p in re.split(r"[,;|]+", text) if p and p.strip()]
+    out: List[str] = []
+    for p in parts:
+        norm = _normalize_vendor(p)
+        if norm in {"", "nenhum", "nao informado", "não informado", "n a"}:
+            continue
+        out.append(p)
+    return out
+
+
 def _normalize_vendor(value: Any) -> str:
     text = str(value or "").strip().lower()
     if not text:
@@ -412,6 +450,26 @@ def _normalize_vendor(value: Any) -> str:
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+
+def _classify_customer_profile(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return "Não informado"
+
+    if raw.lower() in {"-", "n/a", "na", "null", "none", "sem perfil"}:
+        return "Não informado"
+
+    norm = unicodedata.normalize("NFKD", raw)
+    norm = "".join(ch for ch in norm if not unicodedata.combining(ch)).lower()
+
+    if any(token in norm for token in ["novo", "nova", "new"]):
+        return "Novo Cliente"
+
+    if any(token in norm for token in ["base", "renov", "adicional", "upsell", "cross", "transfer", "expans"]):
+        return "Base Instalada"
+
+    return raw
 
 
 def _parse_csv_names(value: Optional[str]) -> List[str]:
@@ -792,30 +850,91 @@ async def get_weekly_agenda(
         # From here on, we always operate with a concrete [start, end] window.
         assert parsed_start is not None
         assert parsed_end is not None
+
+        next_quarter = _next_fiscal_quarter_label(target_quarter)
+        allowed_new_deals_quarters = [target_quarter]
+        if next_quarter and next_quarter not in allowed_new_deals_quarters:
+            allowed_new_deals_quarters.append(next_quarter)
         
         # Query 1: Get deals from selected quarter (date range does NOT filter opportunities)
-        # Ordered by priority category, then by forecast close date (earliest first)
+        # Use pipeline directly to avoid dependency on external views with fragile date parsing.
+        pipeline_table_ref = f"{PROJECT_ID}.{DATASET_ID}.pipeline"
+        pipeline_fields = {field.name for field in client.get_table(pipeline_table_ref).schema}
+
+        created_col_candidates = ["Data_de_criacao", "Data_de_criacao_DE_ONDE_PEGAR", "Created_Date"]
+        created_expr_parts: List[str] = []
+        for col in created_col_candidates:
+            if col in pipeline_fields:
+                created_expr_parts.extend([
+                    f"SAFE_CAST(p.{col} AS DATE)",
+                    f"SAFE.PARSE_DATE('%Y-%m-%d', CAST(p.{col} AS STRING))",
+                    f"SAFE.PARSE_DATE('%d/%m/%Y', CAST(p.{col} AS STRING))",
+                ])
+        created_expr = "COALESCE(" + ", ".join(created_expr_parts) + ")" if created_expr_parts else "CAST(NULL AS DATE)"
+
+        portfolio_expr_parts = []
+        if "Portfolio" in pipeline_fields:
+            portfolio_expr_parts.append("NULLIF(TRIM(CAST(p.Portfolio AS STRING)), '')")
+        if "Portfolio_FDM" in pipeline_fields:
+            portfolio_expr_parts.append("NULLIF(TRIM(CAST(p.Portfolio_FDM AS STRING)), '')")
+        portfolio_expr = "COALESCE(" + ", ".join(portfolio_expr_parts) + ")" if portfolio_expr_parts else "CAST(NULL AS STRING)"
+
+        action_expr = "NULLIF(TRIM(CAST(p.Acao_Sugerida AS STRING)), '')" if "Acao_Sugerida" in pipeline_fields else "CAST(NULL AS STRING)"
+
+        select_columns: List[str] = []
+        for field in pipeline_fields:
+            if field == "Data_Criacao":
+                select_columns.append(f"{created_expr} AS Data_Criacao")
+            elif field == "Portfolio":
+                select_columns.append(f"{portfolio_expr} AS Portfolio")
+            elif field == "Proxima_Acao_Pipeline":
+                select_columns.append(f"{action_expr} AS Proxima_Acao_Pipeline")
+            else:
+                select_columns.append(f"p.`{field}`")
+
+        if "Data_Criacao" not in pipeline_fields:
+            select_columns.append(f"{created_expr} AS Data_Criacao")
+        if "Portfolio" not in pipeline_fields:
+            select_columns.append(f"{portfolio_expr} AS Portfolio")
+        if "Proxima_Acao_Pipeline" not in pipeline_fields:
+            select_columns.append(f"{action_expr} AS Proxima_Acao_Pipeline")
+
+        deals_select_projection = ",\n                    ".join(select_columns)
+
         deals_query = f"""
-                SELECT *
-                FROM `{PROJECT_ID}.{DATASET_ID}.pauta_semanal_enriquecida`
-                WHERE Fiscal_Q = @quarter
+                WITH pipeline_dedup AS (
+                    SELECT p.*
+                    FROM `{pipeline_table_ref}` p
+                    WHERE p.Oportunidade IS NOT NULL
+                    QUALIFY ROW_NUMBER() OVER (
+                        PARTITION BY p.Oportunidade
+                        ORDER BY SAFE.PARSE_TIMESTAMP(
+                            '%Y-%m-%dT%H:%M:%E*S%Ez',
+                            REGEXP_REPLACE(CAST(p.data_carga AS STRING), r'Z$', '+00:00')
+                        ) DESC,
+                        p.Run_ID DESC
+                    ) = 1
+                )
+                SELECT
+                    {deals_select_projection}
+                FROM pipeline_dedup p
+                WHERE p.Fiscal_Q = @quarter
+                    AND p.Fase_Atual NOT IN ('Closed Won', 'Closed Lost')
                     AND (
                         @apply_seller_filter = FALSE
-                        OR LOWER(TRIM(Vendedor)) IN (
+                        OR LOWER(TRIM(p.Vendedor)) IN (
                             SELECT LOWER(TRIM(s)) FROM UNNEST(@sellers) s
                         )
                     )
-                ORDER BY 
-                    Vendedor,
-                    CASE Categoria_Pauta
-                        WHEN 'ZUMBI' THEN 1
-                        WHEN 'CRITICO' THEN 2
-                        WHEN 'ALTA_PRIORIDADE' THEN 3
+                ORDER BY
+                    p.Vendedor,
+                    CASE
+                        WHEN COALESCE(SAFE_CAST(p.Atividades AS INT64), 0) = 0 AND COALESCE(SAFE_CAST(p.Dias_Funil AS INT64), 0) > 90 THEN 1
+                        WHEN COALESCE(SAFE_CAST(p.Idle_Dias AS INT64), 0) > 30 THEN 2
                         ELSE 4
                     END,
-                    SAFE_CAST(Data_Prevista AS DATE) ASC NULLS LAST,
-                    Risco_Score DESC,
-                    Gross DESC
+                    SAFE_CAST(p.Data_Prevista AS DATE) ASC NULLS LAST,
+                    p.Gross DESC
                 """
 
         deals_job_config = bigquery.QueryJobConfig(
@@ -835,8 +954,123 @@ async def get_weekly_agenda(
                 "timestamp": datetime.utcnow().isoformat(),
                 "quarter": target_quarter,
                 "message": f"Nenhum deal encontrado para {target_quarter}",
+                "sales_specialist": {"summary": {}, "members": []},
                 "sellers": []
             }
+
+        # Sales Specialist view payload (derived from weekly deals already loaded)
+        ss_members: Dict[str, Dict[str, Any]] = {}
+        ss_total_deals = 0
+        ss_status_counter: Dict[str, int] = {}
+
+        for deal in all_deals:
+            ss_name_raw = _first_non_empty(deal, [
+                "Sales_Specialist_Envolvido",
+                "Sales Specialist Envolvido",
+                "Sales_Specialist",
+                "Sales Specialist",
+            ])
+            ss_status = _first_non_empty(deal, [
+                "Status_Governanca_SS",
+                "Status Governança SS",
+                "Status Governanca SS",
+            ]) or "N/A"
+            ss_elegibilidade = _first_non_empty(deal, [
+                "Elegibilidade_SS",
+                "Elegibilidade SS",
+            ]) or "N/A"
+            ss_justificativa = _first_non_empty(deal, [
+                "Justificativa_Elegibilidade_SS",
+                "Justificativa Elegibilidade SS",
+            ]) or ""
+
+            if not ss_name_raw and ss_status == "N/A" and ss_elegibilidade == "N/A":
+                continue
+
+            ss_total_deals += 1
+            ss_status_counter[ss_status] = ss_status_counter.get(ss_status, 0) + 1
+
+            names = _split_sales_specialist_names(ss_name_raw)
+            if not names:
+                names = ["Sem Especialista"]
+
+            for ss_name in names:
+                if ss_name not in ss_members:
+                    ss_members[ss_name] = {
+                        "name": ss_name,
+                        "total_deals": 0,
+                        "elegiveis": 0,
+                        "nao_elegiveis": 0,
+                        "total_gross_k": 0.0,
+                        "total_net_k": 0.0,
+                        "status_counts": {},
+                        "deals": [],
+                    }
+
+                member = ss_members[ss_name]
+                member["total_deals"] += 1
+                if ss_elegibilidade == "ELEGIVEL":
+                    member["elegiveis"] += 1
+                elif ss_elegibilidade == "NAO ELEGIVEL":
+                    member["nao_elegiveis"] += 1
+
+                gross = _safe_float(deal.get("Gross"))
+                net = _safe_float(deal.get("Net"))
+                member["total_gross_k"] += gross / 1000.0
+                member["total_net_k"] += net / 1000.0
+                member["status_counts"][ss_status] = member["status_counts"].get(ss_status, 0) + 1
+
+                member["deals"].append({
+                    "oportunidade": deal.get("Oportunidade"),
+                    "conta": deal.get("Conta"),
+                    "vendedor": deal.get("Vendedor"),
+                    "bdm_owner": deal.get("Vendedor"),
+                    "ss_vinculo": ss_name,
+                    "fiscal_q": deal.get("Fiscal_Q"),
+                    "categoria": deal.get("Categoria_Pauta"),
+                    "gross": gross,
+                    "net": net,
+                    "confianca": _safe_float(deal.get("Confianca")),
+                    "fase_atual": deal.get("Fase_Atual"),
+                    "data_prevista": deal.get("Data_Prevista"),
+                    "data_criacao": deal.get("Data_Criacao"),
+                    "dias_funil": _safe_int(deal.get("Dias_Funil")),
+                    "produtos": deal.get("Produtos"),
+                    "portfolio": deal.get("Portfolio"),
+                    "portfolio_fdm": deal.get("Portfolio_FDM"),
+                    "tipo_oportunidade": deal.get("Tipo_Oportunidade"),
+                    "perfil_cliente": deal.get("Perfil_Cliente"),
+                    "status_cliente": deal.get("Status_Cliente"),
+                    "acao_sugerida": deal.get("Proxima_Acao_Pipeline") or deal.get("Acao_Sugerida"),
+                    "risk_tags": _split_tokens(deal.get("Risk_Tags")),
+                    "elegibilidade_ss": ss_elegibilidade,
+                    "status_governanca_ss": ss_status,
+                    "justificativa_ss": ss_justificativa,
+                })
+
+        ss_members_list = sorted(
+            ss_members.values(),
+            key=lambda m: (-(m.get("total_deals") or 0), str(m.get("name") or ""))
+        )
+        for m in ss_members_list:
+            m["total_gross_k"] = round(float(m.get("total_gross_k") or 0), 1)
+            m["total_net_k"] = round(float(m.get("total_net_k") or 0), 1)
+            m["deals"] = sorted(
+                m.get("deals") or [],
+                key=lambda d: (
+                    {"ZUMBI": 1, "CRITICO": 2, "ALTA_PRIORIDADE": 3, "MONITORAR": 4}.get(str(d.get("categoria") or ""), 99),
+                    -_safe_float(d.get("gross")),
+                ),
+            )[:40]
+
+        sales_specialist_payload = {
+            "summary": {
+                "total_deals_ss": ss_total_deals,
+                "total_members": len(ss_members_list),
+                "status_counts": ss_status_counter,
+            },
+            "members": ss_members_list,
+        }
         
         # Query 2: Get seller metrics CALCULATED FOR THE SELECTED QUARTER
         # Build vendor list from pipeline deals for metrics
@@ -1097,35 +1331,60 @@ async def get_weekly_agenda(
                 col for col in created_column_candidates if col in pipeline_fields
             ]
 
-            if available_created_columns:
-                source_table_ref = pipeline_table_ref
-                creation_expr_parts = []
-                for col in available_created_columns:
-                    creation_expr_parts.extend([
-                        f"SAFE_CAST({col} AS DATE)",
-                        f"SAFE.PARSE_DATE('%Y-%m-%d', CAST({col} AS STRING))",
-                        f"SAFE.PARSE_DATE('%d/%m/%Y', CAST({col} AS STRING))",
-                    ])
-                creation_expr_parts.append(
-                    "DATE_SUB(CURRENT_DATE(), INTERVAL GREATEST(COALESCE(SAFE_CAST(Dias_Funil AS INT64), 0) - 1, 0) DAY)"
-                )
-                creation_expr = "COALESCE(\n                        " + ",\n                        ".join(creation_expr_parts) + "\n                    )"
-                print(
-                    f"[WEEKLY_AGENDA] DEBUG: New deals source=pipeline, creation columns={available_created_columns}"
-                )
-            else:
-                source_table_ref = f"{PROJECT_ID}.{DATASET_ID}.pauta_semanal_enriquecida"
-                creation_expr = """
-                    COALESCE(
-                        SAFE_CAST(Data_Criacao AS DATE),
-                        SAFE.PARSE_DATE('%Y-%m-%d', CAST(Data_Criacao AS STRING)),
-                        SAFE.PARSE_DATE('%d/%m/%Y', CAST(Data_Criacao AS STRING)),
-                        DATE_SUB(CURRENT_DATE(), INTERVAL GREATEST(COALESCE(SAFE_CAST(Dias_Funil AS INT64), 0) - 1, 0) DAY)
-                    )
-                """
-                print(
-                    "[WEEKLY_AGENDA] DEBUG: New deals source=pauta_semanal_enriquecida (pipeline sem Data_de_criacao)"
-                )
+            source_table_ref = pipeline_table_ref
+            creation_expr_parts = []
+            for col in available_created_columns:
+                creation_expr_parts.extend([
+                    f"SAFE_CAST({col} AS DATE)",
+                    f"SAFE.PARSE_DATE('%Y-%m-%d', CAST({col} AS STRING))",
+                    f"SAFE.PARSE_DATE('%d/%m/%Y', CAST({col} AS STRING))",
+                ])
+            creation_expr_parts.append(
+                "DATE_SUB(CURRENT_DATE(), INTERVAL GREATEST(COALESCE(SAFE_CAST(Dias_Funil AS INT64), 0) - 1, 0) DAY)"
+            )
+            creation_expr = "COALESCE(\n                        " + ",\n                        ".join(creation_expr_parts) + "\n                    )"
+            print(
+                f"[WEEKLY_AGENDA] DEBUG: New deals source=pipeline, creation columns={available_created_columns or ['fallback_dias_funil']}"
+            )
+
+            source_table = client.get_table(source_table_ref)
+            source_fields = {field.name for field in source_table.schema}
+
+            def _coalesce_expr(candidates: List[str]) -> str:
+                available = [col for col in candidates if col in source_fields]
+                if not available:
+                    return "CAST(NULL AS STRING)"
+                return "COALESCE(\n                        " + ",\n                        ".join(
+                    [f"NULLIF(TRIM(CAST({col} AS STRING)), '')" for col in available]
+                ) + "\n                    )"
+
+            opportunity_type_candidates = [
+                "Tipo_Oportunidade",
+            ]
+            type_expr = _coalesce_expr(opportunity_type_candidates)
+
+            products_expr = _coalesce_expr([
+                "Produtos",
+                "Product_Name",
+                "Product",
+                "products",
+            ])
+
+            portfolio_expr = _coalesce_expr([
+                "Portfolio",
+                "Portfolio_FDM",
+            ])
+
+            portfolio_fdm_expr = _coalesce_expr([
+                "Portfolio_FDM",
+                "Portfolio",
+            ])
+
+            action_expr = _coalesce_expr([
+                "Proxima_Acao_Pipeline",
+                "Acao_Sugerida",
+                "Acao_Recomendada",
+            ])
 
             new_deals_query = f"""
             WITH deals_with_creation AS (
@@ -1139,11 +1398,17 @@ async def get_weekly_agenda(
                     Fase_Atual,
                     Fiscal_Q,
                     {creation_expr} as Data_Criacao,
+                    {type_expr} as Tipo_Oportunidade,
+                    {products_expr} as Produtos,
+                    {portfolio_expr} as Portfolio,
+                    {portfolio_fdm_expr} as Portfolio_FDM,
+                    {action_expr} as Acao_Sugerida,
                     Dias_Funil
                 FROM `{source_table_ref}`
                 WHERE LOWER(TRIM(Vendedor)) IN (
                     SELECT LOWER(TRIM(v)) FROM UNNEST(@vendors) v
                 )
+                    AND UPPER(TRIM(CAST(Fiscal_Q AS STRING))) IN UNNEST(@allowed_quarters)
                     AND Fase_Atual NOT IN ('Closed Won', 'Closed Lost')
             )
             SELECT 
@@ -1156,6 +1421,11 @@ async def get_weekly_agenda(
                 Fase_Atual,
                 Fiscal_Q,
                 Data_Criacao,
+                Tipo_Oportunidade,
+                Produtos,
+                Portfolio,
+                Portfolio_FDM,
+                Acao_Sugerida,
                 Dias_Funil
             FROM deals_with_creation
             WHERE Data_Criacao BETWEEN @start_date AND @end_date
@@ -1167,6 +1437,7 @@ async def get_weekly_agenda(
                 query_parameters=[
                     bigquery.ScalarQueryParameter("quarter", "STRING", target_quarter),
                     bigquery.ArrayQueryParameter("vendors", "STRING", all_vendor_list),
+                    bigquery.ArrayQueryParameter("allowed_quarters", "STRING", allowed_new_deals_quarters),
                     bigquery.ScalarQueryParameter("start_date", "DATE", parsed_start.isoformat()),
                     bigquery.ScalarQueryParameter("end_date", "DATE", parsed_end.isoformat()),
                 ]
@@ -1182,6 +1453,8 @@ async def get_weekly_agenda(
 
                 created_date_obj = _coerce_to_date(row.get("Data_Criacao"))
                 created_fiscal_q = fiscal_quarter_from_date(created_date_obj)
+                raw_profile = row.get("Tipo_Oportunidade")
+                normalized_profile = _classify_customer_profile(raw_profile)
                 
                 new_deals_by_vendor[vendedor].append({
                     "oportunidade": row["Oportunidade"],
@@ -1190,9 +1463,17 @@ async def get_weekly_agenda(
                     "net": float(row["Net"]) if row["Net"] is not None else 0.0,
                     "confianca": int(row["Confianca"]) if row.get("Confianca") is not None else 0,
                     "fase_atual": row.get("Fase_Atual"),
-                    "fiscal_q": created_fiscal_q or row.get("Fiscal_Q"),
+                    "fiscal_q": row.get("Fiscal_Q") or created_fiscal_q,
                     "fiscal_q_origem": row.get("Fiscal_Q"),
                     "data_criacao": str(row["Data_Criacao"])[:10] if row.get("Data_Criacao") else None,
+                    "tipo_oportunidade": raw_profile,
+                    "perfil_cliente": normalized_profile,
+                    "perfil_cliente_detalhe": raw_profile,
+                    "produtos": row.get("Produtos"),
+                    "Portfolio": row.get("Portfolio"),
+                    "Portfolio_FDM": row.get("Portfolio_FDM"),
+                    "Acao_Sugerida": row.get("Acao_Sugerida"),
+                    "acao_sugerida": row.get("Acao_Sugerida"),
                     "dias_funil": int(row["Dias_Funil"]) if row.get("Dias_Funil") is not None else 0
                 })
             
@@ -1911,6 +2192,7 @@ async def get_weekly_agenda(
             "quarter": target_quarter,
             "summary": overall_summary,
             "customer_success": cs_payload,
+            "sales_specialist": sales_specialist_payload,
             "sellers": sellers_list,
             "config": {
                 "include_rag": include_rag,

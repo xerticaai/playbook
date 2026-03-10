@@ -259,7 +259,8 @@ async function resolveAdminAccess() {
         const data = await response.json();
         currentUserEmail = normalizeUserEmail(data.email);
         isAdminUser = forceAdminPreview || ADMIN_ALLOWED_EMAILS.includes(currentUserEmail);
-        if (!isAdminUser) {
+        // Evita chamada desnecessaria /403 quando user-context ainda nao devolve email.
+        if (!isAdminUser && currentUserEmail) {
           const hasApiAdminAccess = await checkAdminPermissionByApi_();
           if (hasApiAdminAccess) {
             isAdminUser = true;

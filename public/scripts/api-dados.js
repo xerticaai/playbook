@@ -1,23 +1,47 @@
 // Comunicação com a API: fetch, cache, loadDashboardData, normalizeCloudResponse, processWordClouds
 async function fetchJsonNoCache(url) {
-  const cacheBust = url + (url.includes('?') ? '&' : '?') + `_ts=${Date.now()}`;
-  const response = await fetch(cacheBust, {
-    cache: 'no-store',
-    headers: {
-      'Cache-Control': 'no-cache'
+  const buildUrlWithTs = () => url + (url.includes('?') ? '&' : '?') + `_ts=${Date.now()}`;
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const cacheBust = buildUrlWithTs();
+    const response = await fetch(cacheBust, {
+      cache: 'no-store',
+      headers: {
+        'Cache-Control': 'no-cache'
+      }
+    });
+
+    const text = await response.text();
+    const throttled = response.status === 429 || /rate\s+exceeded/i.test(text || '');
+
+    if (!response.ok) {
+      if (throttled && attempt < maxAttempts) {
+        const waitMs = attempt * 700;
+        log(`[API RETRY] 429/throttle em ${url}. Tentativa ${attempt + 1}/${maxAttempts} em ${waitMs}ms`);
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        continue;
+      }
+      throw new Error(`HTTP ${response.status} de ${url}: ${(text || '').slice(0, 160)}`);
     }
-  });
-  const text = await response.text();
-  let data;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch (e) {
-    throw new Error(`Resposta nao-JSON de ${url}: ${text.slice(0, 160)}`);
+
+    let data;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch (e) {
+      if (throttled && attempt < maxAttempts) {
+        const waitMs = attempt * 700;
+        log(`[API RETRY] Resposta throttle nao-JSON em ${url}. Tentativa ${attempt + 1}/${maxAttempts} em ${waitMs}ms`);
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        continue;
+      }
+      throw new Error(`Resposta nao-JSON de ${url}: ${(text || '').slice(0, 160)}`);
+    }
+
+    return data;
   }
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status} de ${url}: ${text.slice(0, 160)}`);
-  }
-  return data;
+
+  throw new Error(`Falha ao carregar ${url} apos retries`);
 }
 
 async function fetchWithCache(url, cacheKey, cacheMinutes = 5) {
@@ -88,7 +112,15 @@ async function loadDashboardData(forceRefresh = false) {
           sub_sub_vertical_ia: '',
           subsegmento_mercado: '',
           segmento_consolidado: '',
-          portfolio_fdm: ''
+          portfolio: '',
+          portfolio_fdm: '',
+          status_gtm: '',
+          motivo_status_gtm: '',
+          status_cliente: '',
+          flag_aprovacao_previa: '',
+          sales_specialist_envolvido: '',
+          elegibilidade_ss: '',
+          status_governanca_ss: ''
         };
     
     // Multi-select seller filter
@@ -268,6 +300,10 @@ async function loadDashboardData(forceRefresh = false) {
     // Carregar dados ERP se modo ativo for gross ou net
     if (window.execDisplayMode === 'gross' || window.execDisplayMode === 'net') {
       loadErpData();
+    }
+
+    if (document.querySelector('.exec-tab-content[data-content="resumo-quarter"]')?.classList.contains('active') && typeof window.loadQuarterSummary === 'function') {
+      window.loadQuarterSummary();
     }
 
     // Se a aba de gráficos está ativa, atualiza os gráficos com os novos dados filtrados
@@ -946,6 +982,296 @@ function processWordClouds(wonDeals, lostDeals, pipelineDeals) {
 
 let _erpChartSemanal = null;
 let _erpChartMensal  = null;
+let _erpAnalyticsWeekly = null;
+let _erpAnalyticsPayStatus = null;
+let _erpAnalyticsProducts = null;
+let _erpAnalyticsAttainment = null;
+let _erpAnalyticsCommercial = null;
+let _erpAnalyticsFamily = null;
+let _erpAnalyticsQuarter = null;
+let _erpAnalyticsSegment = null;
+let _erpAnalyticsOpportunityTypeLine = null;
+
+const ERP_MULTI_FILTER_CONFIG = [
+  { id: 'erp-portfolio-filter', label: 'Portfólio' },
+  { id: 'erp-payment-status-filter', label: 'Status Pagamento' },
+  { id: 'erp-product-filter', label: 'Produto' },
+  { id: 'erp-opportunity-type-line-filter', label: 'Tipo Oportunidade' },
+  { id: 'erp-segment-filter', label: 'Segmento' }
+];
+
+function ensureErpSelectionsState() {
+  if (!window.erpFilterSelections) window.erpFilterSelections = {};
+  ERP_MULTI_FILTER_CONFIG.forEach(({ id }) => {
+    if (!Array.isArray(window.erpFilterSelections[id])) {
+      window.erpFilterSelections[id] = [];
+    }
+  });
+}
+
+function updateErpFilterTriggerText(selectId) {
+  ensureErpSelectionsState();
+  const target = document.getElementById(`${selectId}-selected-text`);
+  if (!target) return;
+  const cfg = ERP_MULTI_FILTER_CONFIG.find((item) => item.id === selectId);
+  const label = cfg?.label || 'Filtro';
+  const selections = window.erpFilterSelections[selectId] || [];
+  if (!selections.length) {
+    target.textContent = `Todos (${label})`;
+    target.style.color = '#ffffff';
+    return;
+  }
+  if (selections.length === 1) {
+    target.textContent = selections[0];
+    target.style.color = 'var(--primary-cyan)';
+    return;
+  }
+  target.textContent = `${selections.length} selecionados`;
+  target.style.color = 'var(--primary-cyan)';
+}
+
+function syncErpHiddenSelect(selectId, options) {
+  const select = document.getElementById(selectId);
+  if (!select) return;
+
+  const selectedValues = window.erpFilterSelections?.[selectId] || [];
+  const values = Array.from(new Set((options || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  select.innerHTML = values.map((value) => {
+    const escaped = value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    const selected = selectedValues.includes(value) ? ' selected' : '';
+    return `<option value="${escaped}"${selected}>${escaped}</option>`;
+  }).join('');
+}
+
+function renderErpFilterOptions(selectId, options) {
+  ensureErpSelectionsState();
+  const group = document.getElementById(`${selectId}-options-group`);
+  if (!group) return;
+  const cfg = ERP_MULTI_FILTER_CONFIG.find((item) => item.id === selectId);
+  const titleLabel = cfg?.label || 'Filtro';
+
+  const normalized = Array.from(new Set((options || []).map((item) => String(item || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const prev = window.erpFilterSelections[selectId] || [];
+  const validSet = new Set(normalized);
+  window.erpFilterSelections[selectId] = prev.filter((value) => validSet.has(value));
+  const selectedSet = new Set(window.erpFilterSelections[selectId]);
+
+  if (!normalized.length) {
+    group.innerHTML = `
+      <div class="multi-select-group-title">${titleLabel}</div>
+      <div class="multi-select-option" style="cursor: default; opacity: 0.75;">
+        <span>Sem dados disponíveis</span>
+      </div>
+    `;
+    syncErpHiddenSelect(selectId, []);
+    updateErpFilterTriggerText(selectId);
+    return;
+  }
+
+  const rows = normalized.map((value) => {
+    const escaped = value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    const checked = selectedSet.has(value) ? 'checked' : '';
+    return `
+      <div class="multi-select-option">
+        <input type="checkbox" id="${selectId}-${escaped}" value="${escaped}" ${checked} onchange="window.onErpFilterOptionChange('${selectId}')" />
+        <label for="${selectId}-${escaped}">
+          <span>${escaped}</span>
+        </label>
+      </div>
+    `;
+  }).join('');
+
+  group.innerHTML = `<div class="multi-select-group-title">${titleLabel}</div>${rows}`;
+  syncErpHiddenSelect(selectId, normalized);
+  updateErpFilterTriggerText(selectId);
+}
+
+function initErpMultiSelects() {
+  ensureErpSelectionsState();
+  ERP_MULTI_FILTER_CONFIG.forEach(({ id, label }) => {
+    const select = document.getElementById(id);
+    if (!select || select.dataset.multiInit === '1') return;
+    select.style.display = 'none';
+
+    const container = document.createElement('div');
+    container.className = 'multi-select-container generic-filter-multi-select';
+    container.id = `${id}-multi`;
+    container.style.minWidth = '220px';
+
+    container.innerHTML = `
+      <div class="multi-select-trigger" onclick="window.toggleErpFilterDropdown('${id}')">
+        <span id="${id}-selected-text">Todos (${label})</span>
+      </div>
+      <div class="multi-select-dropdown" id="${id}-dropdown">
+        <div class="multi-select-search-wrap">
+          <input
+            type="text"
+            class="multi-select-search"
+            id="${id}-search"
+            placeholder="Buscar..."
+            autocomplete="off"
+            oninput="window.filterErpFilterOptions('${id}', this.value)"
+            onclick="event.stopPropagation()"
+          />
+        </div>
+        <div class="multi-select-group" id="${id}-options-group">
+          <div class="multi-select-group-title">${label}</div>
+        </div>
+        <div class="multi-select-actions">
+          <button class="multi-select-btn" onclick="window.selectAllErpFilterOptions('${id}')">Todos</button>
+          <button class="multi-select-btn" onclick="window.clearErpFilterOptions('${id}')">Limpar</button>
+        </div>
+      </div>
+    `;
+
+    select.insertAdjacentElement('afterend', container);
+    select.dataset.multiInit = '1';
+
+    // Se o <select> já tem opções fixas no HTML, popula o componente imediatamente
+    const existingOptions = Array.from(select.options).map((o) => o.value).filter(Boolean);
+    if (existingOptions.length) {
+      renderErpFilterOptions(id, existingOptions);
+    } else {
+      updateErpFilterTriggerText(id);
+    }
+  });
+}
+
+window.toggleErpFilterDropdown = function (selectId) {
+  const container = document.getElementById(`${selectId}-multi`);
+  const trigger = container?.querySelector('.multi-select-trigger');
+  const dropdown = document.getElementById(`${selectId}-dropdown`);
+  if (!container || !trigger || !dropdown) return;
+
+  const isOpening = !trigger.classList.contains('open');
+  trigger.classList.toggle('open');
+  dropdown.classList.toggle('open');
+
+  if (isOpening) {
+    setTimeout(() => {
+      const searchInput = document.getElementById(`${selectId}-search`);
+      if (searchInput) searchInput.focus();
+    }, 50);
+  } else {
+    const searchInput = document.getElementById(`${selectId}-search`);
+    if (searchInput) {
+      searchInput.value = '';
+      window.filterErpFilterOptions(selectId, '');
+    }
+  }
+};
+
+window.filterErpFilterOptions = function (selectId, query) {
+  const group = document.getElementById(`${selectId}-options-group`);
+  if (!group) return;
+  const q = String(query || '').trim().toLowerCase();
+  const options = group.querySelectorAll('.multi-select-option');
+  let visibleCount = 0;
+  options.forEach((opt) => {
+    const label = opt.querySelector('label span')?.textContent?.toLowerCase() || '';
+    const matches = !q || label.includes(q);
+    opt.style.display = matches ? '' : 'none';
+    if (matches) visibleCount++;
+  });
+  let noResults = group.querySelector('.erp-no-results');
+  if (!visibleCount) {
+    if (!noResults) {
+      noResults = document.createElement('div');
+      noResults.className = 'multi-select-no-results erp-no-results';
+      noResults.textContent = 'Nenhum resultado';
+      group.appendChild(noResults);
+    }
+    noResults.style.display = '';
+  } else if (noResults) {
+    noResults.style.display = 'none';
+  }
+};
+
+window.onErpFilterOptionChange = function (selectId) {
+  ensureErpSelectionsState();
+  const checkboxes = document.querySelectorAll(`#${selectId}-options-group input[type="checkbox"]`);
+  window.erpFilterSelections[selectId] = Array.from(checkboxes)
+    .filter((cb) => cb.checked)
+    .map((cb) => cb.value);
+
+  const currentOptions = Array.from(checkboxes).map((cb) => cb.value);
+  syncErpHiddenSelect(selectId, currentOptions);
+  updateErpFilterTriggerText(selectId);
+  if (typeof updateGlobalFiltersPanelUI === 'function') updateGlobalFiltersPanelUI();
+  loadErpData();
+};
+
+window.selectAllErpFilterOptions = function (selectId) {
+  const checkboxes = document.querySelectorAll(`#${selectId}-options-group input[type="checkbox"]`);
+  checkboxes.forEach((cb) => { cb.checked = true; });
+  window.onErpFilterOptionChange(selectId);
+};
+
+window.clearErpFilterOptions = function (selectId) {
+  const checkboxes = document.querySelectorAll(`#${selectId}-options-group input[type="checkbox"]`);
+  checkboxes.forEach((cb) => { cb.checked = false; });
+  window.onErpFilterOptionChange(selectId);
+};
+
+window.resetErpFilterSelections = function () {
+  ensureErpSelectionsState();
+  ERP_MULTI_FILTER_CONFIG.forEach(({ id }) => {
+    window.erpFilterSelections[id] = [];
+    syncErpHiddenSelect(id, []);
+    updateErpFilterTriggerText(id);
+  });
+};
+
+function getMultiSelectCsv(selectId) {
+  if (Array.isArray(window.erpFilterSelections?.[selectId])) {
+    return window.erpFilterSelections[selectId].join(',');
+  }
+  const select = document.getElementById(selectId);
+  if (!select) return '';
+  return Array.from(select.selectedOptions || [])
+    .map((opt) => String(opt.value || '').trim())
+    .filter(Boolean)
+    .join(',');
+}
+
+function populateErpMultiSelectOptions(selectId, values) {
+  initErpMultiSelects();
+  renderErpFilterOptions(selectId, values);
+}
+
+function ensureRevenueChartExpandButtons() {
+  const cards = document.querySelectorAll('#revenue-graficos-grid .card');
+  cards.forEach((card) => {
+    if (!card || card.dataset.expandBtnReady === '1') return;
+    const canvas = card.querySelector('.chart-wrapper canvas');
+    if (!canvas) return;
+    card.dataset.expandBtnReady = '1';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chart-expand-btn';
+    btn.textContent = 'Expandir';
+    btn.addEventListener('click', (evt) => {
+      evt.preventDefault();
+      evt.stopPropagation();
+      if (!card.requestFullscreen) return;
+      if (document.fullscreenElement === card) {
+        document.exitFullscreen && document.exitFullscreen();
+        return;
+      }
+      card.requestFullscreen();
+    });
+    card.appendChild(btn);
+  });
+}
 
 async function loadErpData() {
   const year      = document.getElementById('year-filter')?.value || '';
@@ -953,9 +1279,11 @@ async function loadErpData() {
   const month     = document.getElementById('month-filter')?.value || '';
   const dateStart = document.getElementById('date-start-filter')?.value || '';
   const dateEnd   = document.getElementById('date-end-filter')?.value || '';
-  const squad     = document.getElementById('erp-squad-filter')?.value    || '';
-  const portfolio = document.getElementById('erp-portfolio-filter')?.value || '';
-  const statusPg  = document.getElementById('erp-payment-status-filter')?.value || '';
+  const portfolio = getMultiSelectCsv('erp-portfolio-filter');
+  const statusPg  = getMultiSelectCsv('erp-payment-status-filter');
+  const produto   = getMultiSelectCsv('erp-product-filter');
+  const tipoOppLine = getMultiSelectCsv('erp-opportunity-type-line-filter');
+  const segmento  = getMultiSelectCsv('erp-segment-filter');
 
   if (typeof updateGlobalFiltersPanelUI === 'function') {
     updateGlobalFiltersPanelUI();
@@ -967,11 +1295,14 @@ async function loadErpData() {
   if (month)     params.set('month', month);
   if (dateStart) params.set('date_start', dateStart);
   if (dateEnd)   params.set('date_end', dateEnd);
-  if (squad)     params.set('squad', squad);
   if (portfolio) params.set('portfolio', portfolio);
   if (statusPg)  params.set('status_pagamento', statusPg);
+  if (produto) params.set('produto', produto);
+  if (tipoOppLine) params.set('tipo_oportunidade_line', tipoOppLine);
+  if (segmento) params.set('segmento', segmento);
 
   try {
+    initErpMultiSelects();
     const qs = params.toString() ? '?' + params.toString() : '';
     const mode = (window.execDisplayMode === 'net') ? 'net' : 'gross';
     const topQs = params.toString() ? `?${params.toString()}&mode=${mode}` : `?mode=${mode}`;
@@ -980,11 +1311,209 @@ async function loadErpData() {
       fetchJsonNoCache(`${API_BASE_URL}/api/attainment${qs}`),
       fetchJsonNoCache(`${API_BASE_URL}/api/revenue/top${topQs}`)
     ]);
+
+    const totalLinhas = Number(rev?.totais?.linhas || 0);
+    if (totalLinhas === 0) {
+      const noDataKey = `${window.execDisplayMode || 'gross'}|${qs}`;
+      if (window.__erpNoDataToastKey !== noDataKey) {
+        window.__erpNoDataToastKey = noDataKey;
+        if (typeof showToast === 'function') {
+          showToast('Revenue sem dados para o período/filtros selecionados. Ajuste período, status ou use Limpar.', 'info');
+        }
+      }
+    }
+
     renderErpKpiCards(rev, att);
-    renderErpCharts(rev);
+    bindErpKpiDrilldownCards();
+    populateErpMultiSelectOptions('erp-product-filter', (rev?.por_produto || []).map((item) => item.produto || ''));
+    populateErpMultiSelectOptions('erp-opportunity-type-line-filter', (rev?.por_tipo_oportunidade_line || []).map((item) => item.tipo_oportunidade_line || ''));
+    populateErpMultiSelectOptions('erp-segment-filter', (rev?.por_segmento || []).map((item) => item.segmento || ''));
+    // Legacy mini-charts (erp-chart-semanal/mensal) desativados para evitar duplicidade visual.
+    renderRevenueAnalysisCharts(rev, att);
+    ensureRevenueChartExpandButtons();
     renderErpTopTable(top, mode);
+
+    // Revenue IA — armazena dados para uso pela Análise IA e renderiza
+    window._erpLastData = { rev, att, top };
+    if (typeof renderIARevenue === 'function') renderIARevenue({ rev, att, top });
+
+    if (document.querySelector('.exec-tab-content[data-content="resumo-quarter"]')?.classList.contains('active') && typeof window.loadQuarterSummary === 'function') {
+      window.loadQuarterSummary();
+    }
   } catch (e) {
     log('[ERP] Erro ao carregar dados ERP:', e);
+  }
+}
+
+function bindErpKpiDrilldownCards() {
+  const root = document.getElementById('erp-kpi-section');
+  if (!root) return;
+
+  const resolveCardMetric = (card) => {
+    if (!card) return '';
+    const prioritySelectors = ['#erp-attainment-pct', '#erp-total', '#erp-pago', '#erp-pendente'];
+    for (const selector of prioritySelectors) {
+      if (card.querySelector(selector)) return selector.slice(1);
+    }
+    return '';
+  };
+
+  root.querySelectorAll('.kpi-card').forEach((card) => {
+    const metricId = resolveCardMetric(card);
+    if (!metricId) return;
+    if (card.dataset.erpDdBound === '1') return;
+
+    card.dataset.erpDdBound = '1';
+    card.style.cursor = 'pointer';
+    card.addEventListener('click', () => {
+      const isNetMode = window.execDisplayMode === 'net';
+      const mode = isNetMode ? 'Net Revenue' : 'Gross Revenue';
+
+      if (metricId === 'erp-pago') {
+        openRevenueExpandedDrilldown({
+          title: `Revenue Pago · ${mode}`,
+          dimension: 'all',
+          value: 'all',
+          statusPagamento: 'Pagada,Intercompañia'
+        });
+        return;
+      }
+
+      if (metricId === 'erp-pendente') {
+        openRevenueExpandedDrilldown({
+          title: `Revenue Pendente · ${mode}`,
+          dimension: 'all',
+          value: 'all',
+          statusPagamento: 'Pendiente,NAO_INFORMADO'
+        });
+        return;
+      }
+
+      const title = metricId === 'erp-attainment-pct'
+        ? `Attainment · ${mode}`
+        : `Revenue Total · ${mode}`;
+
+      const attainmentStatus = (metricId === 'erp-attainment-pct' && isNetMode)
+        ? 'Pagada,Intercompañia'
+        : '';
+
+      openRevenueExpandedDrilldown({
+        title,
+        dimension: 'all',
+        value: 'all',
+        statusPagamento: attainmentStatus
+      });
+    });
+  });
+}
+
+async function openRevenueExpandedDrilldown({ title, dimension, value, statusPagamento = '' }) {
+  const dimensionValue = String(value || '').trim();
+  if (!dimension || !dimensionValue) {
+    if (typeof showToast === 'function') {
+      showToast('Drilldown inválido: dimensão ou valor ausente.', 'warning');
+    }
+    return;
+  }
+
+  const params = new URLSearchParams();
+  const year = document.getElementById('year-filter')?.value || '';
+  const quarter = document.getElementById('quarter-filter')?.value || '';
+  const month = document.getElementById('month-filter')?.value || '';
+  const dateStart = document.getElementById('date-start-filter')?.value || '';
+  const dateEnd = document.getElementById('date-end-filter')?.value || '';
+  const portfolio = getMultiSelectCsv('erp-portfolio-filter');
+  const statusUI = getMultiSelectCsv('erp-payment-status-filter');
+  const produto = getMultiSelectCsv('erp-product-filter');
+  const tipoOppLine = getMultiSelectCsv('erp-opportunity-type-line-filter');
+  const segmento = getMultiSelectCsv('erp-segment-filter');
+
+  if (year) params.set('year', year);
+  if (quarter) params.set('quarter', quarter);
+  if (month) params.set('month', month);
+  if (dateStart) params.set('date_start', dateStart);
+  if (dateEnd) params.set('date_end', dateEnd);
+  if (portfolio) params.set('portfolio', portfolio);
+  if (produto) params.set('produto', produto);
+  if (tipoOppLine) params.set('tipo_oportunidade_line', tipoOppLine);
+  if (segmento) params.set('segmento', segmento);
+  if (statusUI) params.set('status_pagamento', statusUI);
+
+  params.set('dimension', dimension);
+  params.set('value', dimensionValue);
+  if (statusPagamento) params.set('status_pagamento', statusPagamento);
+  params.set('limit', '300');
+
+  try {
+    const data = await fetchJsonNoCache(`${API_BASE_URL}/api/revenue/drilldown?${params.toString()}`);
+    const rows = (data?.items || []).map((r) => ({
+      source: 'revenue',
+      name: r.oportunidade || 'Oportunidade não informada',
+      account: r.cliente || 'Cliente não informado',
+      owner: r.vendedor_canonico || 'N/A',
+      value: Number(r.gross_revenue_saneado || 0),
+      netValue: Number(r.net_revenue_saneado || 0),
+      quarter: r.fiscal_q_derivado || '-',
+      stage: `${r.estado_pagamento_saneado || 'NAO_INFORMADO'} · ${r.produto || 'Produto não informado'}`,
+      closeDate: r.fecha_factura_date || '',
+      reason: `Comercial: ${r.comercial || '-'} · Família: ${r.familia || '-'} · Margem: ${Number(r.margem_percentual_final || 0).toFixed(2)}% · Câmbio: ${Number(r.tipo_cambio_diario || 0).toFixed(4)}`,
+      resultType: 'Revenue',
+      produto: r.produto || 'Produto não informado',
+      comercial: r.comercial || '-',
+      familia: r.familia || '-',
+      statusPagamento: r.estado_pagamento_saneado || 'NAO_INFORMADO',
+      tipoDocumento: r.tipo_documento || '-',
+      tipoProduto: r.tipo_produto || '-',
+      cuentaContable: r.cuenta_contable || '-',
+      cuentaFinanceira: r.cuenta_financeira || '-',
+      segmento: r.segmento || '-',
+      etapaOportunidade: r.etapa_oportunidade || '-',
+      invoiceLocalNoIva: Number(r.valor_fatura_moeda_local_sem_iva || 0),
+      invoiceUsdComercial: Number(r.valor_fatura_usd_comercial || 0),
+      netAjustadoUsd: Number(r.net_ajustado_usd || 0),
+      custoMoedaLocal: Number(r.custo_moeda_local || 0),
+      custoPercentual: Number(r.custo_percentual || 0),
+      tipoCambioDiario: Number(r.tipo_cambio_diario || 0),
+      tipoCambioPactado: Number(r.tipo_cambio_pactado || 0),
+      margemPercentualFinal: Number(r.margem_percentual_final || 0),
+      percentualMargem: Number(r.percentual_margem || 0),
+      descontoXertica: Number(r.desconto_xertica || 0),
+      percentualDescontoXerticaNs: Number(r.percentual_desconto_xertica_ns || 0)
+    }));
+
+    if (!rows.length) {
+      if (typeof showToast === 'function') {
+        showToast('Sem registros de faturamento para este recorte.', 'info');
+      }
+      return;
+    }
+
+    if (typeof window.openRevenueDrilldown === 'function') {
+      window.openRevenueDrilldown({
+        title,
+        rows,
+        selected: rows[0] || null,
+        baseLabel: `${rows.length} registros de faturamento`,
+        rule: `Drilldown dedicado de Revenue (faturamento) por ${dimension}: ${dimensionValue}`,
+        filtersLabel: (typeof window.getPeriodSummaryLabel === 'function') ? window.getPeriodSummaryLabel() : 'Filtros atuais',
+        sql: 'Fonte: mart_l10.v_faturamento_historico (detalhe bruto de faturamento)'
+      });
+    } else if (typeof window.openExecutiveDrilldown === 'function') {
+      window.openExecutiveDrilldown({
+        title,
+        rows,
+        selected: rows[0] || null,
+        activeSource: 'revenue',
+        baseLabel: `${rows.length} registros de faturamento`,
+        rule: `Drilldown dedicado de Revenue (faturamento) por ${dimension}: ${dimensionValue}`,
+        filtersLabel: (typeof window.getPeriodSummaryLabel === 'function') ? window.getPeriodSummaryLabel() : 'Filtros atuais',
+        sql: 'Fonte: mart_l10.v_faturamento_historico'
+      });
+    }
+  } catch (e) {
+    if (typeof showToast === 'function') {
+      showToast('Falha ao abrir drilldown de Revenue.', 'warning');
+    }
   }
 }
 
@@ -1012,7 +1541,7 @@ function renderErpTopTable(data, mode) {
     const opps     = r.oportunidades || '—';
     const prodMain = r.produto_principal || '—';
     const prods    = r.produtos || '';
-    return `<tr>
+    return `<tr class="erp-top-clickable" data-revenue-cliente="${esc(r.cliente)}" title="Abrir drilldown de faturamento para ${esc(r.cliente)}" style="cursor:pointer;">
       <td style="font-weight:600;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(r.cliente)}">${i + 1}. ${esc(r.cliente)}</td>
       <td title="${esc(prods || prodMain)}"><span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:0.72rem;font-weight:600;background:rgba(0,190,255,.12);color:var(--primary-cyan,#00BEFF)">${esc(prodMain)}</span></td>
       <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:0.78rem;color:var(--text-muted)" title="${esc(opps)}">${esc(opps)}</td>
@@ -1028,6 +1557,18 @@ function renderErpTopTable(data, mode) {
       </td>
     </tr>`;
   }).join('');
+
+  tbody.querySelectorAll('tr[data-revenue-cliente]').forEach((tr) => {
+    tr.addEventListener('click', () => {
+      const cliente = tr.getAttribute('data-revenue-cliente') || '';
+      if (!cliente) return;
+      openRevenueExpandedDrilldown({
+        title: `Top Contas · ${cliente}`,
+        dimension: 'cliente',
+        value: cliente
+      });
+    });
+  });
 }
 
 function renderErpKpiCards(rev, att) {
@@ -1036,6 +1577,7 @@ function renderErpKpiCards(rev, att) {
 
   // API só tem net_pago / net_pendente — pago/pendente sempre em net
   const totais = rev?.totais || {};
+  const linhas = Number(totais.linhas || 0);
   const total  = isNet ? (totais.net_revenue  || 0) : (totais.gross_revenue  || 0);
   const pago   = totais.net_pago     || 0;   // sem breakdown gross de pago na API
   const pend   = totais.net_pendente || 0;
@@ -1043,9 +1585,27 @@ function renderErpKpiCards(rev, att) {
   // attainment: API retorna percentual (ex: 87.4), modo-aware
   const attKey = isNet ? 'attainment_net_pct' : 'attainment_gross_pct';
   const attPct = att?.resumo?.[attKey] ?? rev?.attainment?.[attKey] ?? null;
+  const attMeta = isNet
+    ? (att?.resumo?.meta_net ?? rev?.attainment?.meta_net ?? 0)
+    : (att?.resumo?.meta_gross ?? rev?.attainment?.meta_gross ?? 0);
+  const attRealizado = isNet
+    ? (att?.resumo?.net_realizado ?? rev?.attainment?.net_realizado ?? 0)
+    : (att?.resumo?.gross_realizado ?? rev?.attainment?.gross_realizado ?? 0);
 
   const fmt = (v) => typeof formatMoney === 'function' ? formatMoney(v) : ('$' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits:0}));
   const setEl = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+
+  if (linhas === 0) {
+    setEl('erp-total', '-');
+    setEl('erp-pago', '-');
+    setEl('erp-pendente', '-');
+    setEl('erp-attainment-pct', '-');
+    setEl('erp-attainment-label', 'sem dados no período/filtros');
+    setEl('erp-attainment-detail', '-');
+    const bar = document.getElementById('erp-attainment-bar');
+    if (bar) bar.style.width = '0%';
+    return;
+  }
 
   setEl('erp-total',    fmt(total));
   setEl('erp-pago',     fmt(pago));
@@ -1055,7 +1615,9 @@ function renderErpKpiCards(rev, att) {
     const pct = Math.round(Number(attPct)); // já é percentual (87.4 etc)
     setEl('erp-attainment-pct', pct + '%');
     const periodLabel = (typeof getPeriodSummaryLabel === 'function') ? getPeriodSummaryLabel() : 'período selecionado';
-    setEl('erp-attainment-label', 'meta ' + periodLabel);
+    const metricLabel = isNet ? 'Net' : 'Gross';
+    setEl('erp-attainment-label', `Meta ${metricLabel}: ${fmt(attMeta)} · Realizado ${metricLabel}: ${fmt(attRealizado)} · ${periodLabel}`);
+    setEl('erp-attainment-detail', `Base do attainment: Meta ${metricLabel} vs Realizado ${metricLabel} (faturado). Net Pago considera Pagada + Intercompañia.`);
     const bar = document.getElementById('erp-attainment-bar');
     if (bar) {
       bar.style.width = Math.min(pct, 100) + '%';
@@ -1063,6 +1625,7 @@ function renderErpKpiCards(rev, att) {
     }
   } else {
     setEl('erp-attainment-pct', '-');
+    setEl('erp-attainment-detail', 'Sem base de meta/realizado para o período selecionado.');
   }
 }
 
@@ -1082,6 +1645,7 @@ function renderErpCharts(rev) {
   const labSem  = semanas.map(s => fmtDate(s.semana_inicio));
   const datGross = semanas.map(s => s.gross_revenue || 0);
   const datNet   = semanas.map(s => s.net_revenue || 0);
+  const semMaxTicks = Math.min(10, Math.max(4, Math.ceil((labSem.length || 1) / 2)));
 
   // y-axis cap: p90 dos valores absolutos × 1.3 para evitar spike de outlier
   const absSem = datGross.concat(datNet).map(v => Math.abs(v)).filter(v => v > 0).sort((a, b) => a - b);
@@ -1124,12 +1688,17 @@ function renderErpCharts(rev) {
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
         plugins: {
+          decimation: { enabled: labSem.length > 24, algorithm: 'lttb', samples: 24 },
           legend: { labels: { font: { size: 10 }, color: '#ccc', boxWidth: 10, padding: 8 } },
           tooltip: { callbacks: { label: ctx => '$ ' + (ctx.parsed.y / 1e6).toFixed(2) + 'M' } }
         },
         scales: {
-          x: { ticks: { font: { size: 10 }, color: '#8899aa', maxRotation: 45 }, grid: { color: 'rgba(255,255,255,.05)' } },
+          x: {
+            ticks: { font: { size: 10 }, color: '#8899aa', maxRotation: 0, autoSkip: true, maxTicksLimit: semMaxTicks },
+            grid: { color: 'rgba(255,255,255,.05)' }
+          },
           y: {
             min: yMinSem,
             max: yMaxSem,
@@ -1163,10 +1732,472 @@ function renderErpCharts(rev) {
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
         plugins: { legend: { labels: { font: { size: 10 }, color: '#ccc', boxWidth: 10, padding: 8 } } },
         scales: {
-          x: { stacked: true, ticks: { font: { size: 10 }, color: '#8899aa' }, grid: { color: 'rgba(255,255,255,.05)' } },
+          x: { stacked: true, ticks: { font: { size: 10 }, color: '#8899aa', autoSkip: true, maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,.05)' } },
           y: { stacked: true, ticks: { font: { size: 10 }, color: '#8899aa', callback: v => '$' + (v/1e6).toFixed(1) + 'M' }, grid: { color: 'rgba(255,255,255,.06)' } }
+        }
+      }
+    });
+  }
+}
+
+function renderRevenueAnalysisCharts(rev, att) {
+  if (typeof Chart === 'undefined') return;
+
+  const mode = window.execDisplayMode || 'gross';
+  const isNet = mode === 'net';
+
+  const fmtDate = (d) => {
+    if (!d) return '';
+    const dt = new Date(d + 'T00:00:00Z');
+    const mo = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'][dt.getUTCMonth()];
+    return ('0' + dt.getUTCDate()).slice(-2) + '/' + mo;
+  };
+
+  const moneyTick = (v) => '$' + (v / 1e6).toFixed(1) + 'M';
+  const moneyTip = (v) => '$ ' + (v / 1e6).toFixed(2) + 'M';
+  const semMaxTicks = Math.min(10, Math.max(4, Math.ceil(((rev?.por_semana || []).length || 1) / 2)));
+
+  const semanas = rev?.por_semana || [];
+  const weekLabels = semanas.map(s => fmtDate(s.semana_inicio));
+  const weekGross = semanas.map(s => s.gross_revenue || 0);
+  const weekNet = semanas.map(s => s.net_revenue || 0);
+
+  const weekCtx = document.getElementById('erp-analytics-weekly');
+  if (weekCtx) {
+    if (_erpAnalyticsWeekly) _erpAnalyticsWeekly.destroy();
+    _erpAnalyticsWeekly = new Chart(weekCtx, {
+      type: 'line',
+      data: {
+        labels: weekLabels,
+        datasets: [
+          { label: 'Gross', data: weekGross, borderColor: '#00BEFF', backgroundColor: 'rgba(0,190,255,0.12)', fill: false, tension: 0.35, pointRadius: 2, pointHoverRadius: 4 },
+          { label: 'Net',   data: weekNet,   borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.10)', fill: false, tension: 0.35, pointRadius: 2, pointHoverRadius: 4 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        onClick: (_evt, elements) => {
+          if (!elements || !elements.length) return;
+          const idx = elements[0].index;
+          const row = semanas[idx];
+          if (!row) return;
+          openRevenueExpandedDrilldown({
+            title: 'Revenue por Semana',
+            dimension: 'semana',
+            value: row.semana_inicio
+          });
+        },
+        plugins: {
+          decimation: { enabled: weekLabels.length > 24, algorithm: 'lttb', samples: 24 },
+          legend: { labels: { font: { size: 10 }, color: '#ccc', boxWidth: 10, padding: 8 } },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyTip(ctx.parsed.y)}` } }
+        },
+        scales: {
+          x: { ticks: { font: { size: 10 }, color: '#8899aa', maxRotation: 0, autoSkip: true, maxTicksLimit: semMaxTicks }, grid: { color: 'rgba(255,255,255,.05)' } },
+          y: { ticks: { font: { size: 10 }, color: '#8899aa', callback: moneyTick }, grid: { color: 'rgba(255,255,255,.06)' } }
+        }
+      }
+    });
+  }
+
+  const meses = rev?.por_mes || [];
+  const monthLabels = meses.map(m => fmtDate(m.mes_inicio));
+  const monthPago = meses.map(m => m.net_pago || 0);
+  const monthPend = meses.map(m => m.net_pendente || 0);
+  const monthAnul = meses.map(m => m.net_anulado || 0);
+
+  const payCtx = document.getElementById('erp-analytics-pay-status');
+  if (payCtx) {
+    if (_erpAnalyticsPayStatus) _erpAnalyticsPayStatus.destroy();
+    _erpAnalyticsPayStatus = new Chart(payCtx, {
+      type: 'bar',
+      data: {
+        labels: monthLabels,
+        datasets: [
+          { label: 'Pago', data: monthPago, backgroundColor: 'rgba(0,190,255,0.70)', borderRadius: 3 },
+          { label: 'Pendente', data: monthPend, backgroundColor: 'rgba(245,158,11,0.55)', borderRadius: 3 },
+          { label: 'Anulado', data: monthAnul, backgroundColor: 'rgba(239,68,68,0.55)', borderRadius: 3 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        onClick: (_evt, elements, chart) => {
+          if (!elements || !elements.length) return;
+          const idx = elements[0].index;
+          const dsIdx = elements[0].datasetIndex;
+          const row = meses[idx];
+          if (!row) return;
+          const dsLabel = chart?.data?.datasets?.[dsIdx]?.label || '';
+          const statusMap = {
+            'Pago': 'Pagada,Intercompañia',
+            'Pendente': 'Pendiente,NAO_INFORMADO,Intercompañia',
+            'Anulado': 'Anulada'
+          };
+          const statusPagamento = statusMap[dsLabel] || '';
+          openRevenueExpandedDrilldown({
+            title: `Pagamento por Mês${dsLabel ? ` - ${dsLabel}` : ''}`,
+            dimension: 'mes',
+            value: row.mes_inicio,
+            statusPagamento
+          });
+        },
+        plugins: {
+          legend: { labels: { font: { size: 10 }, color: '#ccc', boxWidth: 10, padding: 8 } },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyTip(ctx.parsed.y)}` } }
+        },
+        scales: {
+          x: { stacked: true, ticks: { font: { size: 10 }, color: '#8899aa', autoSkip: true, maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,.05)' } },
+          y: { stacked: true, ticks: { font: { size: 10 }, color: '#8899aa', callback: moneyTick }, grid: { color: 'rgba(255,255,255,.06)' } }
+        }
+      }
+    });
+  }
+
+  const produtos = (rev?.por_produto || []).slice(0, 10);
+  const prodLabels = produtos.map(p => (p.produto || '').length > 32 ? (p.produto || '').slice(0, 32) + '…' : (p.produto || '—'));
+  const prodValues = produtos.map(p => isNet ? (p.net_revenue || 0) : (p.gross_revenue || 0));
+
+  const prodCtx = document.getElementById('erp-analytics-products');
+  if (prodCtx) {
+    if (_erpAnalyticsProducts) _erpAnalyticsProducts.destroy();
+    _erpAnalyticsProducts = new Chart(prodCtx, {
+      type: 'bar',
+      data: {
+        labels: prodLabels,
+        datasets: [{
+          label: isNet ? 'Net Revenue' : 'Gross Revenue',
+          data: prodValues,
+          backgroundColor: 'rgba(0,190,255,0.68)',
+          borderRadius: 4,
+          maxBarThickness: 22
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        onClick: (_evt, elements) => {
+          if (!elements || !elements.length) return;
+          const idx = elements[0].index;
+          const row = produtos[idx];
+          if (!row) return;
+          openRevenueExpandedDrilldown({
+            title: 'Top Produtos por Revenue',
+            dimension: 'produto',
+            value: row.produto || 'Produto não informado'
+          });
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyTip(ctx.parsed.x)}` } }
+        },
+        scales: {
+          x: { ticks: { font: { size: 10 }, color: '#8899aa', callback: moneyTick }, grid: { color: 'rgba(255,255,255,.06)' } },
+          y: { ticks: { font: { size: 10 }, color: '#8899aa' }, grid: { color: 'rgba(255,255,255,.05)' } }
+        }
+      }
+    });
+  }
+
+  const attMonths = att?.por_mes || [];
+  const attLabels = attMonths.map(m => fmtDate(m.mes_inicio));
+  const attMeta = attMonths.map(m => isNet ? (m.meta_net || 0) : (m.meta_gross || 0));
+  const attReal = attMonths.map(m => isNet ? (m.net_realizado || 0) : (m.gross_realizado || 0));
+
+  const attTitle = document.getElementById('erp-analytics-att-title');
+  if (attTitle) attTitle.textContent = `Meta vs Realizado (${isNet ? 'Net' : 'Gross'})`;
+
+  const attCtx = document.getElementById('erp-analytics-attainment');
+  if (attCtx) {
+    if (_erpAnalyticsAttainment) _erpAnalyticsAttainment.destroy();
+    _erpAnalyticsAttainment = new Chart(attCtx, {
+      type: 'bar',
+      data: {
+        labels: attLabels,
+        datasets: [
+          { label: 'Meta', data: attMeta, backgroundColor: 'rgba(148,163,184,0.45)', borderRadius: 3 },
+          { label: 'Realizado', data: attReal, backgroundColor: 'rgba(34,197,94,0.65)', borderRadius: 3 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        onClick: (_evt, elements) => {
+          if (!elements || !elements.length) return;
+          const idx = elements[0].index;
+          const row = attMonths[idx];
+          if (!row) return;
+          openRevenueExpandedDrilldown({
+            title: 'Meta vs Realizado',
+            dimension: 'mes',
+            value: row.mes_inicio
+          });
+        },
+        plugins: {
+          legend: { labels: { font: { size: 10 }, color: '#ccc', boxWidth: 10, padding: 8 } },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyTip(ctx.parsed.y)}` } }
+        },
+        scales: {
+          x: { ticks: { font: { size: 10 }, color: '#8899aa' }, grid: { color: 'rgba(255,255,255,.05)' } },
+          y: { ticks: { font: { size: 10 }, color: '#8899aa', callback: moneyTick }, grid: { color: 'rgba(255,255,255,.06)' } }
+        }
+      }
+    });
+  }
+
+  const comercialRows = (rev?.por_comercial || []).slice(0, 10);
+  const comercialLabels = comercialRows.map(r => {
+    const raw = r.comercial || 'Não informado';
+    return raw.length > 28 ? raw.slice(0, 28) + '…' : raw;
+  });
+  const comercialValues = comercialRows.map(r => isNet ? (r.net_revenue || 0) : (r.gross_revenue || 0));
+
+  const comercialCtx = document.getElementById('erp-analytics-commercial');
+  if (comercialCtx) {
+    if (_erpAnalyticsCommercial) _erpAnalyticsCommercial.destroy();
+    _erpAnalyticsCommercial = new Chart(comercialCtx, {
+      type: 'bar',
+      data: {
+        labels: comercialLabels,
+        datasets: [{
+          label: isNet ? 'Net Revenue' : 'Gross Revenue',
+          data: comercialValues,
+          backgroundColor: 'rgba(14, 165, 233, 0.72)',
+          borderRadius: 4,
+          maxBarThickness: 20
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        onClick: (_evt, elements) => {
+          if (!elements || !elements.length) return;
+          const idx = elements[0].index;
+          const row = comercialRows[idx];
+          if (!row) return;
+          openRevenueExpandedDrilldown({
+            title: 'Revenue por Comercial',
+            dimension: 'comercial',
+            value: row.comercial || 'Não informado'
+          });
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyTip(ctx.parsed.x)}` } }
+        },
+        scales: {
+          x: { ticks: { font: { size: 10 }, color: '#8899aa', callback: moneyTick }, grid: { color: 'rgba(255,255,255,.06)' } },
+          y: { ticks: { font: { size: 10 }, color: '#8899aa' }, grid: { color: 'rgba(255,255,255,.05)' } }
+        }
+      }
+    });
+  }
+
+  const segmentoRows = (rev?.por_segmento || []).slice(0, 10);
+  const segmentoLabels = segmentoRows.map((r) => {
+    const raw = r.segmento || 'Não informado';
+    return raw.length > 28 ? raw.slice(0, 28) + '…' : raw;
+  });
+  const segmentoValues = segmentoRows.map((r) => isNet ? (r.net_revenue || 0) : (r.gross_revenue || 0));
+
+  const segmentoCtx = document.getElementById('erp-analytics-segment');
+  if (segmentoCtx) {
+    if (_erpAnalyticsSegment) _erpAnalyticsSegment.destroy();
+    _erpAnalyticsSegment = new Chart(segmentoCtx, {
+      type: 'bar',
+      data: {
+        labels: segmentoLabels,
+        datasets: [{
+          label: isNet ? 'Net Revenue' : 'Gross Revenue',
+          data: segmentoValues,
+          backgroundColor: 'rgba(16,185,129,0.72)',
+          borderRadius: 4,
+          maxBarThickness: 20
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        onClick: (_evt, elements) => {
+          if (!elements || !elements.length) return;
+          const idx = elements[0].index;
+          const row = segmentoRows[idx];
+          if (!row) return;
+          openRevenueExpandedDrilldown({
+            title: 'Revenue por Segmento',
+            dimension: 'segmento',
+            value: row.segmento || 'Não informado'
+          });
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyTip(ctx.parsed.x)}` } }
+        },
+        scales: {
+          x: { ticks: { font: { size: 10 }, color: '#8899aa', callback: moneyTick }, grid: { color: 'rgba(255,255,255,.06)' } },
+          y: { ticks: { font: { size: 10 }, color: '#8899aa' }, grid: { color: 'rgba(255,255,255,.05)' } }
+        }
+      }
+    });
+  }
+
+  const familiaRows = (rev?.por_familia || []).slice(0, 6);
+  const familiaTotal = familiaRows.reduce((acc, r) => acc + (isNet ? (r.net_revenue || 0) : (r.gross_revenue || 0)), 0);
+  const familiaBaseLabels = familiaRows.map(r => r.familia || 'Não informado');
+  const familiaBaseValues = familiaRows.map(r => isNet ? (r.net_revenue || 0) : (r.gross_revenue || 0));
+  const familiaAll = rev?.por_familia || [];
+  const familiaAllTotal = familiaAll.reduce((acc, r) => acc + (isNet ? (r.net_revenue || 0) : (r.gross_revenue || 0)), 0);
+  const familiaOthers = Math.max(0, familiaAllTotal - familiaTotal);
+
+  const familiaLabels = familiaOthers > 0 ? familiaBaseLabels.concat(['Outros']) : familiaBaseLabels;
+  const familiaValues = familiaOthers > 0 ? familiaBaseValues.concat([familiaOthers]) : familiaBaseValues;
+
+  const familiaCtx = document.getElementById('erp-analytics-family');
+  if (familiaCtx) {
+    if (_erpAnalyticsFamily) _erpAnalyticsFamily.destroy();
+    _erpAnalyticsFamily = new Chart(familiaCtx, {
+      type: 'doughnut',
+      data: {
+        labels: familiaLabels,
+        datasets: [{
+          data: familiaValues,
+          backgroundColor: [
+            'rgba(0,190,255,0.78)',
+            'rgba(34,197,94,0.72)',
+            'rgba(244,114,182,0.72)',
+            'rgba(245,158,11,0.72)',
+            'rgba(167,139,250,0.72)',
+            'rgba(148,163,184,0.72)',
+            'rgba(100,116,139,0.55)'
+          ],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        onClick: (_evt, elements) => {
+          if (!elements || !elements.length) return;
+          const idx = elements[0].index;
+          const row = familiaRows[idx];
+          if (!row) {
+            if (typeof showToast === 'function') {
+              showToast('Categoria "Outros" não possui drilldown direto.', 'info');
+            }
+            return;
+          }
+          openRevenueExpandedDrilldown({
+            title: 'Revenue por Família',
+            dimension: 'familia',
+            value: row.familia || 'Não informado'
+          });
+        },
+        plugins: {
+          legend: { position: 'right', labels: { font: { size: 10 }, color: '#8899aa', boxWidth: 10, padding: 10 } },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${moneyTip(ctx.parsed)}` } }
+        }
+      }
+    });
+  }
+
+  const quarterRows = rev?.por_quarter || [];
+  const quarterLabels = quarterRows.map(r => r.fiscal_q || 'Não informado');
+  const quarterGross = quarterRows.map(r => r.gross_revenue || 0);
+  const quarterNet = quarterRows.map(r => r.net_revenue || 0);
+
+  const quarterCtx = document.getElementById('erp-analytics-quarter');
+  if (quarterCtx) {
+    if (_erpAnalyticsQuarter) _erpAnalyticsQuarter.destroy();
+    _erpAnalyticsQuarter = new Chart(quarterCtx, {
+      type: 'bar',
+      data: {
+        labels: quarterLabels,
+        datasets: [
+          { label: 'Gross', data: quarterGross, backgroundColor: 'rgba(0,190,255,0.55)', borderRadius: 4 },
+          { label: 'Net', data: quarterNet, backgroundColor: 'rgba(34,197,94,0.65)', borderRadius: 4 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        onClick: (_evt, elements) => {
+          if (!elements || !elements.length) return;
+          const idx = elements[0].index;
+          const row = quarterRows[idx];
+          if (!row) return;
+          openRevenueExpandedDrilldown({
+            title: 'Revenue por Quarter',
+            dimension: 'quarter',
+            value: row.fiscal_q || 'Não informado'
+          });
+        },
+        plugins: {
+          legend: { labels: { font: { size: 10 }, color: '#ccc', boxWidth: 10, padding: 8 } },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyTip(ctx.parsed.y)}` } }
+        },
+        scales: {
+          x: { ticks: { font: { size: 10 }, color: '#8899aa' }, grid: { color: 'rgba(255,255,255,.05)' } },
+          y: { ticks: { font: { size: 10 }, color: '#8899aa', callback: moneyTick }, grid: { color: 'rgba(255,255,255,.06)' } }
+        }
+      }
+    });
+  }
+
+  const oppTypeLineRows = (rev?.por_tipo_oportunidade_line || []).slice(0, 10);
+  const oppTypeLineLabels = oppTypeLineRows.map((r) => {
+    const raw = r.tipo_oportunidade_line || 'Não informado';
+    return raw.length > 28 ? raw.slice(0, 28) + '…' : raw;
+  });
+  const oppTypeLineValues = oppTypeLineRows.map((r) => isNet ? (r.net_revenue || 0) : (r.gross_revenue || 0));
+
+  const oppTypeLineCtx = document.getElementById('erp-analytics-opportunity-type-line');
+  if (oppTypeLineCtx) {
+    if (_erpAnalyticsOpportunityTypeLine) _erpAnalyticsOpportunityTypeLine.destroy();
+    _erpAnalyticsOpportunityTypeLine = new Chart(oppTypeLineCtx, {
+      type: 'bar',
+      data: {
+        labels: oppTypeLineLabels,
+        datasets: [{
+          label: isNet ? 'Net Revenue' : 'Gross Revenue',
+          data: oppTypeLineValues,
+          backgroundColor: 'rgba(6,182,212,0.72)',
+          borderRadius: 4,
+          maxBarThickness: 20
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        onClick: (_evt, elements) => {
+          if (!elements || !elements.length) return;
+          const idx = elements[0].index;
+          const row = oppTypeLineRows[idx];
+          if (!row) return;
+          openRevenueExpandedDrilldown({
+            title: 'Revenue por Tipo de Oportunidade',
+            dimension: 'tipo_oportunidade_line',
+            value: row.tipo_oportunidade_line || 'Não informado'
+          });
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${moneyTip(ctx.parsed.x)}` } }
+        },
+        scales: {
+          x: { ticks: { font: { size: 10 }, color: '#8899aa', callback: moneyTick }, grid: { color: 'rgba(255,255,255,.06)' } },
+          y: { ticks: { font: { size: 10 }, color: '#8899aa' }, grid: { color: 'rgba(255,255,255,.05)' } }
         }
       }
     });

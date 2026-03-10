@@ -53,6 +53,7 @@ function buildPerformanceQuery() {
     'sub_sub_vertical_ia',
     'subsegmento_mercado',
     'segmento_consolidado',
+    'portfolio',
     'portfolio_fdm'
   ].forEach(key => {
     if (advancedFilters[key]) {

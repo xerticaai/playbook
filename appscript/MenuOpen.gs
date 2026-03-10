@@ -10,6 +10,31 @@
 function onInstall() {
   onOpen();
   instalarTodosTriggers();
+  garantirTriggerOnOpenMenu_();
+}
+
+/**
+ * Garante trigger instalavel de abertura para reduzir falhas do simple trigger onOpen.
+ */
+function garantirTriggerOnOpenMenu_() {
+  try {
+    clearTriggersByHandler_('onOpen');
+    ScriptApp.newTrigger('onOpen')
+      .forSpreadsheet(SpreadsheetApp.getActiveSpreadsheet())
+      .onOpen()
+      .create();
+    console.log('✅ Trigger instalável onOpen criado com sucesso');
+  } catch (e) {
+    console.error('❌ Falha ao criar trigger instalável onOpen: ' + e.message);
+  }
+}
+
+/**
+ * Recuperação manual: execute no editor Apps Script para recriar trigger e menu.
+ */
+function recuperarMenuSalesAI() {
+  garantirTriggerOnOpenMenu_();
+  onOpen();
 }
 
 /**
@@ -55,6 +80,9 @@ function onOpen() {
       // ══════════════════════════════════════════════════════════════
       .addSeparator()
       .addSubMenu(ui.createMenu('🔍 Análise Manual')
+        .addItem('🔄 Rodar Auto-Sync completo agora', 'rodarAutoSyncCompletoManual')
+        .addItem('🧪 Validar correção SS (OPEN)', 'validarCorrecaoSalesSpecialistManual')
+        .addSeparator()
         .addItem('▶️ Rodar Análise OPEN agora', 'rodarAnaliseOPENManual')
         .addItem('▶️ Rodar Análise WON agora',  'rodarAnaliseWONManual')
         .addItem('▶️ Rodar Análise LOST agora', 'rodarAnaliseLOSTManual'))
@@ -71,7 +99,9 @@ function onOpen() {
         .addItem('🧪 TESTE Perdidas IA (5 linhas)', 'enriquecerPerdidas_TESTE_5_LINHAS')
         .addSeparator()
         .addItem('⚙️ Ativar Trigger Perdidas IA (15min)', 'ativarTriggerEnriquecimentoPerdidasIA')
-        .addItem('🛑 Desativar Trigger Perdidas IA', 'desativarTriggerEnriquecimentoPerdidasIA'))
+        .addItem('🛑 Desativar Trigger Perdidas IA', 'desativarTriggerEnriquecimentoPerdidasIA')
+        .addSeparator()
+        .addItem('🏗️ Normalizar Verticais (dados históricos)', 'normalizarVerticaisNaPlanilha'))
 
       // ══════════════════════════════════════════════════════════════
       // SEÇÃO 3: ALIASES
@@ -370,4 +400,19 @@ function rodarAnaliseWONManual() {
  */
 function rodarAnaliseLOSTManual() {
   setupTriggerAndStart('LOST');
+}
+
+/**
+ * Executa ciclo completo BASE -> ANALISE imediatamente (OPEN + LOST + WON + SS).
+ */
+function rodarAutoSyncCompletoManual() {
+  processarMudancasManual();
+}
+
+/**
+ * Atalho para validar rapidamente a correção de Sales Specialist no fluxo OPEN.
+ * Executa diagnóstico direto (sem iniciar pipeline OPEN).
+ */
+function validarCorrecaoSalesSpecialistManual() {
+  validarCorrecaoSalesSpecialistOPEN();
 }

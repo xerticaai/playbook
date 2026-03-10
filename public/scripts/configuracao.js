@@ -39,3 +39,8 @@ let currentUserEmail = null;
 let isAdminUser = false;
 let adminPreviewEnabled = false;
 
+const STAGNANT_ALERT_WEBHOOK_URL = 'https://script.google.com/a/macros/xertica.com/s/AKfycbyUrKHd-DZMfNI0_1dYl47S7MBAZuv_jnlm12_TD5vxA16WVUlOHLauQMmRtpJsLCF9/exec';
+const STAGNANT_ALERT_SECRET = '';
+window.STAGNANT_ALERT_WEBHOOK_URL = STAGNANT_ALERT_WEBHOOK_URL;
+window.STAGNANT_ALERT_SECRET = STAGNANT_ALERT_SECRET;
+

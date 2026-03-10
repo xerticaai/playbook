@@ -63,20 +63,7 @@ function populateStaticKPIs(metrics) {
     // Vendedores Ativos
     setTextSafe('exec-active-reps', metrics.activeRepsCount);
     
-    // Deals >= 50% Confiança
-    setTextSafe('exec-above50-value', formatMoney(metrics.highConfGross));
-    setTextSafe('exec-above50-count', metrics.highConfDeals + ' deals');
-    setTextSafe('exec-above50-net', 'Net: ' + formatMoney(metrics.highConfNet));
-    
-    // Confiança Média
-    const avgConfPercent = Math.round(metrics.avgConfidence);
-    setTextSafe('exec-forecast-percent', avgConfPercent + '% confiança média');
-    
-    // Calcula Previsão Ponderada (Pipeline Total × Confiança Média)
-    const forecastWeighted = metrics.allPipelineGross * (metrics.avgConfidence / 100);
-    setTextSafe('exec-forecast-weighted', formatMoney(forecastWeighted));
-    const forecastNetWeighted = metrics.allPipelineNet * (metrics.avgConfidence / 100);
-    setTextSafe('exec-forecast-net', 'Net: ' + formatMoney(forecastNetWeighted));
+    // KPI de forecast/qualificação são atualizados exclusivamente por updateExecutiveMetricsFromAPI
     
     log('[STATIC] ✓ KPIs estáticos populados com sucesso');
     

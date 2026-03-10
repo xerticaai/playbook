@@ -561,7 +561,7 @@ function scheduleNextTick_(mode, delayMs) {
  * - Não limpa aba de saída
  * - Não recria queue/snapshot (força modo DIRETO)
  */
-function iniciarSyncOpenManualSemCleanup_() {
+function iniciarSyncOpenManualSemCleanup_(skipConfirmation) {
   const mode = 'OPEN';
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const config = getModeConfig(mode);
@@ -572,13 +572,15 @@ function iniciarSyncOpenManualSemCleanup_() {
     return;
   }
 
-  const ui = SpreadsheetApp.getUi();
-  const response = ui.alert(
-    '🔄 Sync Manual OPEN (sem cleanup)',
-    'Este modo vai preencher/atualizar apenas OPEN sem limpar análise e sem recriar filas auxiliares.\n\nDeseja continuar?',
-    ui.ButtonSet.YES_NO
-  );
-  if (response !== ui.Button.YES) return;
+  if (!skipConfirmation) {
+    const ui = SpreadsheetApp.getUi();
+    const response = ui.alert(
+      '🔄 Sync Manual OPEN (sem cleanup)',
+      'Este modo vai preencher/atualizar apenas OPEN sem limpar análise e sem recriar filas auxiliares.\n\nDeseja continuar?',
+      ui.ButtonSet.YES_NO
+    );
+    if (response !== ui.Button.YES) return;
+  }
 
   const props = PropertiesService.getScriptProperties();
   const runningKey = 'IS_RUNNING_OPEN';
@@ -607,6 +609,213 @@ function iniciarSyncOpenManualSemCleanup_() {
   logToSheet('INFO', 'ManualOPEN', `OPEN manual sem cleanup iniciado. runId=${runId}`);
   scheduleNextTick_(mode, 5000);
   safeAlert_(`✅ OPEN manual iniciado (sem cleanup).\n\nPrimeiro lote em ~5s.\nAba: ${config.output}`);
+}
+
+/**
+ * Valida a correção de matching de Sales Specialist no OPEN sem iniciar o pipeline.
+ * Gera aba de diagnóstico com os principais casos para conferência rápida.
+ */
+function validarCorrecaoSalesSpecialistOPEN() {
+  const mode = 'OPEN';
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const config = getModeConfig(mode);
+
+  const mainData = getSheetData(config.input);
+  if (!mainData || !Array.isArray(mainData.values) || mainData.values.length === 0) {
+    safeAlert_(`❌ Não foi possível ler a aba de entrada OPEN (${config.input}).`);
+    return;
+  }
+
+  const rawSalesSpecialist = getSalesSpecialistSheetData_();
+  if (!rawSalesSpecialist || !Array.isArray(rawSalesSpecialist.values) || rawSalesSpecialist.values.length === 0) {
+    safeAlert_('❌ Não foi possível localizar uma aba fonte válida de Sales Specialist.');
+    return;
+  }
+
+  const cols = getColumnMapping(mainData.headers || []);
+  const aggregatedData = aggregateOpportunities(mainData.values, cols, mode);
+  const salesSpecialistMap = buildSalesSpecialistIndex_(rawSalesSpecialist);
+  const dedupeMatches_ = (rowsByOpp, rowsByAcc) => {
+    const uniq = new Map();
+    rowsByOpp.concat(rowsByAcc).forEach((r) => {
+      const k = [
+        normText_(r && r.oppName),
+        normText_(r && r.oppAccount),
+        normText_(r && r.teamMember),
+        normText_(r && r.oppOwner)
+      ].join('|');
+      if (!uniq.has(k)) uniq.set(k, r);
+    });
+    return Array.from(uniq.values());
+  };
+
+  const reportHeaders = [
+    'Opp Name',
+    'Account',
+    'Owner',
+    'Match OppName',
+    'Match Account',
+    'Match Total',
+    'Sales Specialist Envolvido',
+    'Elegibilidade SS',
+    'Justificativa SS',
+    'Status Governança SS'
+  ];
+
+  const reportRows = [];
+  const counters = {
+    total: 0,
+    withMatch: 0,
+    semRegistro: 0,
+    igualOwner: 0,
+    naoAutorizado: 0,
+    elegivel: 0,
+    alertaElegivelSemValido: 0
+  };
+
+  aggregatedData.forEach((item) => {
+    counters.total++;
+
+    const keyOpp = normText_(item.oppName || '');
+    const keyAcc = normText_(item.accName || '');
+    const rowsByOpp = (keyOpp && salesSpecialistMap.get(keyOpp)) ? salesSpecialistMap.get(keyOpp) : [];
+    const rowsByAcc = (keyAcc && salesSpecialistMap.get(keyAcc)) ? salesSpecialistMap.get(keyAcc) : [];
+
+    const matchedRows = dedupeMatches_(rowsByOpp, rowsByAcc);
+    if (matchedRows.length > 0) counters.withMatch++;
+
+    const ssGov = evaluateSalesSpecialistGovernance(item, matchedRows);
+
+    if (ssGov.statusGovernancaSS === 'ERRO SEM REGISTRO SS') counters.semRegistro++;
+    if (ssGov.statusGovernancaSS === 'ERRO SS IGUAL OWNER') counters.igualOwner++;
+    if (ssGov.statusGovernancaSS === 'ERRO SS NAO AUTORIZADO') counters.naoAutorizado++;
+    if (ssGov.statusGovernancaSS === 'ALERTA ELEGIVEL SEM SS VALIDO') counters.alertaElegivelSemValido++;
+    if (ssGov.elegibilidadeSS === 'ELEGIVEL') counters.elegivel++;
+
+    // Mantém o relatório focado nos casos relevantes de governança
+    if (matchedRows.length === 0 || ssGov.statusGovernancaSS !== 'OK') {
+      reportRows.push([
+        item.oppName || '',
+        item.accName || '',
+        item.owner || '',
+        rowsByOpp.length,
+        rowsByAcc.length,
+        matchedRows.length,
+        ssGov.salesSpecialistEnvolvido || '',
+        ssGov.elegibilidadeSS || '',
+        ssGov.justificativaElegibilidadeSS || '',
+        ssGov.statusGovernancaSS || ''
+      ]);
+    }
+  });
+
+  const reportSheetName = 'Diagnostico_SS_OPEN';
+  let reportSheet = ss.getSheetByName(reportSheetName);
+  if (!reportSheet) {
+    reportSheet = ss.insertSheet(reportSheetName);
+  } else {
+    reportSheet.clearContents();
+  }
+
+  reportSheet.getRange(1, 1, 1, reportHeaders.length).setValues([reportHeaders]);
+  if (reportRows.length > 0) {
+    reportSheet.getRange(2, 1, reportRows.length, reportHeaders.length).setValues(reportRows);
+  }
+
+  // Parte 2: aplicar diretamente na aba de análise OPEN (cabeçalho + preenchimento SS)
+  const headerFix = configurarCabecalhoOpenParaAutoSync_();
+  const outputSheet = ss.getSheetByName(config.output);
+  if (!outputSheet) {
+    throw new Error(`Aba de saída não encontrada: ${config.output}`);
+  }
+
+  const outLastRow = outputSheet.getLastRow();
+  const outLastCol = outputSheet.getLastColumn();
+  let updatedRows = 0;
+
+  if (outLastRow > 1 && outLastCol > 0) {
+    const outputHeaders = outputSheet.getRange(1, 1, 1, outLastCol).getValues()[0] || [];
+    const findCol_ = (label) => {
+      const idx = outputHeaders.findIndex(h => normText_(String(h || '')) === normText_(label));
+      return idx > -1 ? idx + 1 : -1;
+    };
+
+    const colOpp = findCol_('Oportunidade');
+    const colAcc = findCol_('Conta');
+    const colOwner = findCol_('Vendedor');
+    const colSsEnvolvido = findCol_('Sales Specialist Envolvido');
+    const colSsElegibilidade = findCol_('Elegibilidade SS');
+    const colSsJustificativa = findCol_('Justificativa Elegibilidade SS');
+    const colSsStatus = findCol_('Status Governança SS');
+    const colLastUpdate = findCol_('🕐 Última Atualização');
+
+    if ([colOpp, colAcc, colSsEnvolvido, colSsElegibilidade, colSsJustificativa, colSsStatus].some(c => c === -1)) {
+      throw new Error('Cabeçalho OPEN incompleto para preenchimento de Sales Specialist.');
+    }
+
+    const numRows = outLastRow - 1;
+    const oppValues = outputSheet.getRange(2, colOpp, numRows, 1).getValues();
+    const accValues = outputSheet.getRange(2, colAcc, numRows, 1).getValues();
+    const ownerValues = colOwner > -1
+      ? outputSheet.getRange(2, colOwner, numRows, 1).getValues()
+      : Array.from({ length: numRows }, () => ['']);
+
+    const fillEnvolvido = [];
+    const fillElegibilidade = [];
+    const fillJustificativa = [];
+    const fillStatus = [];
+    const fillUpdate = [];
+    const updateTs = formatDateRobust(new Date());
+
+    for (let i = 0; i < numRows; i++) {
+      const item = {
+        oppName: String(oppValues[i][0] || '').trim(),
+        accName: String(accValues[i][0] || '').trim(),
+        owner: String(ownerValues[i][0] || '').trim()
+      };
+
+      const keyOpp = normText_(item.oppName || '');
+      const keyAcc = normText_(item.accName || '');
+      const rowsByOpp = (keyOpp && salesSpecialistMap.get(keyOpp)) ? salesSpecialistMap.get(keyOpp) : [];
+      const rowsByAcc = (keyAcc && salesSpecialistMap.get(keyAcc)) ? salesSpecialistMap.get(keyAcc) : [];
+      const matchedRows = dedupeMatches_(rowsByOpp, rowsByAcc);
+      const ssGov = evaluateSalesSpecialistGovernance(item, matchedRows);
+
+      fillEnvolvido.push([ssGov.salesSpecialistEnvolvido || 'Nenhum']);
+      fillElegibilidade.push([ssGov.elegibilidadeSS || 'NAO ELEGIVEL']);
+      fillJustificativa.push([ssGov.justificativaElegibilidadeSS || '-']);
+      fillStatus.push([ssGov.statusGovernancaSS || '-']);
+      fillUpdate.push([updateTs]);
+      updatedRows++;
+    }
+
+    outputSheet.getRange(2, colSsEnvolvido, numRows, 1).setValues(fillEnvolvido);
+    outputSheet.getRange(2, colSsElegibilidade, numRows, 1).setValues(fillElegibilidade);
+    outputSheet.getRange(2, colSsJustificativa, numRows, 1).setValues(fillJustificativa);
+    outputSheet.getRange(2, colSsStatus, numRows, 1).setValues(fillStatus);
+    if (colLastUpdate > -1) {
+      outputSheet.getRange(2, colLastUpdate, numRows, 1).setValues(fillUpdate);
+    }
+  }
+
+  logToSheet(
+    'INFO',
+    'ValidacaoSS',
+    `Diagnóstico+Aplicação SS OPEN: total=${counters.total}, match=${counters.withMatch}, semRegistro=${counters.semRegistro}, igualOwner=${counters.igualOwner}, naoAutorizado=${counters.naoAutorizado}, aplicadas=${updatedRows}`
+  );
+
+  safeAlert_(
+    `✅ Validação SS (OPEN) concluída.\n\n` +
+    `Total OPEN: ${counters.total}\n` +
+    `Com match SS: ${counters.withMatch}\n` +
+    `ERRO SEM REGISTRO SS: ${counters.semRegistro}\n` +
+    `ERRO SS IGUAL OWNER: ${counters.igualOwner}\n` +
+    `ERRO SS NAO AUTORIZADO: ${counters.naoAutorizado}\n` +
+    `ALERTA ELEGIVEL SEM SS VALIDO: ${counters.alertaElegivelSemValido}\n\n` +
+    `Cabeçalho OPEN ajustado: ${headerFix.totalColumns} colunas\n` +
+    `Linhas preenchidas em ${config.output}: ${updatedRows}\n` +
+    `Aba diagnóstico: ${reportSheetName}`
+  );
 }
 
 function setupTriggerAndStart(mode) {
@@ -788,6 +997,10 @@ function preencherClassificacaoVerticalIASeNecessario_(item, cacheMap, options) 
   };
 
   if (!forceIA && filled(item.verticalIA) && filled(item.subVerticalIA) && filled(item.subSubVerticalIA)) {
+    // Campos já preenchidos — ainda assim normaliza contra os alias maps
+    // para corrigir variações históricas sem precisar de nova chamada à IA
+    if (typeof normalizarSubVertical_    === 'function') item.subVerticalIA    = normalizarSubVertical_(item.subVerticalIA)    || item.subVerticalIA;
+    if (typeof normalizarSubSubVertical_ === 'function') item.subSubVerticalIA = normalizarSubSubVertical_(item.subSubVerticalIA) || item.subSubVerticalIA;
     return false;
   }
 
@@ -1000,13 +1213,16 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
   // OTIMIZAÇÃO: Lê sheets 1x antes do loop e reutiliza (reduz 50% queries)
   const rawActivities = getSheetData(SHEETS.ATIVIDADES);
   const rawChanges = getSheetData(config.changes);
+  const rawSalesSpecialist = getSalesSpecialistSheetData_();
   const activitiesHeaders = rawActivities ? rawActivities.headers : [];
   const changesHeaders = rawChanges ? rawChanges.headers : [];
   
   const activitiesMap = indexDataByMultiKey_(rawActivities);
   const changesMap = indexDataByMultiKey_(rawChanges);
+  const salesSpecialistMap = buildSalesSpecialistIndex_(rawSalesSpecialist);
 
-  const baseClients = getBaseClientsCache();
+  const contasNomeadasCache = getContasNomeadasCacheForGtm_({ forceRefresh: true, audit: true });
+  const baseClientsCache = getBaseClientsCache();
   const winRateMap = getWinRateByOwner_();
   const runId = getRunId_(mode);
   const verticalClassCache = new Map();
@@ -1039,11 +1255,22 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
     }
 
     // --- ANÁLISE DETERMINÍSTICA (HARD GATES) ---
-    const isBaseClient = baseClients.has(item.accName.toLowerCase());
-    const _contaFoco1 = classificarContaFoco2026_(item.accName);
-    const clientProfile = _contaFoco1
-      ? (_contaFoco1.tipo === 'BASE INSTALADA' ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT)
-      : (isBaseClient ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT);
+    const gtmCheck = evaluateGtmComplianceForItem_(item, contasNomeadasCache);
+    const clientProfile = gtmCheck.profileCliente || 'CONTA NAO NOMEADA';
+    const statusGtm = mode === 'OPEN' ? (gtmCheck.statusGtm || 'DADOS INSUFICIENTES') : '';
+    const accountKeyNorm = normText_(item.accName || '');
+    const isBaseByHistory = baseClientsCache.has(accountKeyNorm);
+    const namedTipoNorm = normText_(gtmCheck.tipoContaNomeada || '');
+    let statusCliente = isBaseByHistory ? 'BASE INSTALADA' : 'NOVO CLIENTE';
+    if (gtmCheck.isNamed && namedTipoNorm) {
+      if (/BASE/.test(namedTipoNorm)) statusCliente = 'BASE INSTALADA';
+      else if (/NOVO|NEW|TARGET/.test(namedTipoNorm)) statusCliente = 'NOVO CLIENTE';
+    }
+    const skipApprovalPrevia = mode === 'OPEN' && typeof isRenewalOpportunityForApproval_ === 'function' && isRenewalOpportunityForApproval_(item);
+    const flagAprovacao = (mode === 'OPEN' && !skipApprovalPrevia && !gtmCheck.isNamed && statusGtm === 'FORA GTM') ? 'APROVACAO PREVIA' : 'OK';
+    const motivoStatusGtm = mode === 'OPEN'
+      ? ((gtmCheck.motivoStatusGtm || '') + (flagAprovacao === 'APROVACAO PREVIA' ? (gtmCheck.motivoStatusGtm ? ', ' : '') + 'APROVACAO PREVIA OBRIGATORIA' : ''))
+      : '';
     const fiscal = calculateFiscalQuarterForItem_(item, mode);
     const rulesApplied = [];
     
@@ -1082,6 +1309,7 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
     if (mode === 'OPEN' && item.inactiveDays > 0 && idleDays === "SEM REGISTRO") {
         idleDays = item.inactiveDays;
     }
+    const excludeStagnationMetric = mode === 'OPEN' && isGwsRenewalOpportunity_(item);
     
     // VALIDAÇÃO: Verificar datas invertidas (created > closed)
     // IMPORTANTE: Não "consertar" no parseDate; só tentar correção quando a inconsistência é real.
@@ -1134,6 +1362,25 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
     let governanceIssues = [];
     let inconsistencyCheck = "OK";
 
+    if (mode === 'OPEN') {
+      const gtmReasonTxt = motivoStatusGtm ? ` (${motivoStatusGtm})` : '';
+      rulesApplied.push(`STATUS_GTM: ${statusGtm}${gtmReasonTxt}`);
+      if (excludeStagnationMetric) {
+        rulesApplied.push('EXCLUSAO ESTAGNACAO: RENOVACAO GWS');
+      }
+      maybeNotifyGwsRenewal90d_(item, hoje);
+      if (flagAprovacao === 'APROVACAO PREVIA') {
+        rulesApplied.push('APROVACAO PREVIA OBRIGATORIA');
+        if (typeof notifyApprovalRequiredForLooseAccount_ === 'function') {
+          notifyApprovalRequiredForLooseAccount_(item, {
+            ...gtmCheck,
+            statusGtm: statusGtm,
+            motivoStatusGtm: motivoStatusGtm
+          }, mode);
+        }
+      }
+    }
+
     // ========================================================================
     // GOVERNANÇA E HARD GATES: ESPECÍFICO PARA PIPELINE (OPEN)
     // ========================================================================
@@ -1156,7 +1403,7 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
         governanceIssues.push("DESQUALIFICAÇÃO PRECOCE");
       }
       // HARD GATE 2: Estagnação Profunda (>60 dias inativo)
-      else if (idleNum > 60) {
+      else if (!excludeStagnationMetric && idleNum > 60) {
         overrideActionCode = ENUMS.ACTION_CODE.REQUALIFY;
         rulesApplied.push("HARD GATE: Deal inativo há >60 dias. Requalificação obrigatória.");
         
@@ -1220,7 +1467,7 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
 
       // --- VELOCITY & MOMENTUM ANALYSIS ---
       const velocityAlert = [];
-      if (velocityMetrics.prediction === "ESTAGNADO") {
+      if (!excludeStagnationMetric && velocityMetrics.prediction === "ESTAGNADO") {
         velocityAlert.push("DEAL ESTAGNADO");
         governanceIssues.push(ENUMS.LABELS.STAGNANT);
       }
@@ -1324,7 +1571,7 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
       const semMudancaFaseRecente = daysSinceStageChange > 90;
       const funilAntigo = stageAgeDays !== null && stageAgeDays > 180;
       
-      if (semAtividadeRecente && semMudancaFaseRecente && funilAntigo) {
+      if (!excludeStagnationMetric && semAtividadeRecente && semMudancaFaseRecente && funilAntigo) {
         governanceIssues.push(ENUMS.LABELS.ALERTA_REVISAO_URGENTE);
         const idleText = noMoveDays !== null ? `${noMoveDays}d inativo` : "sem atividades";
         const faseText = daysSinceStageChange < 999 ? `${daysSinceStageChange}d sem mudança fase` : "nunca mudou fase";
@@ -1337,7 +1584,7 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
         : null;
       const hasUpcomingActivity = nextActDays !== null && nextActDays >= 0 && nextActDays <= 14;
 
-      if (!hasUpcomingActivity && (activityData.count === 0 || (typeof idleDays === 'number' && idleDays > idleThreshold && !govInfo.isGov))) {
+      if (!excludeStagnationMetric && !hasUpcomingActivity && (activityData.count === 0 || (typeof idleDays === 'number' && idleDays > idleThreshold && !govInfo.isGov))) {
         governanceIssues.push(ENUMS.LABELS.STAGNANT);
         rulesApplied.push("ESTAGNACAO");
         overrideForecastCat = overrideForecastCat || ENUMS.FORECAST_IA.PIPELINE;
@@ -1403,7 +1650,9 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
     const personas = mode === 'OPEN' ? extractPersonasFromActivities(activityData.fullText, item.desc) : null;
     const bant = mode === 'OPEN' ? calculateBANTScore_(item, activityData) : null;
     const nextStepCheck = mode === 'OPEN' ? validateNextStepConsistency(item.nextStep || item.stage, activityData.fullText, activityData.lastDate) : null;
-    const inactivityGate = mode === 'OPEN' ? checkInactivityGate(idleDays, (item.probabilidad > 60 ? 'UPSIDE' : 'PIPELINE'), activityData.lastDate, item.stage, daysInFunnel) : null;
+    const inactivityGate = (mode === 'OPEN' && !excludeStagnationMetric)
+      ? checkInactivityGate(idleDays, (item.probabilidad > 60 ? 'UPSIDE' : 'PIPELINE'), activityData.lastDate, item.stage, daysInFunnel, item)
+      : null;
     
     // Se inactivityGate detectar bloqueio crítico, adiciona às issues
     if (inactivityGate && inactivityGate.isBlocked) {
@@ -1431,12 +1680,12 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
       // Falso Engajamento: decisor(es) ausentes nas atividades recentes com alto engajamento
       if (personas && activityData.count > 3) {
         const _ghText   = (activityData.fullText || '').substring(0, 700).toLowerCase();
-        const _ghFn     = (s) => s && !/n.o identificado|not identified|n\/a/i.test(s) ? s.trim().split(/\s+/)[0].toLowerCase() : '';
-        const _ghChamp  = _ghFn(personas.champion || '');
-        const _ghBuyer  = _ghFn(personas.economicBuyer || '');
+        const _ghValid  = (s) => s && !/n.o identificado|not identified|n\/a/i.test(s);
+        const _ghChamp  = _ghValid(personas.champion || '') ? personas.champion : '';
+        const _ghBuyer  = _ghValid(personas.economicBuyer || '') ? personas.economicBuyer : '';
         const _ghMissed = [
-          (_ghChamp  && !_ghText.includes(_ghChamp))  ? `Champion "${personas.champion}"` : '',
-          (_ghBuyer  && !_ghText.includes(_ghBuyer))  ? `Economic Buyer "${personas.economicBuyer}"` : ''
+          (_ghChamp && !isPersonaReferencedInRecentText_(_ghText, _ghChamp)) ? `Champion "${personas.champion}"` : '',
+          (_ghBuyer && !isPersonaReferencedInRecentText_(_ghText, _ghBuyer)) ? `Economic Buyer "${personas.economicBuyer}"` : ''
         ].filter(Boolean);
         if (_ghMissed.length > 0) {
           governanceIssues.push(ENUMS.LABELS.FALSO_ENGAJAMENTO);
@@ -1525,6 +1774,13 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
         
       } catch (e) {
         logToSheet("ERROR", "AI", `Falha na IA para ${item.oppName}: ${e.message}`);
+        if (typeof notifyOpsCritical_ === 'function') {
+          notifyOpsCritical_(
+            'Falha IA no processamento OPEN',
+            e.message,
+            { module: 'Engine', mode: mode, oppName: item.oppName, oppKey: item.oppKey }
+          );
+        }
         jsonResp = { justificativa: "Erro de conexão IA (Retry)", acao_code: ENUMS.ACTION_CODE.CRM_AUDIT };
       }
     }
@@ -1598,8 +1854,11 @@ function runEngineBatch(mode, startIndex, batchSize, startTime) {
     // OPEN: 53 colunas incluindo MEDDIC, BANT, Forecast IA, Ciclo, Change Tracking, Anomalies, Velocity, Território, Estado/Cidade, Fonte, Calendário Faturação, Valor Reconhecido Q1/Q2/Q3/Q4
     // WON/LOST: 39 colunas incluindo Análise Retrospectiva, Causas, Lições
     
+    const ssRows = salesSpecialistMap.get(normText_(item.oppName || '')) || salesSpecialistMap.get(normText_(item.accName || '')) || [];
+    const ssGovernance = evaluateSalesSpecialistGovernance(item, ssRows);
+
     const finalRow = (mode === 'OPEN')
-      ? buildOpenOutputRow(runId, item, clientProfile, fiscal, activityData, meddic, jsonResp, finalLabels, finalForecastCategory, idleDays, inconsistencyCheck, finalAction, rulesApplied.join(" | "), detailedChanges, isCorrectTerritory, designatedSeller, quarterRecognition)
+      ? buildOpenOutputRow(runId, item, clientProfile, statusGtm, motivoStatusGtm, statusCliente, flagAprovacao, fiscal, activityData, meddic, jsonResp, finalLabels, finalForecastCategory, idleDays, inconsistencyCheck, finalAction, rulesApplied.join(" | "), detailedChanges, isCorrectTerritory, designatedSeller, quarterRecognition, ssGovernance)
       : buildClosedOutputRow(runId, mode, item, clientProfile, fiscal, jsonResp, finalLabels, activityData, detailedChanges, activityBreakdown);
     outputRows.push(finalRow);
     
@@ -1684,7 +1943,7 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
   let snapshotData = snapshotName ? getSheetData(snapshotName) : null;
   
   // Validar se snapshot tem o formato correto (deve ter 24 colunas)
-  if (snapshotData && snapshotData.headers && snapshotData.headers.length < 26) {
+  if (snapshotData && snapshotData.headers && snapshotData.headers.length < 30) {
     logToSheet("WARN", "QueueEngine", `⚠️ Snapshot antigo detectado (${snapshotData.headers.length} colunas). Recriando agregação...`);
     snapshotData = null; // Força recriação
   }
@@ -1704,7 +1963,10 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
         forecast_sf: row[15], fiscalQ: row[16], ciclo: row[17], reason: row[18],
         portfolio: row[19], segment: row[20], productFamily: row[21],
         billingState: row[22] || "", billingCity: row[23] || "", billingCalendar: row[24] || "",
-        tipoOportunidade: row[25] || "", processoTipo: row[26] || ""
+        tipoOportunidade: row[25] || "", processoTipo: row[26] || "",
+        segmentoConsolidado: row[27] || "",
+        totalQuantity: Number(row[28] || 0),
+        gwsQuantity: Number(row[29] || 0)
       };
       if (item.oppKey) aggMap.set(item.oppKey, item);
     });
@@ -1722,13 +1984,16 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
   // OTIMIZAÇÃO: Lê sheets 1x antes do loop e reutiliza (reduz 50% queries)
   const rawActivities = getSheetData(SHEETS.ATIVIDADES);
   const rawChanges = getSheetData(config.changes);
+  const rawSalesSpecialist = getSalesSpecialistSheetData_();
   const activitiesHeaders = rawActivities ? rawActivities.headers : [];
   const changesHeaders = rawChanges ? rawChanges.headers : [];
   
   const activitiesMap = indexDataByMultiKey_(rawActivities);
   const changesMap = indexDataByMultiKey_(rawChanges);
+  const salesSpecialistMap = buildSalesSpecialistIndex_(rawSalesSpecialist);
 
-  const baseClients = getBaseClientsCache();
+  const contasNomeadasCache = getContasNomeadasCacheForGtm_({ forceRefresh: true, audit: true });
+  const baseClientsCache = getBaseClientsCache();
   const winRateMap = getWinRateByOwner_();
   const runId = getRunId_(mode);
   const verticalClassCache = new Map();
@@ -1767,11 +2032,22 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
       );
     }
 
-    const isBaseClient = baseClients.has(item.accName.toLowerCase());
-    const _contaFoco2 = classificarContaFoco2026_(item.accName);
-    const clientProfile = _contaFoco2
-      ? (_contaFoco2.tipo === 'BASE INSTALADA' ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT)
-      : (isBaseClient ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT);
+    const gtmCheck = evaluateGtmComplianceForItem_(item, contasNomeadasCache);
+    const clientProfile = gtmCheck.profileCliente || 'CONTA NAO NOMEADA';
+    const statusGtm = mode === 'OPEN' ? (gtmCheck.statusGtm || 'DADOS INSUFICIENTES') : '';
+    const accountKeyNorm = normText_(item.accName || '');
+    const isBaseByHistory = baseClientsCache.has(accountKeyNorm);
+    const namedTipoNorm = normText_(gtmCheck.tipoContaNomeada || '');
+    let statusCliente = isBaseByHistory ? 'BASE INSTALADA' : 'NOVO CLIENTE';
+    if (gtmCheck.isNamed && namedTipoNorm) {
+      if (/BASE/.test(namedTipoNorm)) statusCliente = 'BASE INSTALADA';
+      else if (/NOVO|NEW|TARGET/.test(namedTipoNorm)) statusCliente = 'NOVO CLIENTE';
+    }
+    const skipApprovalPrevia = mode === 'OPEN' && typeof isRenewalOpportunityForApproval_ === 'function' && isRenewalOpportunityForApproval_(item);
+    const flagAprovacao = (mode === 'OPEN' && !skipApprovalPrevia && !gtmCheck.isNamed && statusGtm === 'FORA GTM') ? 'APROVACAO PREVIA' : 'OK';
+    const motivoStatusGtm = mode === 'OPEN'
+      ? ((gtmCheck.motivoStatusGtm || '') + (flagAprovacao === 'APROVACAO PREVIA' ? (gtmCheck.motivoStatusGtm ? ', ' : '') + 'APROVACAO PREVIA OBRIGATORIA' : ''))
+      : '';
     const fiscal = calculateFiscalQuarterForItem_(item, mode);
     const rulesApplied = [];
 
@@ -1804,6 +2080,7 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
     if (mode === 'OPEN' && item.inactiveDays > 0 && idleDays === "SEM REGISTRO") {
       idleDays = item.inactiveDays;
     }
+    const excludeStagnationMetric = mode === 'OPEN' && isGwsRenewalOpportunity_(item);
 
     const govInfo = detectGovProcurementStage_((item.desc || "") + " " + (activityData.fullText || ""));
     const meddic = calculateMEDDICScore(item, activityData.fullText);
@@ -1831,6 +2108,25 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
     let inconsistencyCheck = "OK";
 
     if (mode === 'OPEN') {
+      const gtmReasonTxt = motivoStatusGtm ? ` (${motivoStatusGtm})` : '';
+      rulesApplied.push(`STATUS_GTM: ${statusGtm}${gtmReasonTxt}`);
+      if (excludeStagnationMetric) {
+        rulesApplied.push('EXCLUSAO ESTAGNACAO: RENOVACAO GWS');
+      }
+      maybeNotifyGwsRenewal90d_(item, hoje);
+      if (flagAprovacao === 'APROVACAO PREVIA') {
+        rulesApplied.push('APROVACAO PREVIA OBRIGATORIA');
+        if (typeof notifyApprovalRequiredForLooseAccount_ === 'function') {
+          notifyApprovalRequiredForLooseAccount_(item, {
+            ...gtmCheck,
+            statusGtm: statusGtm,
+            motivoStatusGtm: motivoStatusGtm
+          }, mode);
+        }
+      }
+    }
+
+    if (mode === 'OPEN') {
       const segmentNorm = normText_(item.segment);
       const isGovSegment = /GOV|PUBLIC|ESTATAL/.test(segmentNorm);
       const idleThreshold = isGovSegment ? 60 : 45;
@@ -1848,7 +2144,7 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
         governanceIssues.push("DESQUALIFICAÇÃO PRECOCE");
       }
       // HARD GATE 2: Estagnação Profunda (>60 dias inativo)
-      else if (idleNum > 60) {
+      else if (!excludeStagnationMetric && idleNum > 60) {
         overrideActionCode = ENUMS.ACTION_CODE.REQUALIFY;
         rulesApplied.push("HARD GATE: Deal inativo há >60 dias. Requalificação obrigatória.");
         
@@ -1978,7 +2274,7 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
       item._velocityMetrics = velocityMetrics;
       
       const velocityAlert = [];
-      if (velocityMetrics.prediction === "ESTAGNADO") {
+      if (!excludeStagnationMetric && velocityMetrics.prediction === "ESTAGNADO") {
         velocityAlert.push("DEAL ESTAGNADO");
         governanceIssues.push(ENUMS.LABELS.STAGNANT);
       }
@@ -2013,7 +2309,7 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
       const semMudancaFaseRecente = daysSinceStageChange > 90;
       const funilAntigo = stageAgeDays !== null && stageAgeDays > 180;
       
-      if (semAtividadeRecente && semMudancaFaseRecente && funilAntigo) {
+      if (!excludeStagnationMetric && semAtividadeRecente && semMudancaFaseRecente && funilAntigo) {
         governanceIssues.push(ENUMS.LABELS.ALERTA_REVISAO_URGENTE);
         const idleText = noMoveDays !== null ? `${noMoveDays}d inativo` : "sem atividades";
         const faseText = daysSinceStageChange < 999 ? `${daysSinceStageChange}d sem mudança fase` : "nunca mudou fase";
@@ -2026,7 +2322,7 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
         : null;
       const hasUpcomingActivity = nextActDays !== null && nextActDays >= 0 && nextActDays <= 14;
 
-      if (!hasUpcomingActivity && (activityData.count === 0 || (typeof idleDays === 'number' && idleDays > idleThreshold && !govInfo.isGov))) {
+      if (!excludeStagnationMetric && !hasUpcomingActivity && (activityData.count === 0 || (typeof idleDays === 'number' && idleDays > idleThreshold && !govInfo.isGov))) {
         governanceIssues.push(ENUMS.LABELS.STAGNANT);
         rulesApplied.push("OPORTUNIDADE ESTAGNADA");
         overrideForecastCat = overrideForecastCat || ENUMS.FORECAST_IA.PIPELINE;
@@ -2090,7 +2386,7 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
     const personas = mode === 'OPEN' ? extractPersonasFromActivities(activityData.fullText, item.desc) : null;
     const bant = mode === 'OPEN' ? calculateBANTScore_(item, activityData) : null;
     const nextStepCheck = mode === 'OPEN' ? validateNextStepConsistency(item.nextStep || item.stage, activityData.fullText, activityData.lastDate) : null;
-    const inactivityGate = mode === 'OPEN' ? checkInactivityGate(idleDays, (item.probabilidad > 60 ? 'UPSIDE' : 'PIPELINE'), activityData.lastDate, item.stage, daysInFunnel) : null;
+    const inactivityGate = mode === 'OPEN' ? checkInactivityGate(idleDays, (item.probabilidad > 60 ? 'UPSIDE' : 'PIPELINE'), activityData.lastDate, item.stage, daysInFunnel, item) : null;
     
     // Se inactivityGate detectar bloqueio crítico, adiciona às issues
     if (inactivityGate && inactivityGate.isBlocked) {
@@ -2108,6 +2404,13 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
       jsonResp = cleanAndParseJSON(rawResponse);
     } catch (e) {
       logToSheet("ERROR", "AI", `Falha na IA para ${item.oppName}: ${e.message}`);
+      if (typeof notifyOpsCritical_ === 'function') {
+        notifyOpsCritical_(
+          'Falha IA no processamento em fila',
+          e.message,
+          { module: 'QueueEngine', mode: mode, oppName: item.oppName, oppKey: item.oppKey }
+        );
+      }
       jsonResp = { justificativa: "Erro de conexão IA (Retry)", acao_code: ENUMS.ACTION_CODE.CRM_AUDIT };
     }
 
@@ -2156,8 +2459,11 @@ function runEngineBatchFromQueue_(mode, startIndex, batchSize, startTime, queueS
     // OPEN: 53 colunas incluindo MEDDIC, BANT, Forecast IA, Ciclo, Change Tracking, Anomalies, Velocity, Território, Estado/Cidade, Fonte, Calendário Faturação, Valores Q1-Q4
     // WON/LOST: 39 colunas incluindo Análise Retrospectiva, Causas, Lições
     
+    const ssRows = salesSpecialistMap.get(normText_(item.oppName || '')) || salesSpecialistMap.get(normText_(item.accName || '')) || [];
+    const ssGovernance = evaluateSalesSpecialistGovernance(item, ssRows);
+
     const finalRow = (mode === 'OPEN')
-      ? buildOpenOutputRow(runId, item, clientProfile, fiscal, activityData, meddic, jsonResp, finalLabels, finalForecastCategory, idleDays, inconsistencyCheck, finalAction, rulesApplied.join(" | "), detailedChanges, isCorrectTerritory, designatedSeller, quarterRecognition)
+      ? buildOpenOutputRow(runId, item, clientProfile, statusGtm, motivoStatusGtm, statusCliente, flagAprovacao, fiscal, activityData, meddic, jsonResp, finalLabels, finalForecastCategory, idleDays, inconsistencyCheck, finalAction, rulesApplied.join(" | "), detailedChanges, isCorrectTerritory, designatedSeller, quarterRecognition, ssGovernance)
       : buildClosedOutputRow(runId, mode, item, clientProfile, fiscal, jsonResp, finalLabels, activityData, detailedChanges, activityBreakdown);
     outputRows.push(finalRow);
 
@@ -2561,7 +2867,7 @@ function setupAnalysisSheet(mode, preserve) {
 
 function getOpenAnalysisHeaders_() {
   return [
-    "Run ID", "Oportunidade", "Conta", "Perfil", "Produtos", "Vendedor", "Gross", "Net", "Fase Atual", "Forecast SF", "Fiscal Q",
+    "Run ID", "Oportunidade", "Conta", "Perfil Cliente", "Status GTM", "Motivo Status GTM", "Status Cliente", "Flag Aprovação Prévia", "Produtos", "Vendedor", "Gross", "Net", "Fase Atual", "Forecast SF", "Fiscal Q",
     "Data Prevista", "Data de criação", "Ciclo (dias)", "Dias Funil", "Atividades", "Atividades (Peso)", "Mix Atividades", "Idle (Dias)",
     "Qualidade Engajamento", "Forecast IA", "Confiança (%)", "Motivo Confiança", "MEDDIC Score", "MEDDIC Gaps", "MEDDIC Evidências",
     "BANT Score", "BANT Gaps", "BANT Evidências", "Justificativa IA", "Regras Aplicadas", "Incoerência Detectada", "Perguntas de Auditoria IA",
@@ -2570,7 +2876,7 @@ function getOpenAnalysisHeaders_() {
     "Território Correto?", "Vendedor Designado", "Estado/Cidade Detectado", "Fonte Detecção", "Calendário Faturação",
     "Valor Reconhecido Q1", "Valor Reconhecido Q2", "Valor Reconhecido Q3", "Valor Reconhecido Q4", "Subsegmento de mercado",
     "Segmento Consolidado", "Portfólio", "Portfolio FDM", "Owner Preventa", "Cidade de cobrança", "Estado/Província de cobrança",
-    "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "Evidência Citada IA", "Avaliação Personas IA", "Tipo Oportunidade", "Processo", "🕐 Última Atualização"
+    "Vertical IA", "Sub-vertical IA", "Sub-sub-vertical IA", "Evidência Citada IA", "Avaliação Personas IA", "Tipo Oportunidade", "Processo", "Sales Specialist Envolvido", "Elegibilidade SS", "Justificativa Elegibilidade SS", "Status Governança SS", "🕐 Última Atualização"
   ];
 }
 
@@ -2616,6 +2922,7 @@ function configurarCabecalhoOpenParaAutoSync_() {
   });
 
   const aliases = {
+    'PERFIL CLIENTE': ['PERFIL CLIENTE', 'PERFIL'],
     'DATA DE CRIACAO': ['DATA DE CRIACAO', 'DATA DE CRIACAO DE ONDE PEGAR', 'CREATED DATE', 'DATE CREATED', 'DATA_DE_CRIACAO', 'DATA_DE_CRIACAO_DE_ONDE_PEGAR'],
     'PROCESSO': ['PROCESSO', 'PROCESSO IA', 'PROCESSO_IA'],
     'ULTIMA ATUALIZACAO': ['ULTIMA ATUALIZACAO', '🕐 ULTIMA ATUALIZACAO'],
@@ -3157,7 +3464,7 @@ function buildAggregationSnapshot_(mode, runId) {
                    "products", "stage", "probabilidad", "closed", "desc", "created", 
                    "inactiveDays", "nextActivityDate", "forecast_sf", "fiscalQ", "ciclo", "reason", 
                    "portfolio", "segment", "productFamily", "billingState", "billingCity", "billingCalendar",
-                   "tipoOportunidade", "processoTipo"];
+                   "tipoOportunidade", "processoTipo", "segmentoConsolidado", "totalQuantity", "gwsQuantity"];
   snapshot.getRange(1, 1, 1, headers.length).setValues([headers]);
   
   if (aggregatedData.length > 0) {
@@ -3168,7 +3475,8 @@ function buildAggregationSnapshot_(mode, runId) {
       item.nextActivityDate || "", item.forecast_sf || "", item.fiscalQ || "", item.ciclo || 0, item.reason || "",
       item.portfolio || "", item.segment || "", item.productFamily || "",
       item.billingState || "", item.billingCity || "", item.billingCalendar || "",
-      item.tipoOportunidade || "", item.processoTipo || ""
+      item.tipoOportunidade || "", item.processoTipo || "",
+      item.segmentoConsolidado || "", Number(item.totalQuantity || 0), Number(item.gwsQuantity || 0)
     ]);
     snapshot.getRange(2, 1, rows.length, headers.length).setValues(rows);
   }
@@ -6908,11 +7216,13 @@ function processarAnaliseCompleta_(oppName, mode, config) {
   
   const rawActivities = getSheetData(SHEETS.ATIVIDADES);
   const rawChanges = getSheetData(config.changes);
+  const rawSalesSpecialist = getSalesSpecialistSheetData_();
   const activitiesHeaders = rawActivities ? rawActivities.headers : [];
   const changesHeaders = rawChanges ? rawChanges.headers : [];
   
   const activitiesMap = indexDataByMultiKey_(rawActivities);
   const changesMap = indexDataByMultiKey_(rawChanges);
+  const salesSpecialistMap = buildSalesSpecialistIndex_(rawSalesSpecialist);
   
   const oppLookupKey = normText_(item.oppId || item.oppName);
   const relatedActivities = activitiesMap.get(oppLookupKey) || [];
@@ -6922,12 +7232,24 @@ function processarAnaliseCompleta_(oppName, mode, config) {
   // IMPORTANTE: applyClosedDateCorrection_ também recalcula o ciclo automaticamente
   applyClosedDateCorrection_(item, mode, relatedChanges, changesHeaders);
   
-  const baseClients = getBaseClientsCache();
-  const isBaseClient = baseClients.has(item.accName.toLowerCase());
-  const _contaFoco3 = classificarContaFoco2026_(item.accName);
-  const clientProfile = _contaFoco3
-    ? (_contaFoco3.tipo === 'BASE INSTALADA' ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT)
-    : (isBaseClient ? ENUMS.LABELS.BASE_CLIENT : ENUMS.LABELS.NEW_CLIENT);
+  const contasNomeadasCache = getContasNomeadasCacheForGtm_({ forceRefresh: true, audit: true });
+  const baseClientsCache = getBaseClientsCache();
+  const gtmCheck = evaluateGtmComplianceForItem_(item, contasNomeadasCache);
+  const clientProfile = gtmCheck.profileCliente || 'CONTA NAO NOMEADA';
+  const statusGtm = mode === 'OPEN' ? (gtmCheck.statusGtm || 'DADOS INSUFICIENTES') : '';
+  const accountKeyNorm = normText_(item.accName || '');
+  const isBaseByHistory = baseClientsCache.has(accountKeyNorm);
+  const namedTipoNorm = normText_(gtmCheck.tipoContaNomeada || '');
+  let statusCliente = isBaseByHistory ? 'BASE INSTALADA' : 'NOVO CLIENTE';
+  if (gtmCheck.isNamed && namedTipoNorm) {
+    if (/BASE/.test(namedTipoNorm)) statusCliente = 'BASE INSTALADA';
+    else if (/NOVO|NEW|TARGET/.test(namedTipoNorm)) statusCliente = 'NOVO CLIENTE';
+  }
+  const skipApprovalPrevia = mode === 'OPEN' && typeof isRenewalOpportunityForApproval_ === 'function' && isRenewalOpportunityForApproval_(item);
+  const flagAprovacao = (mode === 'OPEN' && !skipApprovalPrevia && !gtmCheck.isNamed && statusGtm === 'FORA GTM') ? 'APROVACAO PREVIA' : 'OK';
+  const motivoStatusGtm = mode === 'OPEN'
+    ? ((gtmCheck.motivoStatusGtm || '') + (flagAprovacao === 'APROVACAO PREVIA' ? (gtmCheck.motivoStatusGtm ? ', ' : '') + 'APROVACAO PREVIA OBRIGATORIA' : ''))
+    : '';
   const fiscal = calculateFiscalQuarterForItem_(item, mode);
   const hoje = new Date();
   const runId = getRunId_(mode);
@@ -6938,6 +7260,7 @@ function processarAnaliseCompleta_(oppName, mode, config) {
   if (mode === 'OPEN' && item.inactiveDays > 0 && idleDays === "SEM REGISTRO") {
     idleDays = item.inactiveDays;
   }
+  const excludeStagnationMetric = mode === 'OPEN' && isGwsRenewalOpportunity_(item);
   
   const meddic = calculateMEDDICScore(item, activityData.fullText);
   const auditSummary = summarizeChangesSmart(relatedChanges, changesHeaders);
@@ -6966,6 +7289,20 @@ function processarAnaliseCompleta_(oppName, mode, config) {
     let rulesApplied = [];
     let overrideForecastCat = null;
     let overrideActionCode = null;
+
+    const gtmReasonTxt = motivoStatusGtm ? ` (${motivoStatusGtm})` : '';
+    rulesApplied.push(`STATUS_GTM: ${statusGtm}${gtmReasonTxt}`);
+    if (excludeStagnationMetric) {
+      rulesApplied.push('EXCLUSAO ESTAGNACAO: RENOVACAO GWS');
+    }
+    maybeNotifyGwsRenewal90d_(item, hoje);
+    if (flagAprovacao === 'APROVACAO PREVIA' && typeof notifyApprovalRequiredForLooseAccount_ === 'function') {
+      notifyApprovalRequiredForLooseAccount_(item, {
+        ...gtmCheck,
+        statusGtm: statusGtm,
+        motivoStatusGtm: motivoStatusGtm
+      }, mode);
+    }
     
     if (govInfo.isGov) {
       governanceIssues.push(ENUMS.LABELS.GOV_PROCESS);
@@ -6981,7 +7318,9 @@ function processarAnaliseCompleta_(oppName, mode, config) {
     const personas = extractPersonasFromActivities(activityData.fullText, item.desc);
     const bant = calculateBANTScore_(item, activityData);
     const nextStepCheck = validateNextStepConsistency(item.nextStep || item.stage, activityData.fullText, activityData.lastDate);
-    const inactivityGate = checkInactivityGate(idleDays, (item.probabilidad > 60 ? 'UPSIDE' : 'PIPELINE'), activityData.lastDate, item.stage, daysInFunnel);
+    const inactivityGate = !excludeStagnationMetric
+      ? checkInactivityGate(idleDays, (item.probabilidad > 60 ? 'UPSIDE' : 'PIPELINE'), activityData.lastDate, item.stage, daysInFunnel, item)
+      : null;
     
     if (inactivityGate && inactivityGate.isBlocked) {
       governanceIssues.push("INATIVIDADE-GATE-CRÍTICO");
@@ -6996,6 +7335,13 @@ function processarAnaliseCompleta_(oppName, mode, config) {
       jsonResp = cleanAndParseJSON(rawResponse);
     } catch (e) {
       logToSheet("ERROR", "IA", `Falha IA: ${e.message}`);
+      if (typeof notifyOpsCritical_ === 'function') {
+        notifyOpsCritical_(
+          'Falha IA em processamento direto',
+          e.message,
+          { module: 'DirectProcess', mode: mode, oppName: item.oppName }
+        );
+      }
       jsonResp = { justificativa: "Erro IA", acao_code: ENUMS.ACTION_CODE.CRM_AUDIT };
     }
     
@@ -7003,7 +7349,10 @@ function processarAnaliseCompleta_(oppName, mode, config) {
     const finalAction = overrideActionCode || jsonResp.acao_code || ENUMS.ACTION_CODE.CRM_AUDIT;
     const finalForecastCategory = overrideForecastCat || jsonResp.forecast_cat || ENUMS.FORECAST_IA.PIPELINE;
     
-    finalRow = buildOpenOutputRow(runId, item, clientProfile, fiscal, activityData, meddic, jsonResp, finalLabels, finalForecastCategory, idleDays, inconsistencyCheck, finalAction, rulesApplied.join(" | "), detailedChanges, isCorrectTerritory, designatedSeller, quarterRecognition);
+    const ssRows = salesSpecialistMap.get(normText_(item.oppName || '')) || salesSpecialistMap.get(normText_(item.accName || '')) || [];
+    const ssGovernance = evaluateSalesSpecialistGovernance(item, ssRows);
+
+    finalRow = buildOpenOutputRow(runId, item, clientProfile, statusGtm, motivoStatusGtm, statusCliente, flagAprovacao, fiscal, activityData, meddic, jsonResp, finalLabels, finalForecastCategory, idleDays, inconsistencyCheck, finalAction, rulesApplied.join(" | "), detailedChanges, isCorrectTerritory, designatedSeller, quarterRecognition, ssGovernance);
   } else {
     const activityBreakdown = getDetailedActivityBreakdown(relatedActivities, activitiesHeaders, hoje);
     const prompt = getClosedPrompt(mode, item, clientProfile, fiscal, activityData, meddic, auditSummary, idleDays, normalizeLossReason_(item.reason), detailedChanges, activityBreakdown);
@@ -7014,6 +7363,13 @@ function processarAnaliseCompleta_(oppName, mode, config) {
       jsonResp = cleanAndParseJSON(rawResponse);
     } catch (e) {
       logToSheet("ERROR", "IA", `Falha IA: ${e.message}`);
+      if (typeof notifyOpsCritical_ === 'function') {
+        notifyOpsCritical_(
+          'Falha IA em análise fechada',
+          e.message,
+          { module: 'DirectProcess', mode: mode, oppName: item.oppName }
+        );
+      }
     }
     
     const finalLabels = normalizeList(jsonResp.labels || [], ENUMS.LABELS);
@@ -7075,6 +7431,94 @@ function processarAnaliseCompleta_(oppName, mode, config) {
   SpreadsheetApp.flush();
   
   return true;
+}
+
+/**
+ * Regra de exclusao da metrica de estagnacao:
+ * Produto = GWS e Tipo = Renovacao.
+ */
+function isGwsRenewalOpportunity_(item) {
+  if (!item) return false;
+
+  const tipoNorm = normText_(`${item.tipoOportunidade || ''} ${item.processoTipo || ''}`);
+  const renewalHintNorm = normText_(`${item.oppName || ''} ${item.products || ''}`);
+  const isRenewal = /RENOV|RENEW|RETENCAO|RETENTION/.test(tipoNorm)
+    || /RENOV|RENEW|RETENCAO|RETENTION/.test(renewalHintNorm);
+
+  const gwsByQuantity = Number(item.gwsQuantity || 0) > 0;
+  const gwsByText = (typeof isGwsProductLine_ === 'function')
+    ? isGwsProductLine_(item.products, item.productFamily)
+    : /\bGWS\b|GOOGLE\s*WORKSPACE|WORKSPACE/i.test(`${item.products || ''} ${item.productFamily || ''}`);
+
+  return !!(isRenewal && (gwsByQuantity || gwsByText));
+}
+
+/**
+ * Envia alerta de renovacao GWS para CS (Alex) quando faltar ate 90 dias.
+ * Evita duplicidade por oportunidade + data de renovacao.
+ */
+function maybeNotifyGwsRenewal90d_(item, today) {
+  try {
+    if (!isGwsRenewalOpportunity_(item)) return;
+
+    const referenceDate = today instanceof Date ? today : new Date();
+    const closeDate = item.closed instanceof Date ? item.closed : parseDate(item.closed);
+    if (!(closeDate instanceof Date) || isNaN(closeDate.getTime())) return;
+
+    const daysUntilRenewal = daysUntilDate_(closeDate, referenceDate);
+    if (daysUntilRenewal < 0 || daysUntilRenewal > 90) return;
+
+    const oppKeyNorm = normText_(item.oppId || item.oppName || item.accName || '');
+    if (!oppKeyNorm) return;
+
+    const timeZone = Session.getScriptTimeZone() || 'GMT';
+    const renewalDateKey = Utilities.formatDate(closeDate, timeZone, 'yyyy-MM-dd');
+    const propKey = `GWS_RENEWAL_90D_ALERT_${oppKeyNorm}_${renewalDateKey}`;
+    const props = PropertiesService.getScriptProperties();
+    if (props.getProperty(propKey)) return;
+
+    const to = 'alex.araujo@xertica.com';
+    const oppName = String(item.oppName || 'Oportunidade sem nome');
+    const account = String(item.accName || 'Conta nao informada');
+    const owner = String(item.owner || 'Owner nao informado');
+    const subject = `[Alerta Renovacao GWS] ${oppName} em ${daysUntilRenewal} dias`;
+    const body = [
+      'Alerta automatico de renovacao GWS.',
+      '',
+      `Oportunidade: ${oppName}`,
+      `Conta: ${account}`,
+      `Owner atual: ${owner}`,
+      `Data prevista de renovacao: ${renewalDateKey}`,
+      `Dias para renovacao: ${daysUntilRenewal}`,
+      '',
+      'Acao sugerida: iniciar plano de renovacao com 90 dias de antecedencia.'
+    ].join('\n');
+
+    GmailApp.sendEmail(to, subject, body, {
+      name: 'Xertica.ai Sales Intelligence',
+      noReply: true
+    });
+
+    props.setProperty(propKey, String(Date.now()));
+    logToSheet('INFO', 'GwsRenewal90d', `Alerta enviado para ${to} (${daysUntilRenewal}d)`, {
+      oportunidade: oppName,
+      conta: account,
+      renovacao: renewalDateKey
+    });
+  } catch (err) {
+    logToSheet('WARN', 'GwsRenewal90d', `Falha no alerta 90d: ${err.message || err}`);
+  }
+}
+
+function daysUntilDate_(targetDate, baseDate) {
+  if (!(targetDate instanceof Date) || isNaN(targetDate.getTime())) return NaN;
+  const base = baseDate instanceof Date ? baseDate : new Date();
+
+  const targetMidnight = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate()).getTime();
+  const baseMidnight = new Date(base.getFullYear(), base.getMonth(), base.getDate()).getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+
+  return Math.floor((targetMidnight - baseMidnight) / dayMs);
 }
 
 /**

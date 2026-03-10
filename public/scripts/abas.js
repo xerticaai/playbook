@@ -1,6 +1,12 @@
-// Controle de abas: switchExecTab, toggleAIAnalysis, toggleExecutiveAnalysis
+// Controle de abas: switchExecTab, toggleAIAnalysis
 function switchExecTab(tabName) {
   console.log('[TAB] Trocando para tab:', tabName);
+
+  const mode = window.execDisplayMode || 'booking_gross';
+  const isNetRevenueMode = (mode === 'net');
+  if (tabName === 'resumo-quarter' && !isNetRevenueMode) {
+    tabName = 'resumo';
+  }
   
   // Remove active de todos os botões
   document.querySelectorAll('.exec-tab').forEach(tab => {
@@ -29,6 +35,10 @@ function switchExecTab(tabName) {
     activeContent.classList.add('active');
     activeContent.style.display = 'block';
   }
+
+  if (tabName === 'resumo-quarter' && typeof window.loadQuarterSummary === 'function') {
+    window.loadQuarterSummary();
+  }
 }
 
 // Função para expandir/colapsar análise de IA
@@ -47,24 +57,18 @@ function toggleAIAnalysis() {
   }
 }
 
-// AI Strategy Slide Panel — open / close
+// AI Strategy Slide Panel — removido; análise agora vive na aba "Análise IA"
+// Stubs mantidos para compatibilidade com quaisquer referências legadas
 function openAIPanel() {
-  var panel = document.getElementById('ai-strategy-panel');
-  var overlay = document.getElementById('ai-strategy-overlay');
-  if (panel) panel.classList.add('open');
-  if (overlay) overlay.style.display = 'block';
-  document.body.style.overflow = 'hidden';
+  // redireciona para a aba de análise IA
+  switchExecTab('analise-ia');
 }
 
 function closeAIPanel() {
-  var panel = document.getElementById('ai-strategy-panel');
-  var overlay = document.getElementById('ai-strategy-overlay');
-  if (panel) panel.classList.remove('open');
-  if (overlay) overlay.style.display = 'none';
-  document.body.style.overflow = '';
+  // no-op — painel slide removido
 }
 
-// Backward-compat alias (called by any legacy references)
-function toggleExecutiveAnalysis() { openAIPanel(); }
+// Backward-compat alias
+function toggleExecutiveAnalysis() { switchExecTab('analise-ia'); }
 
 // Função para atualizar métricas do Dashboard Executivo usando dados da API /api/metrics

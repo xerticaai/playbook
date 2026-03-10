@@ -70,23 +70,23 @@ cloud-run/
 - `GET /health` - Health check with service status
 
 ### Pipeline
-- `GET /api/v1/pipeline` - Get pipeline records
+- `GET /api/pipeline` - Get pipeline records
   - Query params: `fiscal_q`, `vendedor`, `forecast_category`, `min_gross`, `limit`
 
 ### Closed Deals
-- `GET /api/v1/closed/won` - Get closed won deals
+- `GET /api/closed/won` - Get closed won deals
   - Query params: `fiscal_q`, `vendedor`, `has_analysis`, `limit`
-- `GET /api/v1/closed/lost` - Get closed lost deals
+- `GET /api/closed/lost` - Get closed lost deals
   - Query params: `fiscal_q`, `vendedor`, `has_deep_analysis`, `evitavel`, `limit`
 
 ### Metrics
-- `GET /api/v1/metrics/summary` - Summary metrics across all tables
+- `GET /api/metrics` - Summary metrics across all tables
   - Query params: `fiscal_q`, `vendedor`
 
 ### Analytics
-- `GET /api/v1/analytics/top_vendors` - Top performing vendors
+- `GET /api/top-sellers` - Top performing vendors
   - Query params: `fiscal_q`, `metric`, `limit`
-- `GET /api/v1/analytics/win_loss_analysis` - Win/Loss analysis with reasons
+- `GET /api/analyze-patterns` - Win/Loss analysis with reasons
   - Query params: `fiscal_q`, `vendedor`
 
 ### ML Predictions
@@ -178,10 +178,10 @@ pytest tests/ --cov=app --cov-report=html
 curl https://your-service-url.run.app/health
 
 # Get pipeline
-curl "https://your-service-url.run.app/api/v1/pipeline?fiscal_q=FY26-Q1&limit=10"
+curl "https://your-service-url.run.app/api/pipeline?fiscal_q=FY26-Q1&limit=10"
 
 # Get metrics
-curl "https://your-service-url.run.app/api/v1/metrics/summary"
+curl "https://your-service-url.run.app/api/metrics?year=2026&quarter=1"
 
 # ML Predictions (dashboard payload)
 curl -X POST "https://your-service-url.run.app/api/ml/predictions" \

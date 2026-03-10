@@ -101,6 +101,7 @@
     if (f.sub_sub_vertical_ia) parts.push('Sub-subvertical IA: ' + f.sub_sub_vertical_ia);
     if (f.subsegmento_mercado) parts.push('Subsegmento: ' + f.subsegmento_mercado);
     if (f.segmento_consolidado) parts.push('Segmento de Mercado: ' + f.segmento_consolidado);
+    if (f.portfolio) parts.push('Portfólio: ' + f.portfolio);
     if (f.portfolio_fdm) parts.push('Portfólio FDM: ' + f.portfolio_fdm);
     if (f.tipo_oportunidade) parts.push('Tipo de Oportunidade: ' + f.tipo_oportunidade);
     if (f.processo) parts.push('Processo: ' + f.processo);
@@ -172,7 +173,7 @@
     var distinctSources = Array.from(new Set((state.rows || []).map(function (r) { return r.source || 'other'; })));
     chipsEl.innerHTML = ['all'].concat(distinctSources).map(function (src) {
       var active = (state.activeSource || 'all') === src;
-      var label = src === 'all' ? 'Tudo' : src.toUpperCase();
+      var label = src === 'all' ? 'Tudo' : src === 'revenue' ? 'Revenue' : src.toUpperCase();
       return '<button class="exec-dd-chip ' + (active ? 'active' : '') + '" onclick="setExecutiveDrilldownSource(\'' + src + '\')">' + label + '</button>';
     }).join('');
 
@@ -218,14 +219,15 @@
       var rowKey = getExecDrilldownRowKey(row);
       var isOpen = rowKey === expandedKey;
       var source = row.source || 'other';
-      var statusText = source === 'won' ? 'Ganho' : source === 'lost' ? 'Perdido' : 'Aberto';
-      var badgeClass = source === 'won' ? 'dd-badge-won' : source === 'lost' ? 'dd-badge-lost' : 'dd-badge-pipe';
+      var statusText = source === 'won' ? 'Ganho' : source === 'lost' ? 'Perdido' : source === 'revenue' ? 'Faturado' : 'Aberto';
+      var badgeClass = source === 'won' ? 'dd-badge-won' : source === 'lost' ? 'dd-badge-lost' : source === 'revenue' ? 'dd-badge-revenue' : 'dd-badge-pipe';
       var ownerInitials = String(row.owner || 'N/A').split(' ').filter(Boolean).map(function (part) { return part[0]; }).join('').slice(0, 2).toUpperCase();
 
       var grossValue = Number(row.value || row.gross || 0);
       var netValue = Number(row.netValue || row.value || 0);
       var idleDays = row.idleDays != null ? Number(row.idleDays) : null;
       var cycle = row.cycle != null ? Number(row.cycle) : null;
+      var isStagnant = idleDays != null && idleDays >= 30 && (cycle == null || cycle >= 90);
       var confidence = row.confidence != null ? Number(row.confidence) : null;
       var meddicScore = row.meddic != null ? Math.max(0, Math.min(6, Number(row.meddic))) : null;
       var meddicPct = row.meddicPct != null ? Math.max(0, Math.min(100, Number(row.meddicPct))) : null;
@@ -281,28 +283,73 @@
         '</tr>' +
         '<tr class="exec-dd-exp-row" style="display:' + (isOpen ? 'table-row' : 'none') + '" id="exec-dd-exp-' + idx + '" onclick="toggleExecutiveDrilldownRow(' + idx + ')">' +
           '<td colspan="4" class="exec-dd-exp-cell">' +
-            '<div class="exec-dd-hud-wrap">' +
-              '<div class="exec-dd-hud-commercial">' +
-                '<div class="exec-dd-hud-row exec-dd-hud-row-fin">' +
-                  '<div><div class="exec-dd-hud-label">Net Revenue</div><div class="exec-dd-hud-value text-cyan">' + formatMoneySafe(netValue) + '</div></div>' +
-                  '<div><div class="exec-dd-hud-label">Gross Value</div><div class="exec-dd-hud-value-sm">' + formatMoneySafe(grossValue) + '</div></div>' +
-                  '<div><div class="exec-dd-hud-label">Fase Atual</div><div class="exec-dd-hud-value-sm">' + escapeHtmlSafe(row.stage || '-') + '</div></div>' +
-                '</div>' +
-                '<div class="exec-dd-hud-divider"></div>' +
-                '<div class="exec-dd-hud-row exec-dd-hud-row-health">' +
-                  '<div><div class="exec-dd-hud-label">Ciclo de Venda</div><div class="exec-dd-hud-value-sm">' + (cycle != null ? (cycle + ' dias') : '-') + '</div></div>' +
-                  '<div><div class="exec-dd-hud-label">Dias Inativos</div><div class="exec-dd-hud-value-sm exec-dd-idle ' + idleClass + '">' + (idleDays != null ? (idleDays + ' dias') : '-') + '</div></div>' +
-                  '<div><div class="exec-dd-hud-label">MEDDIC Health</div><div class="exec-dd-hud-value-sm">' + (meddicPct != null ? (meddicPct + '%') : '-') + '</div><div class="exec-dd-meddic-row">' + meddicBlocks + '</div></div>' +
-                '</div>' +
-              '</div>' +
-              '<div class="exec-dd-hud-ai">' +
-                '<div class="exec-dd-ai-score-wrap">' +
-                  '<div class="exec-dd-ai-score-circle">' + (confidence != null ? (confidence + '%') : '--') + '</div>' +
-                  '<div><div class="exec-dd-ai-score-title">Inteligência Estratégica</div><div class="exec-dd-ai-score-sub">' + escapeHtmlSafe(aiScoreSub) + '</div></div>' +
-                '</div>' +
-                '<div class="exec-dd-ai-note">' + escapeHtmlSafe(aiNote) + '</div>' +
-              '</div>' +
-            '</div>' +
+            (source === 'revenue'
+              ? (
+                '<div class="exec-dd-hud-wrap">' +
+                  '<div class="exec-dd-hud-commercial">' +
+                    '<div class="exec-dd-hud-row exec-dd-hud-row-fin">' +
+                      '<div><div class="exec-dd-hud-label">Net Revenue</div><div class="exec-dd-hud-value text-cyan">' + formatMoneySafe(netValue) + '</div></div>' +
+                      '<div><div class="exec-dd-hud-label">Gross Revenue</div><div class="exec-dd-hud-value-sm">' + formatMoneySafe(grossValue) + '</div></div>' +
+                      '<div><div class="exec-dd-hud-label">Status Pagamento</div><div class="exec-dd-hud-value-sm">' + escapeHtmlSafe(row.statusPagamento || '-') + '</div></div>' +
+                    '</div>' +
+                    '<div class="exec-dd-hud-divider"></div>' +
+                    '<div class="exec-dd-hud-row exec-dd-hud-row-health">' +
+                      '<div><div class="exec-dd-hud-label">Produto</div><div class="exec-dd-hud-value-sm">' + escapeHtmlSafe(row.produto || '-') + '</div></div>' +
+                      '<div><div class="exec-dd-hud-label">Comercial/Família</div><div class="exec-dd-hud-value-sm">' + escapeHtmlSafe((row.comercial || '-') + ' / ' + (row.familia || '-')) + '</div></div>' +
+                      '<div><div class="exec-dd-hud-label">Data Fatura</div><div class="exec-dd-hud-value-sm">' + escapeHtmlSafe(row.closeDate || '-') + '</div></div>' +
+                    '</div>' +
+                  '</div>' +
+                  '<div class="exec-dd-hud-ai">' +
+                    '<div class="exec-dd-ai-score-wrap">' +
+                      '<div class="exec-dd-ai-score-circle">ERP</div>' +
+                      '<div><div class="exec-dd-ai-score-title">Detalhes Faturamento</div><div class="exec-dd-ai-score-sub">Linha exata da planilha</div></div>' +
+                    '</div>' +
+                    '<div class="exec-dd-ai-note">' +
+                      'Doc: ' + escapeHtmlSafe(row.tipoDocumento || '-') +
+                      ' · Tipo Produto: ' + escapeHtmlSafe(row.tipoProduto || '-') +
+                      ' · Cta Contábil: ' + escapeHtmlSafe(row.cuentaContable || '-') +
+                      ' · Cta Financeira: ' + escapeHtmlSafe(row.cuentaFinanceira || '-') +
+                      ' · Segmento: ' + escapeHtmlSafe(row.segmento || '-') +
+                      ' · Etapa: ' + escapeHtmlSafe(row.etapaOportunidade || '-') +
+                      ' · Fatura s/IVA: ' + formatMoneySafe(row.invoiceLocalNoIva || 0) +
+                      ' · USD Comercial: ' + formatMoneySafe(row.invoiceUsdComercial || 0) +
+                      ' · Net Ajustado USD: ' + formatMoneySafe(row.netAjustadoUsd || 0) +
+                      ' · Custo: ' + formatMoneySafe(row.custoMoedaLocal || 0) + ' (' + Number(row.custoPercentual || 0).toFixed(2) + '%)' +
+                      ' · Câmbio D/P: ' + Number(row.tipoCambioDiario || 0).toFixed(4) + '/' + Number(row.tipoCambioPactado || 0).toFixed(4) +
+                      ' · Margem Final: ' + Number(row.margemPercentualFinal || 0).toFixed(2) + '%' +
+                      ' · % Margem: ' + Number(row.percentualMargem || 0).toFixed(2) + '%' +
+                      ' · Desc. Xertica: ' + formatMoneySafe(row.descontoXertica || 0) + ' (' + Number(row.percentualDescontoXerticaNs || 0).toFixed(2) + '%)' +
+                    '</div>' +
+                  '</div>' +
+                '</div>'
+              )
+              : (
+                '<div class="exec-dd-hud-wrap">' +
+                  '<div class="exec-dd-hud-commercial">' +
+                    '<div class="exec-dd-hud-row exec-dd-hud-row-fin">' +
+                      '<div><div class="exec-dd-hud-label">Net Revenue</div><div class="exec-dd-hud-value text-cyan">' + formatMoneySafe(netValue) + '</div></div>' +
+                      '<div><div class="exec-dd-hud-label">Gross Value</div><div class="exec-dd-hud-value-sm">' + formatMoneySafe(grossValue) + '</div></div>' +
+                      '<div><div class="exec-dd-hud-label">Fase Atual</div><div class="exec-dd-hud-value-sm">' + escapeHtmlSafe(row.stage || '-') + '</div></div>' +
+                    '</div>' +
+                    '<div class="exec-dd-hud-divider"></div>' +
+                    '<div class="exec-dd-hud-row exec-dd-hud-row-health">' +
+                      '<div><div class="exec-dd-hud-label">Ciclo de Venda</div><div class="exec-dd-hud-value-sm">' + (cycle != null ? (cycle + ' dias') : '-') + '</div></div>' +
+                      '<div><div class="exec-dd-hud-label">Dias Inativos</div><div class="exec-dd-hud-value-sm exec-dd-idle ' + idleClass + '">' + (idleDays != null ? (idleDays + ' dias') : '-') + '</div></div>' +
+                      '<div><div class="exec-dd-hud-label">MEDDIC Health</div><div class="exec-dd-hud-value-sm">' + (meddicPct != null ? (meddicPct + '%') : '-') + '</div><div class="exec-dd-meddic-row">' + meddicBlocks + '</div></div>' +
+                    '</div>' +
+                  '</div>' +
+                  '<div class="exec-dd-hud-ai">' +
+                    '<div class="exec-dd-ai-score-wrap">' +
+                      '<div class="exec-dd-ai-score-circle">' + (confidence != null ? (confidence + '%') : '--') + '</div>' +
+                      '<div><div class="exec-dd-ai-score-title">Inteligência Estratégica</div><div class="exec-dd-ai-score-sub">' + escapeHtmlSafe(aiScoreSub) + '</div></div>' +
+                    '</div>' +
+                    '<div class="exec-dd-ai-note">' + escapeHtmlSafe(aiNote) + '</div>' +
+                    (isStagnant
+                      ? '<div style="margin-top:10px;"><button class="exec-stagnant-btn" style="padding:6px 12px;font-size:12px;" onclick="event.stopPropagation();window.sendStagnantAlertFromDrilldownIndex(' + idx + ')">Enviar alerta</button></div>'
+                      : '') +
+                  '</div>' +
+                '</div>'
+              )) +
           '</td>' +
         '</tr>';
       }).join('');
@@ -336,6 +383,13 @@
     state.selected = row;
     window.execDrilldownState = state;
     renderExecutiveDrilldown();
+  };
+
+  window.sendStagnantAlertFromDrilldownIndex = async function (idx) {
+    var state = window.execDrilldownState || {};
+    var row = (state.filteredRows || [])[idx] || null;
+    if (!row || typeof window.sendStagnantAlertFromDeal !== 'function') return;
+    await window.sendStagnantAlertFromDeal(row, 'drilldown');
   };
 
   window.applyExecutiveDrilldownFilters = function () {
@@ -416,7 +470,7 @@
       ...(config || {}),
       rows: rows,
       filteredRows: rows.slice(),
-      activeSource: 'all',
+      activeSource: (config && config.activeSource) || 'all',
       selected: (config && config.selected) || rows[0] || null,
       expandedKey: (config && config.selected) ? getExecDrilldownRowKey(config.selected) : (rows[0] ? getExecDrilldownRowKey(rows[0]) : null),
       filtersLabel: (config && config.filtersLabel) || currentFiltersLabel()
@@ -435,6 +489,29 @@
     document.getElementById('exec-drilldown-panel')?.classList.add('active');
     document.getElementById('exec-drilldown-panel')?.setAttribute('aria-hidden', 'false');
     setTimeout(function () { searchEl?.focus(); }, 20);
+  };
+
+  window.openRevenueDrilldown = function (config) {
+    var rows = Array.isArray(config?.rows) ? config.rows : [];
+    rows = rows.map(function (row) {
+      return {
+        ...row,
+        source: row?.source || 'revenue'
+      };
+    });
+
+    window.openExecutiveDrilldown({
+      title: config?.title || 'Drill-down · Revenue',
+      subtitle: config?.subtitle || 'Faturamento detalhado',
+      rows: rows,
+      selected: config?.selected || rows[0] || null,
+      rule: config?.rule || 'Fonte: mart_l10.v_faturamento_historico',
+      baseLabel: config?.baseLabel || (rows.length + ' registros de faturamento'),
+      sql: config?.sql || 'SELECT ... FROM mart_l10.v_faturamento_historico',
+      sourceType: 'revenue',
+      activeSource: 'revenue',
+      filtersLabel: config?.filtersLabel
+    });
   };
 
   if (!window.__execDrilldownEscBound) {

@@ -40,6 +40,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (typeof initAdvancedMultiSelects === 'function') {
     initAdvancedMultiSelects();
   }
+  if (typeof initErpMultiSelects === 'function') {
+    initErpMultiSelects();
+  }
   loadSellers(); // Load available sellers for multi-select
   if (typeof loadAdvancedFilterOptions === 'function') {
     loadAdvancedFilterOptions();

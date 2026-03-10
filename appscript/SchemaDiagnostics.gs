@@ -35,7 +35,8 @@ function getTargetSchemaSheets_() {
     '🎯 Análise Forecast IA',
     '📉 Análise Perdidas',
     '📈 Análise Ganhas',
-    'Análise Sales Specialist'
+    'Análise Sales Specialist',
+    'Contas_Nomeadas'
   ]);
 }
 
@@ -595,7 +596,8 @@ function getSheetToBigQueryTableMap_() {
     '🎯 Análise Forecast IA': 'pipeline',
     '📉 Análise Perdidas': 'closed_deals_lost',
     '📈 Análise Ganhas': 'closed_deals_won',
-    'Análise Sales Specialist': 'sales_specialist'
+    'Análise Sales Specialist': 'sales_specialist',
+    'Contas_Nomeadas': 'Contas_Nomeadas'
   };
 }
 

@@ -44,9 +44,9 @@ ml_prioridade_dedup AS (
   -- Views de ML podem duplicar se a fonte tiver duplicidade
   SELECT mp.*
   FROM `operaciones-br.sales_intelligence.pipeline_prioridade_deals` mp
-  WHERE mp.Oportunidade IS NOT NULL
+  WHERE mp.opportunity IS NOT NULL
   QUALIFY ROW_NUMBER() OVER (
-    PARTITION BY mp.Oportunidade
+    PARTITION BY mp.opportunity
     ORDER BY SAFE_CAST(mp.priority_score AS FLOAT64) DESC
   ) = 1
 ),
@@ -54,10 +54,10 @@ ml_prioridade_dedup AS (
 ml_acao_dedup AS (
   SELECT ma.*
   FROM `operaciones-br.sales_intelligence.pipeline_proxima_acao` ma
-  WHERE ma.Oportunidade IS NOT NULL
+  WHERE ma.opportunity IS NOT NULL
   QUALIFY ROW_NUMBER() OVER (
-    PARTITION BY ma.Oportunidade
-    ORDER BY SAFE_CAST(ma.priority_score AS FLOAT64) DESC
+    PARTITION BY ma.opportunity
+    ORDER BY ma.urgencia DESC
   ) = 1
 ),
 
@@ -68,7 +68,10 @@ pipeline_ativo AS (
     p.Conta,
     p.Perfil as Perfil_Cliente,
     p.Produtos,
-    CAST(NULL AS STRING) as Portfolio,
+    COALESCE(
+      NULLIF(TRIM(CAST(p.Portfolio AS STRING)), ''),
+      NULLIF(TRIM(CAST(p.Portfolio_FDM AS STRING)), '')
+    ) as Portfolio,
     CAST(NULL AS STRING) as Segmento,
     CAST(NULL AS STRING) as Familia_Produto,
     p.Gross,
@@ -76,7 +79,11 @@ pipeline_ativo AS (
     p.Fase_Atual,
     p.Fiscal_Q,
     p.Data_Prevista,
-    CAST(NULL AS DATE) as Data_Criacao,
+    COALESCE(
+      SAFE_CAST(p.Data_de_criacao AS DATE),
+      SAFE.PARSE_DATE('%Y-%m-%d', CAST(p.Data_de_criacao AS STRING)),
+      SAFE.PARSE_DATE('%d/%m/%Y', CAST(p.Data_de_criacao AS STRING))
+    ) as Data_Criacao,
     p.Ultima_Atualizacao,
     p.Ciclo_dias,
     p.Idle_Dias,
@@ -129,10 +136,10 @@ pipeline_ativo AS (
     ON p.Oportunidade = ss.opportunity_name
 
   LEFT JOIN ml_prioridade_dedup ml_prior
-    ON p.Oportunidade = ml_prior.Oportunidade
+    ON p.Oportunidade = ml_prior.opportunity
 
   LEFT JOIN ml_acao_dedup ml_acao
-    ON p.Oportunidade = ml_acao.Oportunidade
+    ON p.Oportunidade = ml_acao.opportunity
 ),
 
 deals_com_risco AS (

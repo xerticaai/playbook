@@ -2703,7 +2703,7 @@ function gerarTabelaIdentificacaoAliases() {
 }
 
 /**
- * Identifica se uma conta é Conta Foco 2026 (BASE INSTALADA ou EXPANSÃO).
+ * Identifica se uma conta é Conta Foco 2026 (BASE INSTALADA ou NOVO CLIENTE).
  * BASE INSTALADA tem prioridade sobre EXPANSÃO (ex: PROCERGS, MTI aparecem nas duas).
  * @param {string} conta - Nome da conta (CRM)
  * @returns {{tipo: string, sigla: string}|null}
@@ -2730,12 +2730,12 @@ function classificarContaFoco2026_(conta) {
   if (has(['PRODERJ'])) return { tipo: 'BASE INSTALADA', sigla: 'PRODERJ' };
   if (has(['SERPRO'])) return { tipo: 'BASE INSTALADA', sigla: 'SERPRO' };
   if (has(['HEMOMINAS'])) return { tipo: 'BASE INSTALADA', sigla: 'HEMOMINAS' };
-  if (has(['PROCERGS'])) return { tipo: 'PARCERIA', sigla: 'PROCERGS' };
+  if (has(['PROCERGS'])) return { tipo: 'NOVO CLIENTE', sigla: 'PROCERGS' };
   if (has(['SMART-RJ', 'SMART RJ', 'SISTEMA MUNICIPAL DE ADMINISTRACAO'])) return { tipo: 'BASE INSTALADA', sigla: 'SMART-RJ' };
   if (has(['CGE MT', 'CGE-MT', 'CGEMT', 'CONTROLADORIA GERAL DO ESTADO DE MATO GROSSO'])) return { tipo: 'BASE INSTALADA', sigla: 'CGE MT' };
   if (hasWord(['PRF']) && !has(['SEGURADORA', 'BANCO', 'VAREJO'])) return { tipo: 'BASE INSTALADA', sigla: 'PRF' };
-  // MTI: parceria — entra em New Business
-  if (has(['EMPRESA MATO-GROSSENSE DE TECNOLOGIA', 'EMPRESA MATOGROSSENSE', 'MATOGROSSENSE DE TECNOLOGIA']) || hasWord(['MTI'])) return { tipo: 'PARCERIA', sigla: 'MTI' };
+  // MTI: classificada como novo cliente
+  if (has(['EMPRESA MATO-GROSSENSE DE TECNOLOGIA', 'EMPRESA MATOGROSSENSE', 'MATOGROSSENSE DE TECNOLOGIA']) || hasWord(['MTI'])) return { tipo: 'NOVO CLIENTE', sigla: 'MTI' };
 
   // Judiciário (base instalada)
   if (has(['TRE-PR', 'TRE PR', 'TRIBUNAL REGIONAL ELEITORAL DO PARANA', 'TRIBUNAL REGIONAL ELEITORAL DO PARANÁ'])) return { tipo: 'BASE INSTALADA', sigla: 'TRE-PR' };
@@ -2977,6 +2977,424 @@ function classificarContaPorRegrasGTM_(conta, produtos, cidade, estado) {
   return null;
 }
 
+// ================================================================================================
+// --- TAXONOMIA CANÔNICA DE VERTICAIS (fonte da verdade) ---
+// Toda nova classificação deve usar EXATAMENTE os valores abaixo.
+// Para padronizar dados históricos, use normalizarSubVertical_() e normalizarSubSubVertical_().
+// ================================================================================================
+
+const VERTICAL_TAXONOMY = {
+  "Governo": {
+    "Poder Executivo Estadual":     ["Governos Estaduais e DF","Secretarias de Estado","Autarquias e Fundações Estaduais","Empresas Públicas Estaduais","Distrito Federal"],
+    "Poder Executivo Federal":      ["Ministérios e Órgãos Federais","Autarquias Federais","Empresas Públicas Federais"],
+    "Poder Executivo Municipal":    ["Prefeituras","Secretarias Municipais","Autarquias Municipais"],
+    "Poder Judiciário":             ["Tribunais de Justiça Estaduais","Tribunais Regionais do Trabalho","Tribunais Regionais Eleitorais","Tribunais Superiores","Justiça Federal","Ministério Público","Defensoria Pública","Tribunais de Contas"],
+    "Poder Legislativo":            ["Câmara Federal e Senado","Assembleias Legislativas","Câmaras Municipais"],
+    "Órgãos de Controle":           ["Controladorias","Agências Reguladoras"]
+  },
+  "Utilities e Infraestrutura Pública": {
+    "Saneamento":                   ["Água e Esgoto","Companhias Estaduais de Saneamento"],
+    "Energia":                      ["Distribuição de Energia","Geração de Energia","Gás Natural"],
+    "Transporte e Logística Pública":["Transporte Metroferroviário","Logística e Ferrovias","Rodovias e Concessões"],
+    "Empresa Pública de TI":        ["TI Estadual","TI Federal"]
+  },
+  "Sistema S": {
+    "Sebrae":                       ["Sebrae Nacional","Sebrae Estadual"],
+    "Entidades do Sistema S":       ["SENAI","SESI","SENAC","SENAR","SEST/SENAT"]
+  },
+  "Saúde": {
+    "Hospitais e Clínicas":         ["Hospitais Públicos","Hospitais Privados","Clínicas e Reabilitação"],
+    "Serviços de Saúde":            ["Planos de Saúde","Laboratórios"]
+  },
+  "Educação": {
+    "Ensino Superior":              ["Universidades Públicas","Universidades Privadas"],
+    "Ensino Básico":                ["Escolas Públicas","Escolas Privadas"],
+    "Ensino a Distância":           ["EaD e Plataformas Educacionais"]
+  },
+  "Agronegócio e Cooperativas": {
+    "Agroindústria":                ["Papel e Celulose","Sucroenergético","Alimentos e Bebidas"],
+    "Cooperativas Agrícolas":       ["Cooperativas de Produção","Cooperativas de Crédito Rural"]
+  },
+  "Setor Privado: Corporativo": {
+    "Tecnologia e TI":              ["Software e Cloud","Consultoria de TI","Telecomunicações"],
+    "Serviços Financeiros":         ["Bancos e Fintechs","Seguradoras","Fundos e Investimentos"],
+    "Indústria":                    ["Manufatura","Bens de Consumo","Embalagens"],
+    "Varejo e Comércio":            ["Varejo Físico","E-commerce","Moda e Vestuário"],
+    "Serviços Profissionais":       ["Consultoria","Serviços de Apoio a Empresas","Pequenas e Médias Empresas"]
+  },
+  "Terceiro Setor e ONGs": {
+    "Organizações Religiosas":      ["Igrejas e Missões","Mídia Religiosa"],
+    "Associações e Fundações":      ["Entidades de Classe","Fundações de Apoio à Pesquisa","Conselhos Profissionais"],
+    "ONGs":                         ["ONGs Sociais","Organizações Internacionais"]
+  }
+};
+
+/**
+ * Mapeia variações de Sub-vertical → valor canônico.
+ * Chave: string normalizada (upper, sem acentos). Valor: canônico exato.
+ */
+const SUB_VERTICAL_ALIAS_MAP = {
+  // Judiciário / Justiça
+  'JUDICIARIO': 'Poder Judiciário',
+  'PODER JUDICIARIO': 'Poder Judiciário',
+  'PODER JUDICIARIO E ORGAOS DE JUSTICA': 'Poder Judiciário',
+  'JUDICIARIO E JUSTICA': 'Poder Judiciário',
+  'PODER JUDICIARIO E FUNCOES ESSENCIAIS A JUSTICA': 'Poder Judiciário',
+  'SISTEMA DE JUSTICA': 'Poder Judiciário',
+  'MINISTERIO PUBLICO': 'Poder Judiciário',
+  // Executivo Estadual
+  'ESTADUAL': 'Poder Executivo Estadual',
+  'GOVERNO ESTADUAL': 'Poder Executivo Estadual',
+  'ADMINISTRACAO PUBLICA ESTADUAL': 'Poder Executivo Estadual',
+  'PODER EXECUTIVO': 'Poder Executivo Estadual',
+  'EXECUTIVO': 'Poder Executivo Estadual',
+  'ADMINISTRACAO DIRETA': 'Poder Executivo Estadual',
+  'ADMINISTRACAO INDIRETA': 'Poder Executivo Estadual',
+  'AUTARQUIAS E FUNDACOES PUBLICAS': 'Poder Executivo Estadual',
+  'SECRETARIAS': 'Poder Executivo Estadual',
+  // Executivo Federal
+  'GOVERNO FEDERAL': 'Poder Executivo Federal',
+  'FEDERAL': 'Poder Executivo Federal',
+  // Executivo Municipal
+  'GOVERNO MUNICIPAL': 'Poder Executivo Municipal',
+  'MUNICIPAL': 'Poder Executivo Municipal',
+  'GOVERNO': 'Poder Executivo Estadual',
+  'ADMINISTRACAO PUBLICA': 'Poder Executivo Estadual',
+  // Legislativo
+  'PODER LEGISLATIVO': 'Poder Legislativo',
+  // Controle
+  'ORGAOS DE CONTROLE': 'Órgãos de Controle',
+  // Saneamento
+  'SANEAMENTO': 'Saneamento',
+  // Energia
+  'ENERGIA': 'Energia',
+  'GAS': 'Energia',
+  // Transporte
+  'TRANSPORTE E LOGISTICA': 'Transporte e Logística Pública',
+  'TRANSPORTE E LOGISTICA PUBLICA': 'Transporte e Logística Pública',
+  // Sebrae / Sistema S
+  'SEBRAE': 'Sebrae',
+  'APOIO AO EMPREENDEDORISMO': 'Sebrae',
+  'APOIO A EMPRESAS': 'Sebrae',
+  'APOIO AO EMPREENDEDORISMO E PEQUENAS EMPRESAS': 'Sebrae',
+  'APOIO E FOMENTO AO EMPREENDEDORISMO': 'Sebrae',
+  'SERVICOS DE APOIO': 'Sebrae',
+  'SERVICOS DE APOIO A EMPRESAS': 'Sebrae',
+  'APOIO A MICRO E PEQUENAS EMPRESAS': 'Sebrae',
+  'APOIO AO EMPREENDEDORISMO E PEQUENAS EMPRESAS': 'Sebrae',
+  'SISTEMA S': 'Entidades do Sistema S',
+  // Saúde
+  'HOSPITAIS E CLINICAS': 'Hospitais e Clínicas',
+  'SAUDE': 'Hospitais e Clínicas',
+  // Educação
+  'ENSINO SUPERIOR': 'Ensino Superior',
+  'ENSINO A DISTANCIA': 'Ensino a Distância',
+  'EDUCACAO': 'Ensino Superior',
+  // Agro
+  'AGROINDUSTRIA': 'Agroindústria',
+  'PAPEL E CELULOSE': 'Agroindústria',
+  // Tecnologia Privada
+  'TECNOLOGIA': 'Tecnologia e TI',
+  'TECNOLOGIA E TELECOM': 'Tecnologia e TI',
+  'TECNOLOGIA DA INFORMACAO': 'Tecnologia e TI',
+  'TECNOLOGIA E SERVICOS DE TI': 'Tecnologia e TI',
+  'TECNOLOGIA E SOFTWARE': 'Tecnologia e TI',
+  'TECNOLOGIA E TI': 'Tecnologia e TI',
+  'TECNOLOGIA DA INFORMACAO E COMUNICACAO': 'Tecnologia e TI',
+  // Financeiro
+  'SERVICOS FINANCEIROS': 'Serviços Financeiros',
+  // Segurança Pública (órgão estadual de segurança)
+  'SEGURANCA PUBLICA': 'Poder Executivo Estadual',
+  // Indústria
+  'INDUSTRIA': 'Indústria',
+  // Varejo
+  'VAREJO': 'Varejo e Comércio',
+  'COMERCIO VAREJISTA': 'Varejo e Comércio',
+  // Serviços
+  'SERVICOS DE CONSULTORIA': 'Serviços Profissionais',
+  'PEQUENAS E MEDIAS EMPRESAS': 'Serviços Profissionais',
+  'PEQUENAS E MEDIAS EMPRESAS (PMES)': 'Serviços Profissionais',
+  // ONGs / Terceiro Setor
+  'ORGANIZACOES RELIGIOSAS': 'Organizações Religiosas',
+  'ORGANIZACAO RELIGIOSA': 'Organizações Religiosas',
+  'ASSOCIACOES E FUNDACOES': 'Associações e Fundações',
+  'TERCEIRO SETOR E ONGS': 'ONGs',
+  'TERCEIRO SETOR': 'ONGs',
+  // Valores genéricos / inválidos
+  'GERAL': null,
+  'NAO APLICAVEL': null,
+  'NAO ESPECIFICADO': null,
+  'N/A': null,
+  '-': null
+};
+
+/**
+ * Mapeia variações de Sub-sub-vertical → valor canônico.
+ */
+const SUB_SUB_VERTICAL_ALIAS_MAP = {
+  // Judiciário
+  'PODER JUDICIARIO': 'Tribunais de Justiça Estaduais',
+  'JUDICIARIO': 'Tribunais de Justiça Estaduais',
+  'TRIBUNAL DE JUSTICA': 'Tribunais de Justiça Estaduais',
+  'TRIBUNAIS DE JUSTICA': 'Tribunais de Justiça Estaduais',
+  'TRIBUNAIS DE JUSTICA ESTADUAIS': 'Tribunais de Justiça Estaduais',
+  'PODER JUDICIARIO E FUNCOES ESSENCIAIS A JUSTICA': 'Tribunais de Justiça Estaduais',
+  'PODER JUDICIARIO E ORGAOS DE JUSTICA': 'Tribunais de Justiça Estaduais',
+  'PODER JUDICIARIO E JURIDICO': 'Tribunais de Justiça Estaduais',
+  'PODER JUDICIARIO E JUSTICA': 'Tribunais de Justiça Estaduais',
+  'JUSTICA': 'Tribunais de Justiça Estaduais',
+  'JUSTICA ESTADUAL': 'Tribunais de Justiça Estaduais',
+  'JUSTICA FEDERAL': 'Justiça Federal',
+  'TRIBUNAL REGIONAL DO TRABALHO': 'Tribunais Regionais do Trabalho',
+  'TRIBUNAIS REGIONAIS DO TRABALHO': 'Tribunais Regionais do Trabalho',
+  'JUSTICA DO TRABALHO': 'Tribunais Regionais do Trabalho',
+  'JUSTICA ELEITORAL': 'Tribunais Regionais Eleitorais',
+  'JUSTICA ELEITORAL ESTADUAL': 'Tribunais Regionais Eleitorais',
+  'TRIBUNAIS REGIONAIS ELEITORAIS': 'Tribunais Regionais Eleitorais',
+  'TRIBUNAL SUPERIOR': 'Tribunais Superiores',
+  'TRIBUNAIS SUPERIORES': 'Tribunais Superiores',
+  'MINISTERIO PUBLICO': 'Ministério Público',
+  'DEFENSORIA PUBLICA': 'Defensoria Pública',
+  'TRIBUNAIS DE CONTAS': 'Tribunais de Contas',
+  // Segurança Pública → Secretarias de Estado (Pol. Militar, Sec. Segurança, etc.)
+  'SEGURANCA PUBLICA': 'Secretarias de Estado',
+  'SEGURANCA PUBLICA E JUSTICA': 'Secretarias de Estado',
+  'SEGURANCA PUBLICA E DEFESA CIVIL': 'Secretarias de Estado',
+  'POLICIA MILITAR': 'Secretarias de Estado',
+  // Executivo Estadual
+  'GOVERNO ESTADUAL': 'Governos Estaduais e DF',
+  'ESTADUAL': 'Governos Estaduais e DF',
+  'SECRETARIAS': 'Secretarias de Estado',
+  'SECRETARIAS E ORGAOS DO EXECUTIVO': 'Secretarias de Estado',
+  'PODER EXECUTIVO SECRETARIAS': 'Secretarias de Estado',
+  'PODER EXECUTIVO - SECRETARIAS': 'Secretarias de Estado',
+  'PODER EXECUTIVO ESTADUAL': 'Governos Estaduais e DF',
+  'AUTARQUIAS E FUNDACOES': 'Autarquias e Fundações Estaduais',
+  'AUTARQUIAS E FUNDACOES PUBLICAS': 'Autarquias e Fundações Estaduais',
+  'ADMINISTRACAO INDIRETA': 'Autarquias e Fundações Estaduais',
+  'ADMINISTRACAO DIRETA': 'Secretarias de Estado',
+  'EMPRESA PUBLICA DE TI E PROCESSAMENTO DE DADOS': 'Empresas Públicas Estaduais',
+  'EMPRESA PUBLICA DE TI': 'Empresas Públicas Estaduais',
+  'EMPRESA PUBLICA': 'Empresas Públicas Estaduais',
+  'EMPRESA PUBLICA ECONOMIA MISTA': 'Empresas Públicas Estaduais',
+  'EMPRESA PUBLICA / ECONOMIA MISTA': 'Empresas Públicas Estaduais',
+  'EMPRESA PUBLICA / SOCIEDADE DE ECONOMIA MISTA': 'Empresas Públicas Estaduais',
+  'EMPRESAS PUBLICAS E SOCIEDADES DE ECONOMIA MISTA': 'Empresas Públicas Estaduais',
+  'EMPRESAS ESTATAIS E DE ECONOMIA MISTA': 'Empresas Públicas Estaduais',
+  'ADMINISTRACAO INDIRETA EMPRESAS PUBLICAS E AUTARQUIAS': 'Autarquias e Fundações Estaduais',
+  'ADMINISTRACAO INDIRETA (EMPRESAS PUBLICAS E AUTARQUIAS)': 'Autarquias e Fundações Estaduais',
+  'UNIDADE REGIONAL': 'Governos Estaduais e DF',
+  'REGIONAL': 'Governos Estaduais e DF',
+  'AGENCIA DE FOMENTO': 'Autarquias e Fundações Estaduais',
+  'DISTRITO FEDERAL': 'Distrito Federal',
+  // Executivo Federal
+  'FEDERAL': 'Ministérios e Órgãos Federais',
+  'MINISTERIO DA GESTAO E DA INOVACAO EM SERVICOS PUBLICOS': 'Ministérios e Órgãos Federais',
+  // Executivo Municipal
+  'GOVERNO MUNICIPAL': 'Prefeituras',
+  'MUNICIPAL': 'Prefeituras',
+  'PREFEITURA': 'Prefeituras',
+  'ADMINISTRACAO PUBLICA MUNICIPAL': 'Prefeituras',
+  'PODER EXECUTIVO MUNICIPAL': 'Prefeituras',
+  'CAMARA MUNICIPAL': 'Câmaras Municipais',
+  'PODER LEGISLATIVO MUNICIPAL': 'Câmaras Municipais',
+  'COMISSAO GOVERNAMENTAL': 'Prefeituras',
+  // Controle
+  'PODER EXECUTIVO': 'Secretarias de Estado',
+  'EXECUTIVO': 'Secretarias de Estado',
+  'ADMINISTRACAO PUBLICA': 'Secretarias de Estado',
+  'PUBLICO': 'Secretarias de Estado',
+  // Sebrae
+  'SEBRAE': 'Sebrae Estadual',
+  'SEBRAE SP': 'Sebrae Estadual',
+  'SEBRAE CE': 'Sebrae Estadual',
+  'SEBRAE/CE': 'Sebrae Estadual',
+  'SEBRAE/SP': 'Sebrae Estadual',
+  'EMPREENDEDORISMO E PEQUENAS EMPRESAS': 'Sebrae Estadual',
+  'MICRO E PEQUENAS EMPRESAS': 'Sebrae Estadual',
+  'MICRO E PEQUENAS EMPRESAS (MPES)': 'Sebrae Estadual',
+  'APOIO AS MICRO E PEQUENAS EMPRESAS': 'Sebrae Estadual',
+  'APOIO A MICRO E PEQUENAS EMPRESAS': 'Sebrae Estadual',
+  'SERVICOS DE APOIO AO EMPREENDEDORISMO': 'Sebrae Estadual',
+  // Saneamento
+  'AGUA E ESGOTO': 'Água e Esgoto',
+  'COMPANHIA ESTADUAL DE SANEAMENTO': 'Companhias Estaduais de Saneamento',
+  // Energia
+  'GAS': 'Gás Natural',
+  // Transporte
+  'LOGISTICA E FERROVIAS': 'Logística e Ferrovias',
+  'TRANSPORTE METROFERROVIARIO': 'Transporte Metroferroviário',
+  // TI Pública
+  'EMPRESA PUBLICA DE TECNOLOGIA DA INFORMACAO E COMUNICACAO': 'TI Estadual',
+  // Hospitais
+  'HOSPITAIS PUBLICOS': 'Hospitais Públicos',
+  'HOSPITAL': 'Hospitais Públicos',
+  'CLINICAS DE REABILITACAO': 'Clínicas e Reabilitação',
+  // Tecnologia Privada
+  'TECNOLOGIA': 'Software e Cloud',
+  'SOFTWARE E SERVICOS DE TI': 'Software e Cloud',
+  'SERVICOS DE CLOUD E SOFTWARE': 'Software e Cloud',
+  'SERVICOS DE SOFTWARE E CLOUD': 'Software e Cloud',
+  'SOLUCOES EM NUVEM E SOFTWARE': 'Software e Cloud',
+  'SOFTWARE E CLOUD SERVICES': 'Software e Cloud',
+  'SOLUCOES ENERGETICAS': null,  // ambíguo — manter como está
+  'DESENVOLVIMENTO DE SISTEMAS': 'Software e Cloud',
+  'CONSULTORIA EM LICITACOES': 'Consultoria de TI',
+  'CONSULTORIA E SERVICOS DE TI': 'Consultoria de TI',
+  'SERVICOS DE TI': 'Consultoria de TI',
+  'SERVICOS PROFISSIONAIS': 'Consultoria',
+  'TECNOLOGIA DA INFORMACAO': 'Software e Cloud',
+  // Financeiro
+  'BANCOS DIGITAIS': 'Bancos e Fintechs',
+  // Fundações
+  'FUNDOS PATRIMONIAIS ENDOWMENTS': 'Fundações de Apoio à Pesquisa',
+  'FUNDOS PATRIMONIAIS / ENDOWMENTS': 'Fundações de Apoio à Pesquisa',
+  'FUNDACAO DE APOIO A PESQUISA': 'Fundações de Apoio à Pesquisa',
+  'CONSELHOS PROFISSIONAIS': 'Conselhos Profissionais',
+  // Religioso
+  'MISSAO': 'Igrejas e Missões',
+  'MIDIA RELIGIOSA': 'Mídia Religiosa',
+  // Varejo
+  'MODA E VESTUARIO': 'Moda e Vestuário',
+  'CALCADOS E ARTIGOS ESPORTIVOS': 'Moda e Vestuário',
+  'PRODUTOS NATURAIS E SAUDAVEIS': 'Bens de Consumo',
+  'BENS DE CONSUMO': 'Bens de Consumo',
+  'EMBALAGENS DE VIDRO': 'Embalagens',
+  'DISTRIBUICAO': 'Varejo Físico',
+  'E-COMMERCE': 'E-commerce',
+  // Agro
+  'PRODUCAO DE CELULOSE E PAPEL': 'Papel e Celulose',
+  'SUCROENERGETICO': 'Sucroenergético',
+  // Secretarias temáticas
+  'EDUCACAO': 'Secretarias de Estado',
+  'SECRETARIA DE EDUCACAO': 'Secretarias de Estado',
+  'SECRETARIA DA FAZENDA': 'Secretarias de Estado',
+  'AGRICULTURA E MEIO AMBIENTE': 'Secretarias de Estado',
+  'AGRICULTURA E ABASTECIMENTO': 'Secretarias de Estado',
+  // Saúde genérico
+  'SAUDE': 'Hospitais Públicos',
+  // Educação continuada / EaD
+  'EDUCACAO CONTINUADA': 'EaD e Plataformas Educacionais',
+  // Sistema S como sub-sub
+  'SISTEMA S': 'Entidades do Sistema S',
+  // Terceiro setor como sub-sub
+  'TERCEIRO SETOR E ONGS': 'ONGs Sociais',
+  'TERCEIRO SETOR': 'ONGs Sociais',
+  // Mídia pública (ambíguo — manter como está)
+  'MIDIA E COMUNICACAO': null,
+  // Valores genéricos / inválidos
+  'GERAL': null,
+  'NAO APLICAVEL': null,
+  'NAO ESPECIFICADO': null,
+  'N/A': null,
+  '-': null
+};
+
+/**
+ * Gera string plana da taxonomia para incluir no prompt da IA.
+ */
+function buildTaxonomyPromptBlock_() {
+  const lines = [];
+  for (const [vertical, subs] of Object.entries(VERTICAL_TAXONOMY)) {
+    lines.push(`Vertical: "${vertical}"`);
+    for (const [subV, subSubs] of Object.entries(subs)) {
+      lines.push(`  Sub-vertical: "${subV}"`);
+      subSubs.forEach(ss => lines.push(`    Sub-sub-vertical: "${ss}"`));
+    }
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Normaliza um valor de Sub-vertical para o canônico, ou retorna o próprio valor se não houver alias.
+ * @param {string} raw
+ * @returns {string}
+ */
+function normalizarSubVertical_(raw) {
+  if (!raw) return raw;
+  const key = (typeof normText_ === 'function' ? normText_(raw) : raw.toUpperCase().trim());
+  if (SUB_VERTICAL_ALIAS_MAP.hasOwnProperty(key)) {
+    return SUB_VERTICAL_ALIAS_MAP[key] || raw;
+  }
+  return raw;
+}
+
+/**
+ * Normaliza um valor de Sub-sub-vertical para o canônico, ou retorna o próprio valor se não houver alias.
+ * @param {string} raw
+ * @returns {string}
+ */
+function normalizarSubSubVertical_(raw) {
+  if (!raw) return raw;
+  const key = (typeof normText_ === 'function' ? normText_(raw) : raw.toUpperCase().trim());
+  if (SUB_SUB_VERTICAL_ALIAS_MAP.hasOwnProperty(key)) {
+    return SUB_SUB_VERTICAL_ALIAS_MAP[key] || raw;
+  }
+  return raw;
+}
+
+/**
+ * Normaliza retroativamente os valores de Sub-vertical / Sub-sub-vertical nas abas de análise.
+ * Executa pelo menu ou pode ser chamada ao atualizar o mapeamento.
+ */
+function normalizarVerticaisNaPlanilha() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const abasAlvo = [
+    SHEETS.RESULTADO_PIPELINE,
+    SHEETS.RESULTADO_GANHAS,
+    SHEETS.RESULTADO_PERDIDAS
+  ];
+
+  let totalAlterados = 0;
+
+  abasAlvo.forEach(nomAba => {
+    const sheet = ss.getSheetByName(nomAba);
+    if (!sheet) return;
+
+    const data = sheet.getDataRange().getValues();
+    if (data.length < 2) return;
+    const headers = data[0];
+
+    // Localiza colunas pelo cabeçalho (case insensitive)
+    const findCol = (nameFragments) => {
+      return headers.findIndex(h => nameFragments.some(f => String(h).toLowerCase().includes(f.toLowerCase())));
+    };
+
+    const colSub    = findCol(['sub-vertical ia', 'sub_vertical_ia', 'subvertical ia']);
+    const colSubSub = findCol(['sub-sub-vertical ia', 'sub_sub_vertical_ia', 'subsubvertical ia']);
+
+    if (colSub < 0 && colSubSub < 0) return;
+
+    const updates = [];
+    for (let r = 1; r < data.length; r++) {
+      let changed = false;
+      const row = data[r];
+
+      if (colSub >= 0) {
+        const rawSub = String(row[colSub] || '').trim();
+        const normed = normalizarSubVertical_(rawSub);
+        if (normed && normed !== rawSub) {
+          sheet.getRange(r + 1, colSub + 1).setValue(normed);
+          changed = true;
+        }
+      }
+
+      if (colSubSub >= 0) {
+        const rawSubSub = String(row[colSubSub] || '').trim();
+        const normed = normalizarSubSubVertical_(rawSubSub);
+        if (normed && normed !== rawSubSub) {
+          sheet.getRange(r + 1, colSubSub + 1).setValue(normed);
+          changed = true;
+        }
+      }
+
+      if (changed) totalAlterados++;
+    }
+    console.log(`✅ Aba "${nomAba}": ${totalAlterados} linhas normalizadas`);
+  });
+
+  SpreadsheetApp.getUi().alert(`✅ Normalização de verticais concluída!\n${totalAlterados} linhas atualizadas nas abas de análise.`);
+}
 
 function mkClass_(vertical, subVertical, subSubVertical) {
   return {
@@ -2998,7 +3416,8 @@ function classificarContaComIAFallback_(conta, produtos, cidade, estado) {
   }
 
   try {
-    const prompt = `Classifique a empresa brasileira abaixo usando a taxonomia B2B Brasil.
+    const taxonomyBlock = buildTaxonomyPromptBlock_();
+    const prompt = `Classifique a empresa brasileira abaixo usando a taxonomia B2B Brasil padronizada.
 
 DADOS DA EMPRESA:
 - Nome da Conta: ${conta || 'N/A'}
@@ -3006,14 +3425,19 @@ DADOS DA EMPRESA:
 - Cidade: ${cidade || 'N/A'}
 - Estado: ${estado || 'N/A'}
 
-TAXONOMIA OBRIGATÓRIA:
-- Vertical primária: Governo | Utilities e Infraestrutura Pública | Sistema S | Saúde | Educação | Agronegócio e Cooperativas | Setor Privado: Corporativo | Terceiro Setor e ONGs
+TAXONOMIA CANÔNICA (use EXATAMENTE os valores abaixo, sem inventar variações):
+${taxonomyBlock}
+
+REGRAS:
+1. Escolha a Vertical, Sub-vertical e Sub-sub-vertical que melhor descrevem a empresa.
+2. Os valores dos três campos devem ser copiados LITERALMENTE da taxonomia acima.
+3. Não invente variações, acrônimos ou sinônimos.
 
 RESPONDA APENAS COM JSON NESTE FORMATO EXATO:
 {
-  "Vertical_IA": "categoria principal",
-  "Sub_vertical_IA": "subcategoria",
-  "Sub_sub_vertical_IA": "categoria específica"
+  "Vertical_IA": "valor exato da Vertical",
+  "Sub_vertical_IA": "valor exato da Sub-vertical",
+  "Sub_sub_vertical_IA": "valor exato da Sub-sub-vertical"
 }`;
 
     console.log(`\n📤 PROMPT ENVIADO (${prompt.length} chars):\n${prompt.substring(0, 400)}...\n`);
@@ -3039,6 +3463,10 @@ RESPONDA APENAS COM JSON NESTE FORMATO EXATO:
       console.warn(`   Parsed object (primeiro 300 chars):`, JSON.stringify(parsed).substring(0, 300));
       return null;
     }
+
+    // Aplica mapa de aliases para garantir valores canônicos mesmo se a IA divergir levemente
+    normalized.subVertical    = normalizarSubVertical_(normalized.subVertical)    || normalized.subVertical;
+    normalized.subSubVertical = normalizarSubSubVertical_(normalized.subSubVertical) || normalized.subSubVertical;
 
     return normalized;
   } catch (e) {

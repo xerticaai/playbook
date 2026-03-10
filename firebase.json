@@ -1,43 +1,80 @@
 {
-  "hosting": {
-    "site": "x-gtm",
-    "public": "public",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "headers": [
-      {
-        "source": "**/*.@(html|js|css)",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "no-cache, no-store, must-revalidate, max-age=0"
-          },
-          {
-            "key": "Pragma",
-            "value": "no-cache"
-          },
-          {
-            "key": "Expires",
-            "value": "0"
-          }
-        ]
-      }
-    ],
-    "rewrites": [
-      {
-        "source": "/api/**",
-        "run": {
-          "serviceId": "sales-intelligence-api",
-          "region": "us-central1"
+  "hosting": [
+    {
+      "target": "xgtm",
+      "public": "public",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "headers": [
+        {
+          "source": "**/*.@(html|js|css)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate, max-age=0"
+            },
+            {
+              "key": "Pragma",
+              "value": "no-cache"
+            },
+            {
+              "key": "Expires",
+              "value": "0"
+            }
+          ]
         }
-      },
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ]
-  }
+      ],
+      "rewrites": [
+        {
+          "source": "/api/**",
+          "run": {
+            "serviceId": "sales-intelligence-api",
+            "region": "us-central1"
+          }
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    {
+      "target": "xsales",
+      "public": "public-x-sales",
+      "cleanUrls": true,
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
+      "headers": [
+        {
+          "source": "**/*.@(html|js|css)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache, no-store, must-revalidate, max-age=0"
+            },
+            {
+              "key": "Pragma",
+              "value": "no-cache"
+            },
+            {
+              "key": "Expires",
+              "value": "0"
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }

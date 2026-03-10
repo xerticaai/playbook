@@ -16,12 +16,29 @@ const FAT_WEEKLY_SOURCE_SPREADSHEET_ID = '18PDjdprqBZCQsJxA8Jc7xQNX7iLsfpPWQ-AuB
 const FAT_2025_SOURCE_SHEET_NAME = 'FATURAMENTO_2025';
 const FAT_2026_SOURCE_SHEET_NAME = 'FATURAMENTO_2026';
 const FAT_WEEKLY_Q1_2026_SOURCE_SHEET_NAME = 'Q1 2026';
+const FAT_ENABLE_WEEKLY_Q1_2026 = false;
 
 const FAT_2025_DEST_SHEET_NAME = 'FATURAMENTO_2025';
 const FAT_2026_DEST_SHEET_NAME = 'FATURAMENTO_2026';
 const FAT_WEEKLY_DEST_SHEET_NAME = 'Faturamento_Week';
 
 const FAT_TRIGGER_HANDLER_GERAL = 'migrarTodoFaturamento';
+
+const FAT_EXPECTED_HEADERS_BY_SHEET = {
+  FATURAMENTO_2026: [
+    'Mes', 'País', 'Cuenta Financiera', 'Tipo de Documento', 'Fecha de factura', 'Póliza (País)',
+    'Cueta contable', '(Moneda Local) Valor de Factura (Sin IVA)', 'Producto', 'Oportunidad',
+    'Cliente', 'ID oportunidad', 'Billing ID', '% Desc. Xertica (NS)', 'Tipo de Producto',
+    'Portafolio', 'Timbradas', 'Estado de Pago', 'Fecha Doc. Timbrado', 'Familia',
+    'Tipo cambio pactado', 'Tipo de cambio diario', 'Valor de Factura en USD (Comercial)',
+    'Net Revenue', 'Incentivos Google', 'Backlog nombrado', 'País del comercial', 'Comercial',
+    'Año oportunidad', 'Tipo de Oportunidad (Line)', 'Dominio', 'Segmento', 'Concatenar',
+    'Margen % Final', 'Revisión margen', 'Etapa de la oportunidad', 'Descuento Xertica',
+    'Escenario NR', 'Q', 'validación costo + margen', 'Proceso', '',
+    'Costo %', 'Costo $ (moneda local)', 'Generales Budget', 'Receita USD', 'PNL Receita',
+    'Custo USD', 'PNL Custo', 'REVENUE REVISION', 'NET real'
+  ]
+};
 
 // ==================== ALIAS MAP (NORMALIZAÇÃO DE CABEÇALHO) ====================
 
@@ -134,7 +151,11 @@ function migrarTodoFaturamento() {
     'Faturamento2025'
   );
   migrarFaturamento2026();
-  migrarFaturamentoSemanal();
+  if (FAT_ENABLE_WEEKLY_Q1_2026) {
+    migrarFaturamentoSemanal();
+  } else {
+    console.log('ℹ️ [FaturamentoSync] Migração semanal Q1_2026 desativada neste cenário.');
+  }
 
   const duracao = ((new Date() - inicio) / 1000).toFixed(1);
   console.log(`✅ [FaturamentoSync] Migração completa concluída em ${duracao}s`);
@@ -256,28 +277,46 @@ function migrarAbaFaturamentoComOrigem_(sourceSpreadsheetId, sourceSheetName, de
       ultimaColuna--;
     }
 
-    const headerOrigem = headerRaw.slice(0, ultimaColuna);
-    const linhasDados = linhasBrutas.map(r => r.slice(0, ultimaColuna));
+      const headerOrigem = headerRaw.slice(0, ultimaColuna);
+      const linhasDados = linhasBrutas.map(r => r.slice(0, ultimaColuna));
+      const expectedHeaders = FAT_EXPECTED_HEADERS_BY_SHEET[sourceSheetName] || [];
+
+      // Se vier cabeçalho vazio (ex.: célula mesclada), usa fallback posicional conhecido da aba.
+      const headerEfetivo = headerOrigem.map((h, idx) => {
+        const raw = String(h || '').trim();
+        if (raw) return raw;
+        const fallback = String(expectedHeaders[idx] || '').trim();
+        return fallback;
+      });
+
+      // Mantém apenas colunas que tenham cabeçalho efetivo.
+      const colunasComCabecalho = [];
+      headerEfetivo.forEach((h, idx) => {
+        if (String(h || '').trim() !== '') colunasComCabecalho.push(idx);
+      });
+
+      const headerFiltrado = colunasComCabecalho.map((idx) => headerEfetivo[idx]);
+      const linhasFiltradas = linhasDados.map((row) => colunasComCabecalho.map((idx) => row[idx]));
 
     console.log(
       `📋 [${logTag}] Origem: ${linhasDados.length} linhas | ` +
-      `${ultimaColunaBruta} colunas brutas → ${ultimaColuna} colunas úteis após trim`
+        `${ultimaColunaBruta} colunas brutas → ${ultimaColuna} colunas úteis → ${headerFiltrado.length} com cabeçalho`
     );
 
-    const headerNormalizado = construirHeaderNormalizado_(headerOrigem);
+      const headerNormalizado = construirHeaderNormalizado_(headerFiltrado);
 
     const aliasados = headerNormalizado.filter((_, i) => {
-      const chave = normalizar_(String(headerOrigem[i]));
+        const chave = normalizar_(String(headerFiltrado[i]));
       return FAT_ALIAS_MAP[chave] !== undefined;
     }).length;
 
     console.log(
-      `🔍 [${logTag}] ${ultimaColuna} colunas | ` +
+      `🔍 [${logTag}] ${headerFiltrado.length} colunas | ` +
       `${aliasados} com alias explícito | ` +
-      `${ultimaColuna - aliasados} auto-normalizadas`
+      `${headerFiltrado.length - aliasados} auto-normalizadas`
     );
 
-    const linhasMapeadas = linhasDados
+      const linhasMapeadas = linhasFiltradas
       .filter(linha => linha.some(v => v !== '' && v !== null && v !== undefined))
       .map(linha => linha.map(val => formatarValor_(val)));
 

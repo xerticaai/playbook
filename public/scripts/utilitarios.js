@@ -212,6 +212,10 @@ function toggleErpSection(mode) {
   if (bookingWrap) bookingWrap.style.display  = isErp ? 'none' : '';
   if (erpFilters)  erpFilters.style.display   = isErp ? '' : 'none';
   if (periodFilters) periodFilters.style.display = '';
+  var bookingChartsGrid = document.getElementById('booking-graficos-grid');
+  var revenueChartsGrid = document.getElementById('revenue-graficos-grid');
+  if (bookingChartsGrid) bookingChartsGrid.style.display = isErp ? 'none' : '';
+  if (revenueChartsGrid) revenueChartsGrid.style.display = isErp ? '' : 'none';
   if (filterCards && filterCards.length) {
     filterCards.forEach(function(card) {
       if (card.id === 'filters-group-period') {
@@ -227,7 +231,7 @@ function toggleErpSection(mode) {
   var modeLabel = document.getElementById('erp-mode-label');
   if (modeLabel) modeLabel.textContent = mode === 'gross' ? 'Gross Revenue' : 'Net Revenue';
 
-  var revenueHiddenTabs = ['mapas', 'oportunidades', 'guia'];
+  var revenueHiddenTabs = ['mapas', 'oportunidades', 'estagnadas', 'guia'];
   revenueHiddenTabs.forEach(function(tabName) {
     var tabBtn = document.querySelector('.exec-tab[data-tab="' + tabName + '"]');
     var tabContent = document.querySelector('.exec-tab-content[data-content="' + tabName + '"]');
@@ -237,6 +241,26 @@ function toggleErpSection(mode) {
       tabContent.style.display = 'none';
     }
   });
+
+  var isNetRevenueMode = (mode === 'net');
+  var revenueOnlyTabs = document.querySelectorAll('.exec-tab[data-revenue-only="1"]');
+  var revenueOnlyContents = document.querySelectorAll('.exec-tab-content[data-revenue-only="1"]');
+  revenueOnlyTabs.forEach(function(tabBtn) {
+    tabBtn.style.display = isNetRevenueMode ? '' : 'none';
+  });
+  if (!isNetRevenueMode) {
+    revenueOnlyContents.forEach(function(contentEl) {
+      contentEl.classList.remove('active');
+      contentEl.style.display = 'none';
+    });
+  }
+
+  if (!isErp || !isNetRevenueMode) {
+    var activeExecTab = document.querySelector('.exec-tab.active');
+    if (activeExecTab && activeExecTab.dataset && activeExecTab.dataset.tab === 'resumo-quarter' && typeof switchExecTab === 'function') {
+      switchExecTab('resumo');
+    }
+  }
 
   if (isErp && typeof switchExecTab === 'function') {
     switchExecTab('resumo');
@@ -267,8 +291,40 @@ function applyExecDisplayMode(mode) {
   });
 }
 
+function clearGlobalPeriodFiltersForRevenueMode() {
+  var yearFilter = document.getElementById('year-filter');
+  var quarterFilter = document.getElementById('quarter-filter');
+  var monthFilter = document.getElementById('month-filter');
+  var dateStartFilter = document.getElementById('date-start-filter');
+  var dateEndFilter = document.getElementById('date-end-filter');
+  var erpPortfolioFilter = document.getElementById('erp-portfolio-filter');
+  var erpPaymentStatusFilter = document.getElementById('erp-payment-status-filter');
+  var erpProductFilter = document.getElementById('erp-product-filter');
+  var erpOpportunityTypeLineFilter = document.getElementById('erp-opportunity-type-line-filter');
+  var erpSegmentFilter = document.getElementById('erp-segment-filter');
+
+  if (yearFilter) yearFilter.value = '';
+  if (quarterFilter) quarterFilter.value = '';
+  if (monthFilter) monthFilter.value = '';
+  if (dateStartFilter) dateStartFilter.value = '';
+  if (dateEndFilter) dateEndFilter.value = '';
+  if (erpPortfolioFilter) Array.from(erpPortfolioFilter.options || []).forEach(function (opt) { opt.selected = false; });
+  if (erpPaymentStatusFilter) Array.from(erpPaymentStatusFilter.options || []).forEach(function (opt) { opt.selected = false; });
+  if (erpProductFilter) Array.from(erpProductFilter.options || []).forEach(function (opt) { opt.selected = false; });
+  if (erpOpportunityTypeLineFilter) Array.from(erpOpportunityTypeLineFilter.options || []).forEach(function (opt) { opt.selected = false; });
+  if (erpSegmentFilter) Array.from(erpSegmentFilter.options || []).forEach(function (opt) { opt.selected = false; });
+  if (typeof window.resetErpFilterSelections === 'function') {
+    window.resetErpFilterSelections();
+  }
+
+  if (typeof syncQuickFilterPillState === 'function') {
+    syncQuickFilterPillState();
+  }
+}
+
 function setExecDisplayMode(mode) {
   window.execDisplayMode = mode;
+  document.documentElement.setAttribute('data-exec-mode', mode);
   updateExecutiveHighlightToggleUI(mode);
   toggleErpSection(mode);
   // applyExecDisplayMode only applies to booking modes (gross/net DOM swap)
@@ -277,6 +333,7 @@ function setExecDisplayMode(mode) {
   }
   // Carregar dados ERP ao entrar nos modos gross / net
   if ((mode === 'gross' || mode === 'net') && typeof loadErpData === 'function') {
+    clearGlobalPeriodFiltersForRevenueMode();
     loadErpData();
   }
   if (typeof window.switchTopOppsTab === 'function') {
@@ -287,4 +344,10 @@ function setExecDisplayMode(mode) {
     updateGlobalFiltersPanelUI();
   }
 }
+
+window.addEventListener('DOMContentLoaded', function() {
+  document.documentElement.setAttribute('data-exec-mode', window.execDisplayMode || 'booking_gross');
+  updateExecutiveHighlightToggleUI(window.execDisplayMode || 'booking_gross');
+  toggleErpSection(window.execDisplayMode || 'booking_gross');
+});
 

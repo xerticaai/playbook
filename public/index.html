@@ -398,6 +398,17 @@
                   <span id="seller-selected-text">Todos os Vendedores</span>
                 </div>
                 <div class="multi-select-dropdown" id="seller-dropdown">
+                  <div class="multi-select-search-wrap">
+                    <input
+                      type="text"
+                      class="multi-select-search"
+                      id="seller-search"
+                      placeholder="Buscar vendedor..."
+                      autocomplete="off"
+                      oninput="filterSellerOptions(this.value)"
+                      onclick="event.stopPropagation()"
+                    />
+                  </div>
                   <div class="multi-select-group" id="active-sellers-group">
                     <div class="multi-select-group-title">🟢 Vendedores Ativos</div>
                   </div>
@@ -498,8 +509,55 @@
             </div>
 
             <div class="filters-field">
+              <span class="filters-field-label">Portfólio:</span>
+              <select id="portfolio-filter" onchange="reloadDashboard()">
+                <option value="" selected>Todos</option>
+              </select>
+            </div>
+
+            <div class="filters-field">
               <span class="filters-field-label">Portfólio FDM:</span>
               <select id="portfolio-fdm-filter" onchange="reloadDashboard()">
+                <option value="" selected>Todos</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="filters-group-card">
+          <div class="filters-group-title" style="color: var(--primary-cyan, #00BEFF);">Governança</div>
+          <div class="filters-fields-row">
+            <div class="filters-field">
+              <span class="filters-field-label">Perfil Cliente:</span>
+              <select id="perfil-cliente-filter" onchange="reloadDashboard()">
+                <option value="" selected>Todos</option>
+              </select>
+            </div>
+
+            <div class="filters-field">
+              <span class="filters-field-label">Status GTM:</span>
+              <select id="status-gtm-filter" onchange="reloadDashboard()">
+                <option value="" selected>Todos</option>
+              </select>
+            </div>
+
+            <div class="filters-field">
+              <span class="filters-field-label">Status Cliente:</span>
+              <select id="status-cliente-filter" onchange="reloadDashboard()">
+                <option value="" selected>Todos</option>
+              </select>
+            </div>
+
+            <div class="filters-field">
+              <span class="filters-field-label">SS Envolvido:</span>
+              <select id="sales-specialist-envolvido-filter" onchange="reloadDashboard()">
+                <option value="" selected>Todos</option>
+              </select>
+            </div>
+
+            <div class="filters-field">
+              <span class="filters-field-label">Elegibilidade SS:</span>
+              <select id="elegibilidade-ss-filter" onchange="reloadDashboard()">
                 <option value="" selected>Todos</option>
               </select>
             </div>
@@ -511,19 +569,8 @@
           <div class="filters-group-title" style="color:var(--primary-cyan,#00BEFF);">Revenue (ERP)</div>
           <div class="filters-fields-row">
             <div class="filters-field">
-              <span class="filters-field-label">Mensurável:</span>
-              <select id="erp-squad-filter" onchange="loadErpData()">
-                <option value="" selected>Todos</option>
-                <option value="Contas Nomeadas">Contas Nomeadas</option>
-                <option value="Sales Outras GTM">GTM</option>
-                <option value="CS">Customer Success</option>
-                <option value="SS">Sales Specialist</option>
-              </select>
-            </div>
-            <div class="filters-field">
               <span class="filters-field-label">Portfólio:</span>
-              <select id="erp-portfolio-filter" onchange="loadErpData()">
-                <option value="" selected>Todos</option>
+              <select id="erp-portfolio-filter" multiple size="4" onchange="loadErpData()">
                 <option value="Workspace">Workspace</option>
                 <option value="GCP">GCP</option>
                 <option value="MSP">MSP</option>
@@ -531,14 +578,25 @@
             </div>
             <div class="filters-field">
               <span class="filters-field-label">Status Pagamento:</span>
-              <select id="erp-payment-status-filter" onchange="loadErpData()">
-                <option value="" selected>Todos</option>
+              <select id="erp-payment-status-filter" multiple size="5" onchange="loadErpData()">
                 <option value="Pagada">Pagada</option>
                 <option value="Pendiente">Pendiente</option>
                 <option value="Intercompañia">Intercompañia</option>
                 <option value="Anulada">Anulada</option>
                 <option value="NAO_INFORMADO">Não informado</option>
               </select>
+            </div>
+            <div class="filters-field">
+              <span class="filters-field-label">Produto:</span>
+              <select id="erp-product-filter" multiple size="6" onchange="loadErpData()"></select>
+            </div>
+            <div class="filters-field">
+              <span class="filters-field-label">Tipo Oportunidade:</span>
+              <select id="erp-opportunity-type-line-filter" multiple size="6" onchange="loadErpData()"></select>
+            </div>
+            <div class="filters-field">
+              <span class="filters-field-label">Segmento:</span>
+              <select id="erp-segment-filter" multiple size="6" onchange="loadErpData()"></select>
             </div>
           </div>
         </div>
@@ -557,7 +615,15 @@
             <line x1="12" y1="20" x2="12" y2="4"/>
             <line x1="6" y1="20" x2="6" y2="14"/>
           </svg>
-          Resumo do Quarter
+          Resumo Executivo
+        </button>
+        <button class="exec-tab" data-tab="resumo-quarter" data-revenue-only="1" onclick="switchExecTab('resumo-quarter')" style="display:none;">
+          <svg class="exec-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="14"/>
+          </svg>
+          Receita por Vendedor
         </button>
         <button class="exec-tab" data-tab="mapas" onclick="switchExecTab('mapas')">
           <svg class="exec-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -577,6 +643,19 @@
             <circle cx="12" cy="12" r="2"/>
           </svg>
           Principais Oportunidades
+        </button>
+        <button class="exec-tab" data-tab="estagnadas" id="tab-btn-estagnadas" onclick="switchExecTab('estagnadas')">
+          <svg class="exec-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="6" y="4" width="4" height="16" rx="1"/>
+            <rect x="14" y="4" width="4" height="16" rx="1"/>
+          </svg>
+          Oportunidades Estagnadas
+        </button>
+        <button class="exec-tab" data-tab="analise-ia" onclick="switchExecTab('analise-ia')" id="tab-btn-analise-ia">
+          <svg class="exec-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+          Análise IA
         </button>
         <button class="exec-tab" data-tab="guia" onclick="switchExecTab('guia')">
           <svg class="exec-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -614,6 +693,7 @@
             <div class="kpi-title exec-kpi-title--cyan">Attainment</div>
             <div class="kpi-value exec-kpi-value-lg" id="erp-attainment-pct">-%</div>
             <div class="kpi-subtitle exec-kpi-subtle" id="erp-attainment-label">meta do quarter</div>
+            <div class="kpi-subtitle exec-kpi-subtle" id="erp-attainment-detail">-</div>
             <div style="margin-top:10px;height:6px;border-radius:4px;background:var(--bg-elevated,#1a2030);overflow:hidden;">
               <div id="erp-attainment-bar" style="height:100%;width:0%;border-radius:4px;background:var(--primary-cyan,#00BEFF);transition:width .6s ease;"></div>
             </div>
@@ -655,7 +735,7 @@
         </div>
 
         <!-- Gráficos ERP -->
-        <div class="exec-charts-row" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px;">
+        <div id="erp-legacy-charts" class="exec-charts-row" style="display:none;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px;">
           <div class="chart-card" style="padding:16px;">
             <div class="chart-title" style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted,#8899aa);margin-bottom:12px;">Evolução Semanal</div>
             <div style="position:relative;height:160px;overflow:hidden;">
@@ -711,9 +791,9 @@
           </svg>
           PIPELINE ABERTO
         </span>
-        <button onclick="openAIPanel()" class="ai-strategy-trigger-btn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px;height:14px;">
-            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        <button onclick="switchExecTab('analise-ia')" class="ia-tab-shortcut-btn" title="Ver Análise Estratégica de IA">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width:13px;height:13px;">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
           </svg>
           Análise IA
         </button>
@@ -1189,81 +1269,21 @@
       </div>
 
       <!-- ======================================================= -->
-      <!-- ALERTA: OPORTUNIDADES ESTAGNADAS                        -->
+      <!-- ANÁLISE ESTRATÉGICA (IA) — agora na aba "Análise IA"  -->
       <!-- ======================================================= -->
-      <div id="exec-stagnant-section" style="display:none; margin-top:40px;">
-        <div class="exec-stagnant-header">
-          <div class="exec-stagnant-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:20px;height:20px;">
-              <rect x="6" y="4" width="4" height="16" rx="1"/>
-              <rect x="14" y="4" width="4" height="16" rx="1"/>
-            </svg>
-          </div>
-          <div class="exec-stagnant-text">
-            <div class="exec-stagnant-title">Oportunidades Estagnadas</div>
-            <div class="exec-stagnant-rule">+90 dias no pipeline · sem atividade há +30 dias</div>
-          </div>
-          <div class="exec-stagnant-count">
-            <span id="exec-stagnant-badge" style="font-size:28px;font-weight:800;color:var(--danger);">-</span>
-            <span style="font-size:11px;color:var(--text-gray);margin-left:3px;">deals</span>
-          </div>
-        </div>
-        <div id="exec-stagnant-list" style="display:flex;flex-direction:column;gap:8px;margin:14px 0 12px;"></div>
-        <button onclick="window.openStagnantDrilldown&&window.openStagnantDrilldown()" class="exec-stagnant-btn">
-          Ver todos os deals estagnados &rarr;
-        </button>
-      </div>
-
-      <!-- ======================================================= -->
-      <!-- ANÁLISE ESTRATÉGICA (IA) — slide panel trigger slot     -->
-      <!-- ======================================================= -->
+      <!-- compat stubs: dashboard.js usa esses IDs mas não exibe -->
+      <span id="executive-toggle-label" style="display:none"></span>
+      <span id="executive-toggle-caret" style="display:none"></span>
+      <!-- #executive-content é legado — o conteúdo vai para #exec-ia-content -->
+      <div id="executive-content" style="display:none"></div>
 
       </div><!-- /booking-sections -->
 
         </div><!-- /view-kpi-cards -->
 
-      <!-- AI STRATEGY SLIDE PANEL -->
-      <div id="ai-strategy-overlay" onclick="closeAIPanel()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:8999;backdrop-filter:blur(3px);"></div>
-      <div id="ai-strategy-panel" class="ai-strategy-panel">
-        <!-- HEADER -->
-        <div class="ai-strategy-header">
-          <div class="ai-strategy-icon-wrap">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:20px;height:20px;color:#fff;">
-              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-            </svg>
-          </div>
-          <div style="flex:1;min-width:0;">
-            <div class="ai-strategy-title-main">
-              Análise Estratégica
-              <span class="ai-badge-title">
-                <svg viewBox="0 0 24 24" fill="currentColor" style="width:9px;height:9px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                Gerado por IA
-              </span>
-            </div>
-            <div class="ai-strategy-subtitle">Gerada automaticamente com base nos dados do quarter</div>
-          </div>
-          <!-- kept for dashboard.js compat — hidden -->
-          <span id="executive-toggle-label" style="display:none">Ocultar</span>
-          <span id="executive-toggle-caret" style="display:none">&#9660;</span>
-          <button onclick="closeAIPanel()" class="ai-strategy-close" title="Fechar">&#10005;</button>
-        </div>
-        <!-- BODY -->
-        <div class="ai-strategy-body">
-          <div id="executive-content" class="ai-content">
-            <div class="loading">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite;">
-                <polyline points="23 4 23 10 17 10"/>
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-              </svg>
-              Carregando análise estratégica...
-            </div>
-          </div>
-        </div>
-      </div>
-
         <!-- VISÃO GRÁFICOS (Chart.js) -->
         <div id="view-graficos" class="view-content">
-          <div class="bento-grid">
+          <div id="booking-graficos-grid" class="bento-grid">
             <div class="card col-12 chart-category-card chart-category-fase">
               <div class="chart-category-head">
                 <div class="card-label chart-category-title">Categoria: Fase & Conversão</div>
@@ -1339,6 +1359,45 @@
             <div class="card col-6 chart-group-geo">
               <div class="card-label">Distribuição por Cidade</div>
               <div class="chart-wrapper" style="height:420px;"><canvas id="chart-cidade"></canvas></div>
+            </div>
+          </div>
+
+          <div id="revenue-graficos-grid" class="bento-grid" style="display:none;">
+            <div class="card col-6 glow-cyan">
+              <div class="card-label">Gross vs Net por Semana</div>
+              <div class="chart-wrapper" style="height:320px;"><canvas id="erp-analytics-weekly"></canvas></div>
+            </div>
+            <div class="card col-6 glow-green">
+              <div class="card-label">Net Pago × Pendente × Anulado (Mês)</div>
+              <div class="chart-wrapper" style="height:320px;"><canvas id="erp-analytics-pay-status"></canvas></div>
+            </div>
+            <div class="card col-6 glow-pink">
+              <div class="card-label">Top Produtos por Revenue</div>
+              <div class="chart-wrapper" style="height:320px;"><canvas id="erp-analytics-products"></canvas></div>
+            </div>
+            <div class="card col-6">
+              <div class="card-label" id="erp-analytics-att-title">Meta vs Realizado (Mês)</div>
+              <div class="chart-wrapper" style="height:320px;"><canvas id="erp-analytics-attainment"></canvas></div>
+            </div>
+            <div class="card col-6 glow-cyan">
+              <div class="card-label">Revenue por Comercial</div>
+              <div class="chart-wrapper" style="height:320px;"><canvas id="erp-analytics-commercial"></canvas></div>
+            </div>
+            <div class="card col-6 glow-green">
+              <div class="card-label">Revenue por Segmento</div>
+              <div class="chart-wrapper" style="height:320px;"><canvas id="erp-analytics-segment"></canvas></div>
+            </div>
+            <div class="card col-6 glow-pink">
+              <div class="card-label">Revenue por Família</div>
+              <div class="chart-wrapper" style="height:320px;"><canvas id="erp-analytics-family"></canvas></div>
+            </div>
+            <div class="card col-6 glow-cyan">
+              <div class="card-label">Revenue por Tipo de Oportunidade</div>
+              <div class="chart-wrapper" style="height:320px;"><canvas id="erp-analytics-opportunity-type-line"></canvas></div>
+            </div>
+            <div class="card col-12 glow-green">
+              <div class="card-label">Revenue por Quarter (Q)</div>
+              <div class="chart-wrapper" style="height:300px;"><canvas id="erp-analytics-quarter"></canvas></div>
             </div>
           </div>
         </div><!-- /view-graficos -->
@@ -1503,6 +1562,224 @@
         <div id="exec-top-opps-container"></div>
       </div><!-- FIM TAB OPORTUNIDADES -->
 
+        <!-- TAB CONTENT: OPORTUNIDADES ESTAGNADAS -->
+        <div class="exec-tab-content" data-content="estagnadas" style="display: none;">
+          <p style="color: var(--text-gray); font-size: 12px; margin: 0 0 15px 0;">Deals sem avanço operacional relevante para priorização executiva e acionamento imediato.</p>
+          <div id="exec-stagnant-section" style="display:block; margin-top:0;">
+            <div class="exec-stagnant-header">
+              <div class="exec-stagnant-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:20px;height:20px;">
+                  <rect x="6" y="4" width="4" height="16" rx="1"/>
+                  <rect x="14" y="4" width="4" height="16" rx="1"/>
+                </svg>
+              </div>
+              <div class="exec-stagnant-text">
+                <div class="exec-stagnant-title">Oportunidades Estagnadas</div>
+                <div class="exec-stagnant-rule">+90 dias no pipeline · sem atividade há +30 dias</div>
+              </div>
+              <div class="exec-stagnant-count">
+                <span id="exec-stagnant-badge" style="font-size:28px;font-weight:800;color:var(--danger);">-</span>
+                <span style="font-size:11px;color:var(--text-gray);margin-left:3px;">deals</span>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 10px;">
+              <button onclick="window.openStagnantAlertLogs&&window.openStagnantAlertLogs()" class="exec-stagnant-btn" style="width:auto;padding:8px 12px;">
+                Ver logs de envio
+              </button>
+              <button onclick="window.hideStagnantAlertLogs&&window.hideStagnantAlertLogs()" class="exec-stagnant-btn" style="width:auto;padding:8px 12px;">
+                Ocultar logs
+              </button>
+            </div>
+            <div id="exec-stagnant-log-panel" style="display:none; margin-bottom:12px;">
+              <div style="font-size:11px;color:var(--text-gray);margin-bottom:6px;">Últimos envios processados pelo backend (status real)</div>
+              <div id="exec-stagnant-log-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+            </div>
+            <div id="exec-stagnant-list" style="display:flex;flex-direction:column;gap:8px;margin:14px 0 12px;"></div>
+            <button onclick="window.openStagnantDrilldown&&window.openStagnantDrilldown()" class="exec-stagnant-btn">
+              Ver todos os deals estagnados &rarr;
+            </button>
+          </div>
+        </div><!-- FIM TAB ESTAGNADAS -->
+
+        <!-- TAB CONTENT: RECEITA POR VENDEDOR (ERP Gross/Net) -->
+        <div class="exec-tab-content" data-content="resumo-quarter" data-revenue-only="1" style="display:none;">
+          <h3><svg class="icon"><use href="#icon-chart"/></svg> Receita por Vendedor</h3>
+          <p style="color: var(--text-gray); margin-bottom: 16px;">
+            Net Revenue agrupado por vendedor nas visões <strong>Total Faturado</strong> e <strong>Incremental (Novo)</strong>.
+          </p>
+
+          <div class="kpi-grid" style="margin-bottom: 16px;">
+            <div class="kpi-card">
+              <div class="kpi-title">Net Faturado Total</div>
+              <div class="kpi-value val-cyan" id="qs-net-total">-</div>
+              <div class="kpi-subtitle" id="qs-vendedores-total">- vendedores</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-title">Net Faturado Novo</div>
+              <div class="kpi-value val-green" id="qs-net-incremental">-</div>
+              <div class="kpi-subtitle" id="qs-vendedores-incremental">- vendedores</div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:8px; margin: 8px 0 14px; flex-wrap:wrap;">
+            <button id="qs-view-total-btn" type="button" onclick="window.setQuarterSummaryView && window.setQuarterSummaryView('total')" style="padding:8px 12px; border-radius:10px; border:1px solid rgba(0,190,255,0.45); background:rgba(0,190,255,0.16); color:var(--primary-cyan); font-size:12px; font-weight:800; cursor:pointer;">Net Faturado</button>
+            <button id="qs-view-incremental-btn" type="button" onclick="window.setQuarterSummaryView && window.setQuarterSummaryView('incremental')" style="padding:8px 12px; border-radius:10px; border:1px solid rgba(255,255,255,0.16); background:rgba(255,255,255,0.04); color:var(--text-main); font-size:12px; font-weight:700; cursor:pointer;">Net Faturado Novo</button>
+          </div>
+
+          <div id="qs-view-total" class="ai-card" style="display:block;">
+              <h4 style="margin: 0 0 10px 0; color: var(--primary-cyan);">Visão 1 — Net Faturado Total por Vendedor</h4>
+              <div class="exec-dd-table-wrap">
+                <table class="exec-dd-table" style="width: 100%;">
+                  <thead>
+                    <tr>
+                      <th>Vendedor</th>
+                      <th style="text-align:right;">Net Revenue</th>
+                      <th style="text-align:right;">Net Pagada</th>
+                      <th style="text-align:right;">Net Pendente</th>
+                      <th style="text-align:right;">Meta BDM</th>
+                      <th style="text-align:right;">Ating. Cota (Inc.)</th>
+                      <th style="text-align:right;">Oportunidades</th>
+                    </tr>
+                  </thead>
+                  <tbody id="qs-table-total-body">
+                    <tr><td colspan="7" style="text-align:center;padding:18px;color:var(--text-muted);">Carregando...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+          </div>
+
+          <div id="qs-view-incremental" class="ai-card" style="display:none; margin-top:16px;">
+              <h4 style="margin: 0 0 10px 0; color: var(--accent-green);">Visão 2 — Net Faturado Novo (Incremental) por Vendedor</h4>
+              <div class="exec-dd-table-wrap">
+                <table class="exec-dd-table" style="width: 100%;">
+                  <thead>
+                    <tr>
+                      <th>Vendedor</th>
+                      <th style="text-align:right;">Net Revenue</th>
+                      <th style="text-align:right;">Net Pagada</th>
+                      <th style="text-align:right;">Net Pendente</th>
+                      <th style="text-align:right;">Meta BDM</th>
+                      <th style="text-align:right;">Ating. Cota (Inc.)</th>
+                      <th style="text-align:right;">Oportunidades</th>
+                    </tr>
+                  </thead>
+                  <tbody id="qs-table-incremental-body">
+                    <tr><td colspan="7" style="text-align:center;padding:18px;color:var(--text-muted);">Carregando...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p style="margin-top: 10px; font-size: 11px; color: var(--text-gray); line-height: 1.5;">
+                Regras da cota incremental: Closed-Won faturado, sem recorrência, sem refaturamento/nota de crédito, sem intercompanhia e sem incentivos (rebate/DAF/voucher), com primeira cobrança da oportunidade e sem histórico prévio no mesmo escopo cliente+produto antes da janela filtrada.
+              </p>
+          </div>
+
+          <div id="qs-drilldown-overlay" class="qs-drilldown-overlay" onclick="window.closeQuarterSellerDrilldown && window.closeQuarterSellerDrilldown()"></div>
+          <aside id="qs-drilldown-panel" class="ai-card qs-drilldown-panel" aria-label="Drill-down de receita por vendedor">
+            <div class="qs-drilldown-header">
+              <div class="qs-drilldown-title-row">
+                <h4 id="qs-drilldown-title" class="qs-drilldown-title">Drill-down por vendedor</h4>
+                <button type="button" class="qs-drilldown-close" onclick="window.closeQuarterSellerDrilldown && window.closeQuarterSellerDrilldown()">Fechar</button>
+              </div>
+              <div id="qs-drilldown-meta" class="qs-drilldown-meta">-</div>
+            </div>
+            <div class="exec-dd-table-wrap qs-drilldown-table-wrap">
+              <table class="exec-dd-table qs-drilldown-table">
+                <colgroup>
+                  <col style="width:96px;">
+                  <col style="width:240px;">
+                  <col style="width:250px;">
+                  <col style="width:170px;">
+                  <col style="width:130px;">
+                  <col style="width:220px;">
+                  <col style="width:120px;">
+                  <col style="width:140px;">
+                  <col style="width:130px;">
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Oportunidade</th>
+                    <th>Cliente</th>
+                    <th>Produto</th>
+                    <th>Documento</th>
+                    <th>Conta Financeira</th>
+                    <th>Status</th>
+                    <th>Fonte</th>
+                    <th style="text-align:right;">Net Revenue</th>
+                  </tr>
+                </thead>
+                <tbody id="qs-drilldown-body">
+                  <tr><td colspan="9" style="text-align:center;padding:18px;color:var(--text-muted)">Selecione um vendedor para detalhar</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </aside>
+        </div><!-- FIM TAB RESUMO QUARTER -->
+
+      <!-- TAB CONTENT: ANÁLISE ESTRATÉGICA IA -->
+      <div class="exec-tab-content" data-content="analise-ia" style="display:none;">
+        <div class="ia-shell">
+
+          <!-- HEADER -->
+          <div class="ia-header">
+            <div class="ia-header-left">
+              <h3 class="ia-title">
+                <span class="ia-title-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width:16px;height:16px;">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+                  </svg>
+                </span>
+                Análise Estratégica
+                <span class="ia-badge">IA</span>
+              </h3>
+              <p class="ia-sub">Diagnóstico automático com base nos dados filtrados do quarter. Atualiza sempre que os filtros mudam.</p>
+              <div id="ia-filter-badges" class="ia-filter-badges"></div>
+            </div>
+            <button class="ia-refresh-btn" onclick="window.refreshIAAnalysis&&window.refreshIAAnalysis()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:13px;height:13px;">
+                <polyline points="23 4 23 10 17 10"/>
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+              </svg>
+              Atualizar
+            </button>
+          </div>
+
+          <!-- SECTION: DIAGNÓSTICOS -->
+          <div class="ia-section">
+            <p class="ia-section-label">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              Diagnósticos
+            </p>
+            <div id="exec-ia-content" class="ia-diag-grid">
+              <div class="ia-loading">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;">
+                  <polyline points="23 4 23 10 17 10"/>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                </svg>
+                Carregando análise estratégica&hellip;
+              </div>
+            </div>
+          </div>
+
+          <!-- SECTION: PRÓXIMAS AÇÕES -->
+          <div class="ia-section">
+            <p class="ia-section-label">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;">
+                <polyline points="9 11 12 14 22 4"/>
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+              </svg>
+              Próximas Ações · 30 dias
+            </p>
+            <div id="exec-ia-actions" class="ia-actions-list"></div>
+          </div>
+
+        </div><!-- /ia-shell -->
+      </div><!-- /TAB: ANÁLISE IA -->
+
       <!-- TAB CONTENT: GUIA DE INTERPRETAÇÃO -->
       <div class="exec-tab-content" data-content="guia" style="display: none;">
         <h3>
@@ -1561,6 +1838,7 @@
           </div>
         </div>
       </div><!-- FIM TAB GUIA -->
+
     </div><!-- FIM EXECUTIVE SECTION -->
 
     <!-- SEÇÃO: INDICADORES L10 -->
@@ -1651,6 +1929,45 @@
 
       <h3>Margem Média por Categoria (Bookings)</h3>
       <div class="margin-grid" id="margin-container"></div>
+
+      <h3 style="margin-top: 28px;">Scorecard do Vendedor</h3>
+      <p style="color: var(--text-gray); font-size: 12px; margin: -5px 0 15px 0;">
+        Semáforo operacional por vendedor com base no IPV atual.
+      </p>
+      <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+        <div class="kpi-card">
+          <div class="kpi-title">On Track</div>
+          <div class="kpi-value val-green" id="exec-score-ontrack">-</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">At Risk</div>
+          <div class="kpi-value val-warning" id="exec-score-atrisk">-</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Off Track</div>
+          <div class="kpi-value val-red" id="exec-score-offtrack">-</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-title">Score Médio</div>
+          <div class="kpi-value val-cyan" id="exec-score-avg">-</div>
+        </div>
+      </div>
+      <div class="exec-dd-table-wrap" style="margin-top: 16px;">
+        <table class="exec-dd-table" style="width:100%;">
+          <thead>
+            <tr>
+              <th>Vendedor</th>
+              <th>IPV</th>
+              <th>Win Rate</th>
+              <th>Gross Gerado</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="exec-score-table-body">
+            <tr><td colspan="5" style="text-align:center;padding:18px;color:var(--text-muted)">Carregando score...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- SEÇÃO: APRENDIZADOS -->
@@ -2467,18 +2784,19 @@
   <script src="scripts/configuracao.js"></script>
   <script src="scripts/schema-constants.js"></script>
   <script src="scripts/estado-global.js"></script>
-  <script src="scripts/utilitarios.js"></script>
+  <script src="scripts/utilitarios.js?v=20260309-netmeta02"></script>
   <script src="scripts/explicacoes-kpi.js"></script>
   <script src="scripts/admin.js"></script>
   <script src="scripts/vendedores.js"></script>
   <script src="scripts/api-dados.js"></script>
+  <script src="scripts/resumo-quarter.js?v=20260309-netmeta04"></script>
   <script src="scripts/dashboard.js"></script>
   <script src="scripts/metricas-executivas.js"></script>
   <script src="scripts/detalhes-vendedor.js"></script>
   <script src="scripts/agenda-semanal.js"></script>
   <script src="scripts/interface.js"></script>
   <script src="scripts/aprendizados.js"></script>
-  <script src="scripts/abas.js"></script>
+  <script src="scripts/abas.js?v=20260309-netmeta02"></script>
   <script src="scripts/filtros.js"></script>
   <script src="scripts/ml.js"></script>
   <script src="scripts/performance-fsr.js"></script>
@@ -2487,7 +2805,7 @@
   <script src="scripts/drilldown.js"></script>
 
   <!-- Weekly Agenda Enhanced Script (cache-bust) -->
-<script src="scripts/agenda-semanal-weekly.js?v=20260212-0012"></script>
+<script src="scripts/agenda-semanal-weekly.js?v=20260309-ssfix01"></script>
 
 <script>
   // ── Theme Toggle ──
@@ -2516,9 +2834,20 @@
     var target = document.getElementById(viewId);
     if (target) target.classList.add('active');
     if (btn) btn.classList.add('active');
+    var isErp = (window.execDisplayMode === 'gross' || window.execDisplayMode === 'net');
+    var bookingGrid = document.getElementById('booking-graficos-grid');
+    var revenueGrid = document.getElementById('revenue-graficos-grid');
+    if (bookingGrid) bookingGrid.style.display = isErp ? 'none' : '';
+    if (revenueGrid) revenueGrid.style.display = isErp ? '' : 'none';
     // Init charts on first open
-    if (viewId === 'view-graficos' && typeof window.initDashboardCharts === 'function') {
-      setTimeout(window.initDashboardCharts, 80);
+    if (viewId === 'view-graficos') {
+      if (isErp) {
+        if (typeof window.loadErpData === 'function') {
+          setTimeout(window.loadErpData, 60);
+        }
+      } else if (typeof window.initDashboardCharts === 'function') {
+        setTimeout(window.initDashboardCharts, 80);
+      }
     }
   }
 
