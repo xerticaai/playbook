@@ -4,7 +4,7 @@ Filtros: year (2024-2030), month (1-12), seller
 """
 from fastapi import FastAPI, HTTPException, Request, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from google.cloud import bigquery
 from google.cloud import firestore as _fs_module
@@ -38,20 +38,67 @@ app = FastAPI(
 )
 
 # CORS
+CORS_ALLOWED_ORIGINS = [
+    "https://x-gtm.web.app",
+    "https://x-gtm.firebaseapp.com",
+    "https://x-sales.web.app",
+    "https://x-sales.firebaseapp.com",
+    "http://localhost:3000",
+    "http://localhost:5000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://x-gtm.web.app",
-        "https://x-gtm.firebaseapp.com",
-        "https://x-sales.web.app",
-        "https://x-sales.firebaseapp.com",
-        "http://localhost:3000",
-        "http://localhost:5000",
-    ],
+    allow_origins=CORS_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _error_cors_headers(request: Request) -> Dict[str, str]:
+    origin = str(request.headers.get("origin") or "").strip()
+    if not origin or origin not in CORS_ALLOWED_ORIGINS:
+        return {}
+    return {
+        "Access-Control-Allow-Origin": origin,
+        "Access-Control-Allow-Credentials": "true",
+        "Vary": "Origin",
+    }
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    detail = exc.detail
+    payload = detail if isinstance(detail, dict) else {"error": str(detail)}
+    return JSONResponse(
+        status_code=int(exc.status_code),
+        content=payload,
+        headers=_error_cors_headers(request),
+    )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    err_msg = str(exc or "")
+    err_lc = err_msg.lower()
+    if (
+        "429" in err_msg
+        or "rate" in err_lc
+        or "quota" in err_lc
+        or "too many requests" in err_lc
+    ):
+        return JSONResponse(
+            status_code=429,
+            content={"error": "Rate exceeded."},
+            headers=_error_cors_headers(request),
+        )
+
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal Server Error", "details": err_msg[:300]},
+        headers=_error_cors_headers(request),
+    )
 
 # Frontend é servido pelo Firebase Hosting — Cloud Run só expõe a API (/api/**).
 # O mount de /static abaixo só é ativo em dev local (quando public_path existir).
@@ -3421,13 +3468,8 @@ def get_revenue_quarter_summary(
             meta_filters.append(f"{parsed_meta_month_expr} <= DATE('{sql_literal(date_end)}')")
         if seller:
             seller_bdm_filter = build_in_filter("BDM", seller)
-            seller_ss_filter = build_in_filter("Sales_Specialist", seller)
-            if seller_bdm_filter and seller_ss_filter:
-                meta_filters.append(f"(({seller_bdm_filter}) OR ({seller_ss_filter}))")
-            elif seller_bdm_filter:
+            if seller_bdm_filter:
                 meta_filters.append(seller_bdm_filter)
-            elif seller_ss_filter:
-                meta_filters.append(seller_ss_filter)
 
         meta_where = "WHERE " + " AND ".join(meta_filters) if meta_filters else ""
         q_meta_bdm = f"""
@@ -3447,7 +3489,7 @@ def get_revenue_quarter_summary(
         SELECT
             CASE
                 WHEN UPPER(TRIM(COALESCE(Tipo_de_meta, ''))) IN ('CS', 'SALES')
-                    THEN COALESCE(NULLIF(TRIM(Sales_Specialist), ''), NULLIF(TRIM(BDM), ''), 'Sem vendedor')
+                    THEN COALESCE(NULLIF(TRIM(BDM), ''), NULLIF(TRIM(Sales_Specialist), ''), 'Sem vendedor')
                 ELSE COALESCE(NULLIF(TRIM(BDM), ''), NULLIF(TRIM(Sales_Specialist), ''), 'Sem vendedor')
             END AS vendedor,
             COALESCE(NULLIF(TRIM(Tipo_de_meta), ''), 'NAO_INFORMADO') AS tipo_de_meta,
@@ -3457,9 +3499,33 @@ def get_revenue_quarter_summary(
         GROUP BY 1, 2
         """
 
+        q_meta_breakdown = f"""
+        WITH meta_dedup AS (
+            SELECT *
+            FROM `{PROJECT_ID}.{DATASET_ID}.meta_bdm`
+            QUALIFY ROW_NUMBER() OVER (
+                PARTITION BY
+                    COALESCE(NULLIF(TRIM(Tipo_de_meta), ''), 'NAO_INFORMADO'),
+                    COALESCE(NULLIF(TRIM(BDM), ''), 'Sem vendedor'),
+                    COALESCE(NULLIF(TRIM(Sales_Specialist), ''), 'Sem especialista'),
+                    COALESCE(NULLIF(TRIM(Periodo_Fiscal), ''), 'SEM_Q'),
+                    COALESCE(NULLIF(TRIM(Mes_Ano), ''), 'SEM_MES')
+                ORDER BY data_carga DESC, Run_ID DESC
+            ) = 1
+        )
+        SELECT
+            ROUND(SUM(CASE WHEN UPPER(TRIM(COALESCE(Tipo_de_meta, ''))) = 'CS' THEN COALESCE(Net_faturado, Net_gerado, 0) ELSE 0 END), 2) AS meta_cs,
+            ROUND(SUM(CASE WHEN NULLIF(TRIM(BDM), '') IS NOT NULL THEN COALESCE(Net_faturado, Net_gerado, 0) ELSE 0 END), 2) AS meta_bdm,
+            ROUND(SUM(CASE WHEN NULLIF(TRIM(Sales_Specialist), '') IS NOT NULL THEN COALESCE(Net_faturado, Net_gerado, 0) ELSE 0 END), 2) AS meta_sales_specialist
+        FROM meta_dedup
+        {meta_where}
+        """
+
         total_rows = query_to_dict(q_total)
         incremental_rows = query_to_dict(q_incremental)
         meta_bdm_rows = query_to_dict(q_meta_bdm)
+        meta_breakdown_rows = query_to_dict(q_meta_breakdown)
+        meta_breakdown = meta_breakdown_rows[0] if meta_breakdown_rows else {}
 
         q_active_sellers = f"""
         SELECT DISTINCT COALESCE(NULLIF(TRIM(Vendedor), ''), 'Sem vendedor') AS vendedor
@@ -3590,13 +3656,18 @@ def get_revenue_quarter_summary(
                 "dedupe_key": "oportunidade+cliente+produto+data_fatura+net+tipo_documento+cuenta_financeira",
             },
             "meta_bdm_por_vendedor": meta_bdm_rows,
+            "meta_breakdown": {
+                "cs": round(float(meta_breakdown.get("meta_cs") or 0), 2),
+                "bdm": round(float(meta_breakdown.get("meta_bdm") or 0), 2),
+                "sales_specialist": round(float(meta_breakdown.get("meta_sales_specialist") or 0), 2),
+            },
             "meta_assignment": {
                 "owner_rules": {
-                    "sales": "Sales_Specialist (fallback BDM)",
-                    "cs": "Sales_Specialist (fallback BDM)",
+                    "sales": "BDM (fallback Sales_Specialist)",
+                    "cs": "BDM (fallback Sales_Specialist)",
                 },
                 "dedupe": "latest_by_tipo_bdm_sales_specialist_periodo_mes",
-                "notes": "Meta por vendedor derivada da meta_bdm com consolidacao por Sales Specialist em Sales/CS, com fallback para BDM quando necessario.",
+                "notes": "Meta por vendedor derivada da meta_bdm com consolidacao por BDM em Sales/CS, com fallback para Sales Specialist quando BDM estiver vazio.",
             },
             "net_total_por_vendedor": total_rows,
             "net_incremental_por_vendedor": incremental_rows,
@@ -4819,11 +4890,350 @@ def get_revenue_top(
 
 
 # =============================================
+# PORTAL V2 — SALES VISION (persona-based RLS)
+# =============================================
+
+def _get_xsales_user_by_email_fs(email: str) -> Optional[Dict[str, Any]]:
+    db = get_fs_client()
+    docs = (
+        db.collection(XSALES_USERS_COL)
+        .where("email", "==", email.strip().lower())
+        .limit(1)
+        .stream()
+    )
+    for doc in docs:
+        data = doc.to_dict()
+        data["id"] = doc.id
+        return _normalize_xsales_user(data)
+    return None
+
+
+def _resolve_portal_context(request: Request, user_email: Optional[str]) -> Dict[str, Any]:
+    email = _normalize_email(user_email) or _extract_request_email(request)
+    if not email:
+        raise HTTPException(status_code=400, detail="user_email ausente")
+
+    user = _get_xsales_user_by_email_fs(email)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado no portal")
+    if not user.get("isActive", True):
+        raise HTTPException(status_code=403, detail="Usuário inativo")
+
+    persona = (user.get("personaData") or "BDM_CS").strip().upper()
+    rls_scope = (user.get("rlsScope") or "OWNER").strip().upper()
+    principal_owner = (user.get("principalOwner") or user.get("sellerCanonical") or "").strip().lower() or None
+    principal_ss = (user.get("principalSs") or "").strip().lower() or None
+
+    if persona == "BDM_CS" and not principal_owner:
+        raise HTTPException(status_code=400, detail="Usuário BDM/CS sem principalOwner configurado")
+    if persona == "SS" and not principal_ss:
+        raise HTTPException(status_code=400, detail="Usuário SS sem principalSs configurado")
+
+    return {
+        "email": email,
+        "user": user,
+        "persona": persona,
+        "rls_scope": rls_scope,
+        "principal_owner": principal_owner,
+        "principal_ss": principal_ss,
+    }
+
+
+def _ensure_persona(ctx: Dict[str, Any], allowed: List[str]):
+    persona = ctx.get("persona")
+    if persona not in allowed:
+        raise HTTPException(status_code=403, detail=f"Persona {persona} sem permissão para este endpoint")
+
+
+@app.get("/api/v2/portal/me/context")
+def v2_portal_me_context(request: Request, user_email: Optional[str] = None):
+    ctx = _resolve_portal_context(request, user_email)
+    return {
+        "email": ctx["email"],
+        "persona": ctx["persona"],
+        "rls_scope": ctx["rls_scope"],
+        "principal_owner": ctx["principal_owner"],
+        "principal_ss": ctx["principal_ss"],
+        "cargo": ctx["user"].get("cargo"),
+        "hubs": ctx["user"].get("hubs", []),
+    }
+
+
+@app.get("/api/v2/portal/bdmcs/kpi-faturamento")
+def v2_portal_bdmcs_kpi_faturamento(
+    request: Request,
+    fiscal_q: Optional[str] = None,
+    user_email: Optional[str] = None,
+    owner_key: Optional[str] = None,
+):
+    ctx = _resolve_portal_context(request, user_email)
+    _ensure_persona(ctx, ["BDM_CS", "ADMIN"])
+
+    owner = (owner_key or "").strip().lower() or None
+    if ctx["persona"] == "BDM_CS":
+        owner = ctx["principal_owner"]
+
+    filters = []
+    if fiscal_q:
+        filters.append(f"fiscal_q = '{sql_literal(fiscal_q)}'")
+    if owner:
+        filters.append(f"owner_key = '{sql_literal(owner)}'")
+    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+
+    mart = f"{PROJECT_ID}.{MART_L10_DATASET}"
+    q = f"""
+    SELECT
+      owner_key,
+      fiscal_q,
+      ROUND(SUM(meta_net_faturado), 2) AS meta_net_faturado,
+      ROUND(SUM(net_faturado_incremental), 2) AS net_faturado_incremental,
+      ROUND(SAFE_DIVIDE(SUM(net_faturado_incremental), NULLIF(SUM(meta_net_faturado),0)) * 100, 1) AS attainment_pct,
+      ROUND(SUM(gap_net), 2) AS gap_net
+    FROM `{mart}.v2_bdmcs_meta_vs_realizado`
+    {where}
+    GROUP BY 1,2
+    ORDER BY fiscal_q DESC, owner_key
+    """
+    return {"items": query_to_dict(q)}
+
+
+@app.get("/api/v2/portal/bdmcs/fila-acoes")
+def v2_portal_bdmcs_fila_acoes(
+    request: Request,
+    fiscal_q: Optional[str] = None,
+    limit: int = 100,
+    user_email: Optional[str] = None,
+    owner_key: Optional[str] = None,
+):
+    ctx = _resolve_portal_context(request, user_email)
+    _ensure_persona(ctx, ["BDM_CS", "ADMIN"])
+
+    owner = (owner_key or "").strip().lower() or None
+    if ctx["persona"] == "BDM_CS":
+        owner = ctx["principal_owner"]
+
+    filters = []
+    if owner:
+        filters.append(f"owner_key = '{sql_literal(owner)}'")
+    if fiscal_q:
+        filters.append(f"Fiscal_Q = '{sql_literal(fiscal_q)}'")
+    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    lim = max(1, min(int(limit or 100), 500))
+    mart = f"{PROJECT_ID}.{MART_L10_DATASET}"
+    q = f"""
+    SELECT
+      owner_key, Oportunidade, Conta, Fiscal_Q, Fase_Atual, Data_Prevista,
+      Gross, Net, Velocity_Predicao, Risco_Principal, Perguntas_de_Auditoria_IA,
+      Status_Governanca_SS, action_sort_rank
+    FROM `{mart}.v2_bdmcs_daily_actions`
+    {where}
+    ORDER BY action_sort_rank ASC, Data_Prevista ASC, Net DESC
+    LIMIT {lim}
+    """
+    return {"items": query_to_dict(q)}
+
+
+@app.get("/api/v2/portal/bdmcs/handoff-status")
+def v2_portal_bdmcs_handoff_status(
+    request: Request,
+    fiscal_q: Optional[str] = None,
+    user_email: Optional[str] = None,
+    owner_key: Optional[str] = None,
+    limit: int = 200,
+):
+    ctx = _resolve_portal_context(request, user_email)
+    _ensure_persona(ctx, ["BDM_CS", "ADMIN"])
+
+    owner = (owner_key or "").strip().lower() or None
+    if ctx["persona"] == "BDM_CS":
+        owner = ctx["principal_owner"]
+
+    filters = []
+    if owner:
+        filters.append(f"owner_key = '{sql_literal(owner)}'")
+    if fiscal_q:
+        fq = sql_literal(fiscal_q)
+        filters.append(
+            "CONCAT('FY', SUBSTR(CAST(EXTRACT(YEAR FROM SAFE_CAST(Data_Prevista AS DATE)) AS STRING), 3, 2), "
+            "'-Q', CAST(EXTRACT(QUARTER FROM SAFE_CAST(Data_Prevista AS DATE)) AS STRING)) = "
+            f"'{fq}'"
+        )
+    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    lim = max(1, min(int(limit or 200), 1000))
+    mart = f"{PROJECT_ID}.{MART_L10_DATASET}"
+    q = f"""
+    SELECT
+      owner_key, Oportunidade, Conta, ss_key,
+      Elegibilidade_SS, Status_Governanca_SS, Risco_Principal,
+      Perguntas_de_Auditoria_IA, Data_Prevista, Net, Gross
+    FROM `{mart}.v2_bdmcs_handoff_status`
+    {where}
+    ORDER BY Data_Prevista ASC, Net DESC
+    LIMIT {lim}
+    """
+    return {"items": query_to_dict(q)}
+
+
+@app.get("/api/v2/portal/ss/kpi-net-gerado")
+def v2_portal_ss_kpi_net_gerado(
+    request: Request,
+    fiscal_q: Optional[str] = None,
+    user_email: Optional[str] = None,
+    ss_key: Optional[str] = None,
+):
+    ctx = _resolve_portal_context(request, user_email)
+    _ensure_persona(ctx, ["SS", "ADMIN"])
+
+    ss = (ss_key or "").strip().lower() or None
+    if ctx["persona"] == "SS":
+        ss = ctx["principal_ss"]
+
+    filters = []
+    if fiscal_q:
+        filters.append(f"fiscal_q = '{sql_literal(fiscal_q)}'")
+    if ss:
+        filters.append(f"ss_key = '{sql_literal(ss)}'")
+    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+
+    mart = f"{PROJECT_ID}.{MART_L10_DATASET}"
+    q = f"""
+    SELECT
+      ss_key,
+      fiscal_q,
+      ROUND(SUM(meta_net_gerado), 2) AS meta_net_gerado,
+      ROUND(SUM(net_gerado_elegivel), 2) AS net_gerado_elegivel,
+      ROUND(SAFE_DIVIDE(SUM(net_gerado_elegivel), NULLIF(SUM(meta_net_gerado),0)) * 100, 1) AS attainment_pct,
+      ROUND(SUM(gap_net), 2) AS gap_net
+    FROM `{mart}.v2_ss_meta_vs_realizado`
+    {where}
+    GROUP BY 1,2
+    ORDER BY fiscal_q DESC, ss_key
+    """
+    return {"items": query_to_dict(q)}
+
+
+@app.get("/api/v2/portal/ss/fila-fechamento")
+def v2_portal_ss_fila_fechamento(
+    request: Request,
+    fiscal_q: Optional[str] = None,
+    user_email: Optional[str] = None,
+    ss_key: Optional[str] = None,
+    limit: int = 200,
+):
+    ctx = _resolve_portal_context(request, user_email)
+    _ensure_persona(ctx, ["SS", "ADMIN"])
+
+    ss = (ss_key or "").strip().lower() or None
+    if ctx["persona"] == "SS":
+        ss = ctx["principal_ss"]
+
+    filters = []
+    if ss:
+        filters.append(f"ss_key = '{sql_literal(ss)}'")
+    if fiscal_q:
+        filters.append(f"Fiscal_Q = '{sql_literal(fiscal_q)}'")
+    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    lim = max(1, min(int(limit or 200), 1000))
+
+    mart = f"{PROJECT_ID}.{MART_L10_DATASET}"
+    q = f"""
+    SELECT
+      ss_key, Oportunidade, Conta, Fiscal_Q, Fase_Atual, Data_Prevista,
+      Net, Gross, Elegibilidade_SS, Status_Governanca_SS,
+      Velocity_Predicao, Risco_Principal, Perguntas_de_Auditoria_IA
+    FROM `{mart}.v2_ss_closing_queue`
+    {where}
+    ORDER BY Data_Prevista ASC, Net DESC
+    LIMIT {lim}
+    """
+    return {"items": query_to_dict(q)}
+
+
+@app.get("/api/v2/portal/admin/governance-monitor")
+def v2_portal_admin_governance_monitor(
+    request: Request,
+    fiscal_q: Optional[str] = None,
+    user_email: Optional[str] = None,
+    limit: int = 500,
+):
+    ctx = _resolve_portal_context(request, user_email)
+    _ensure_persona(ctx, ["ADMIN"])
+
+    filters = []
+    if fiscal_q:
+        filters.append(f"Fiscal_Q = '{sql_literal(fiscal_q)}'")
+    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    lim = max(1, min(int(limit or 500), 2000))
+    mart = f"{PROJECT_ID}.{MART_L10_DATASET}"
+    q = f"""
+    SELECT *
+    FROM `{mart}.v2_admin_governance_monitor`
+    {where}
+    ORDER BY Fiscal_Q DESC, Net DESC
+    LIMIT {lim}
+    """
+    return {"items": query_to_dict(q)}
+
+
+@app.get("/api/v2/portal/admin/slippage-zumbis")
+def v2_portal_admin_slippage_zumbis(
+    request: Request,
+    fiscal_q: Optional[str] = None,
+    user_email: Optional[str] = None,
+):
+    ctx = _resolve_portal_context(request, user_email)
+    _ensure_persona(ctx, ["ADMIN"])
+
+    filters = []
+    if fiscal_q:
+        filters.append(f"Fiscal_Q = '{sql_literal(fiscal_q)}'")
+    where = ("WHERE " + " AND ".join(filters)) if filters else ""
+    mart = f"{PROJECT_ID}.{MART_L10_DATASET}"
+    q = f"""
+    SELECT *
+    FROM `{mart}.v2_admin_slippage_zumbis`
+    {where}
+    ORDER BY Fiscal_Q DESC, opps_zumbi DESC, opps_slippage DESC
+    """
+    return {"items": query_to_dict(q)}
+
+
+# =============================================
 # XSALES USER MANAGEMENT  (Firestore-backed)
 # =============================================
 
 XSALES_USERS_COL    = "xsales_users"
 XSALES_ADMIN_SECRET = os.getenv("XSALES_ADMIN_SECRET", "xertica")
+
+
+def _normalize_xsales_user(data: Dict[str, Any]) -> Dict[str, Any]:
+    # Normalize hubs for legacy records that only have role
+    if not data.get("hubs"):
+        data["hubs"] = [data.get("role", "sales")]
+
+    # Legacy fallback for persona/rls governance
+    persona = (data.get("personaData") or "").strip().upper()
+    cargo = (data.get("cargo") or "").strip().lower()
+    if not persona:
+        if "specialist" in cargo:
+            persona = "SS"
+        elif "bdm" in cargo or cargo == "cs":
+            persona = "BDM_CS"
+        elif data.get("role") in ("admin", "exec"):
+            persona = "ADMIN"
+        else:
+            persona = "BDM_CS"
+        data["personaData"] = persona
+
+    if not data.get("rlsScope"):
+        data["rlsScope"] = "ALL" if persona == "ADMIN" else ("SS" if persona == "SS" else "OWNER")
+
+    if "principalOwner" not in data:
+        data["principalOwner"] = (data.get("sellerCanonical") or "").strip().lower() or None
+    if "principalSs" not in data:
+        data["principalSs"] = None
+
+    return data
 
 def _check_admin(request: Request):
     provided = request.headers.get("X-Admin-Secret", "")
@@ -4841,6 +5251,7 @@ async def xsales_list_users(request: Request):
     for doc in docs:
         data = doc.to_dict()
         data["id"] = doc.id
+        data = _normalize_xsales_user(data)
         users.append(data)
     return {"users": users}
 
@@ -4858,6 +5269,7 @@ async def xsales_get_user_by_email(email: str):
     for doc in docs:
         data = doc.to_dict()
         data["id"] = doc.id
+        data = _normalize_xsales_user(data)
         return {"user": data}
     return {"user": None}
 
@@ -4876,15 +5288,43 @@ async def xsales_create_user(request: Request, payload: Dict[str, Any] = Body(..
         raise HTTPException(status_code=409, detail="E-mail já cadastrado")
     user_id = str(uuid.uuid4())
     seller = (payload.get("sellerCanonical") or "").strip().lower() or None
+    # hubs: accept explicit list, else derive from single role
+    raw_hubs = payload.get("hubs") or []
+    single_role = payload.get("role", "sales")
+    hubs = [h for h in raw_hubs if h] if raw_hubs else [single_role]
+    primary_role = hubs[0] if hubs else single_role
+    persona_data = (payload.get("personaData") or "").strip().upper()
+    if not persona_data:
+        cargo_guess = (payload.get("cargo") or "").strip().lower()
+        if "specialist" in cargo_guess:
+            persona_data = "SS"
+        elif "bdm" in cargo_guess or cargo_guess == "cs":
+            persona_data = "BDM_CS"
+        elif primary_role in ("admin", "exec"):
+            persona_data = "ADMIN"
+        else:
+            persona_data = "BDM_CS"
+    principal_owner = (payload.get("principalOwner") or payload.get("sellerCanonical") or "").strip().lower() or None
+    principal_ss = (payload.get("principalSs") or "").strip().lower() or None
+    rls_scope = (payload.get("rlsScope") or "").strip().upper()
+    if not rls_scope:
+        rls_scope = "ALL" if persona_data == "ADMIN" else ("SS" if persona_data == "SS" else "OWNER")
     user_data = {
         "email":           email,
         "displayName":     (payload.get("displayName") or "").strip(),
-        "role":            payload.get("role", "sales"),
+        "role":            primary_role,
+        "hubs":            hubs,
+        "cargo":           (payload.get("cargo") or "").strip(),
+        "personaData":     persona_data,
+        "principalOwner":  principal_owner,
+        "principalSs":     principal_ss,
+        "rlsScope":        rls_scope,
         "sellerCanonical": seller,
         "isActive":        bool(payload.get("isActive", True)),
         "createdAt":       datetime.utcnow().isoformat() + "Z",
         "createdBy":       payload.get("createdBy", "admin"),
     }
+    user_data = _normalize_xsales_user(user_data)
     db.collection(XSALES_USERS_COL).document(user_id).set(user_data)
     return {"user": {**user_data, "id": user_id}}
 
@@ -4900,7 +5340,10 @@ async def xsales_update_user(
     if not doc_ref.get().exists:
         raise HTTPException(status_code=404, detail="User not found")
     update_data: Dict[str, Any] = {}
-    for field in ["email", "displayName", "role", "sellerCanonical", "isActive"]:
+    for field in [
+        "email", "displayName", "role", "hubs", "cargo", "sellerCanonical", "isActive",
+        "personaData", "principalOwner", "principalSs", "rlsScope",
+    ]:
         if field in payload:
             val = payload[field]
             if field == "email":
@@ -4909,10 +5352,24 @@ async def xsales_update_user(
                 val = (val or "").strip().lower() or None
             elif field == "displayName":
                 val = (val or "").strip()
+            elif field == "hubs":
+                val = [h for h in (val or []) if h]
+            elif field == "cargo":
+                val = (val or "").strip()
+            elif field in ("principalOwner", "principalSs"):
+                val = (val or "").strip().lower() or None
+            elif field == "personaData":
+                val = (val or "").strip().upper()
+            elif field == "rlsScope":
+                val = (val or "").strip().upper()
             update_data[field] = val
+    # Keep role in sync with hubs[0] for backward compat
+    if "hubs" in update_data and update_data["hubs"]:
+        update_data["role"] = update_data["hubs"][0]
     doc_ref.update(update_data)
     updated = doc_ref.get().to_dict()
     updated["id"] = user_id
+    updated = _normalize_xsales_user(updated)
     return {"user": updated}
 
 

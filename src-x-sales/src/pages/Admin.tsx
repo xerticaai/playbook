@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react'
 import Background from '../components/Background'
 import { useTheme } from '../hooks/useTheme'
 import { fetchUsers, createUser, updateUser, deleteUserById } from '../lib/api'
-import type { XSalesUser, AuditEntry, UserRole } from '../lib/types'
+import type { XSalesUser, AuditEntry, UserRole, CompanyCargo, PersonaData, RlsScope } from '../lib/types'
+import { getUserHubs, derivePersonaData } from '../lib/types'
 
 // ─── Constants ────────────────────────────────────────────────────
 const LOGO = 'https://storage.googleapis.com/etp-bucket/Logos%20Xertica.ai%20(.png)/X%20-%20simbolo/Copy%20of%20X_symbol_variation3_Blue_white.png'
@@ -10,11 +11,42 @@ const LOG_KEY     = 'xsales_admin_log'
 const SESSION_KEY = 'xsales_admin_auth'
 
 const ROLE_BADGE: Record<UserRole, string> = {
-  admin: 'adm-b-cyan', exec: 'adm-b-purple', sales: 'adm-b-green', automation: 'adm-b-pink',
+  admin:      'adm-b-cyan',
+  exec:       'adm-b-purple',
+  sales:      'adm-b-green',
+  automation: 'adm-b-pink',
+  marketing:  'adm-b-blue',
+  contratos:  'adm-b-indigo',
 }
 const ROLE_LABEL: Record<UserRole, string> = {
-  admin: 'Admin', exec: 'Executivo', sales: 'Sales', automation: 'Automation',
+  admin:      'Admin',
+  exec:       'Executivo',
+  sales:      'Sales',
+  automation: 'Automation',
+  marketing:  'Marketing',
+  contratos:  'Contratos',
 }
+
+const HUB_OPTIONS: { value: UserRole; label: string; badgeClass: string; icon: string }[] = [
+  { value: 'admin',      label: 'Admin',      badgeClass: 'adm-b-cyan',   icon: 'ph-shield-check' },
+  { value: 'exec',       label: 'Executivo',  badgeClass: 'adm-b-purple', icon: 'ph-chart-bar' },
+  { value: 'sales',      label: 'Sales',      badgeClass: 'adm-b-green',  icon: 'ph-target' },
+  { value: 'automation', label: 'Automation', badgeClass: 'adm-b-pink',   icon: 'ph-robot' },
+  { value: 'marketing',  label: 'Marketing',  badgeClass: 'adm-b-blue',   icon: 'ph-megaphone' },
+  { value: 'contratos',  label: 'Contratos',  badgeClass: 'adm-b-indigo', icon: 'ph-files' },
+]
+
+const CARGO_OPTIONS: CompanyCargo[] = [
+  'CEO', 'COO', 'CTO',
+  'Diretor Comercial', 'VP de Vendas',
+  'Head de Marketing',
+  'Account Executive', 'Sales Manager',
+  'Gerente de Operações', 'Engenheiro de Dados',
+  'Analista Jurídico', 'Outro',
+]
+
+const PERSONA_OPTIONS: PersonaData[] = ['BDM_CS', 'SS', 'ADMIN']
+const RLS_OPTIONS: RlsScope[] = ['OWNER', 'SS', 'ALL']
 const LOG_BADGE: Record<string, string> = {
   'CRIAR': 'adm-b-green', 'EDITAR': 'adm-b-cyan', 'DESATIVAR': 'adm-b-grey',
   'ATIVAR': 'adm-b-green', 'REMOVER': 'adm-b-pink',
@@ -118,27 +150,56 @@ interface ModalProps {
 function UserModal({ user, onClose, onSave }: ModalProps) {
   const [email,  setEmail]  = useState(user.email ?? '')
   const [name,   setName]   = useState(user.displayName ?? '')
-  const [role,   setRole]   = useState<UserRole | ''>(user.role ?? '')
+  const [hubs,   setHubs]   = useState<UserRole[]>(
+    (Array.isArray(user.hubs) && user.hubs.length > 0)
+      ? user.hubs
+      : (user.role ? [user.role] : [])
+  )
+  const [cargo,  setCargo]  = useState<CompanyCargo | ''>(user.cargo ?? '')
+  const [personaData, setPersonaData] = useState<PersonaData>(
+    derivePersonaData({ personaData: user.personaData, cargo: user.cargo, role: (user.role || 'sales') as UserRole })
+  )
+  const [principalOwner, setPrincipalOwner] = useState((user.principalOwner || user.sellerCanonical || '').toLowerCase())
+  const [principalSs, setPrincipalSs] = useState((user.principalSs || '').toLowerCase())
+  const [rlsScope, setRlsScope] = useState<RlsScope>((user.rlsScope as RlsScope) || 'OWNER')
   const [active, setActive] = useState<boolean>(user.isActive ?? true)
   const [seller, setSeller] = useState(user.sellerCanonical ?? '')
   const [busy,   setBusy]   = useState(false)
   const [err,    setErr]    = useState('')
   const editing = !!user.id
 
+  function toggleHub(h: UserRole) {
+    setHubs(prev => prev.includes(h) ? prev.filter(x => x !== h) : [...prev, h])
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault(); setErr('')
-    if (!email || !name || !role) { setErr('Preencha todos os campos obrigatórios.'); return }
-    if (role === 'sales' && !seller.trim()) {
+    if (!email || !name || hubs.length === 0) { setErr('Preencha todos os campos e selecione ao menos um hub.'); return }
+    if (personaData === 'BDM_CS' && !principalOwner.trim()) {
+      setErr('Para persona BDM/CS, informe o vínculo principal Owner.'); return
+    }
+    if (personaData === 'SS' && !principalSs.trim()) {
+      setErr('Para persona SS, informe o vínculo principal SS.'); return
+    }
+    if (hubs.includes('sales') && !seller.trim()) {
       setErr('Informe a vinculação de dados para o perfil Sales.'); return
     }
+
+    const normalizedRlsScope: RlsScope = personaData === 'ADMIN' ? 'ALL' : (personaData === 'SS' ? 'SS' : 'OWNER')
     setBusy(true)
     try {
       await onSave({
         email: email.toLowerCase().trim(),
         displayName: name.trim(),
-        role: role as UserRole,
+        role: hubs[0] as UserRole,   // primary = first selected hub
+        hubs,
+        cargo,
+        personaData,
+        principalOwner: principalOwner.trim().toLowerCase() || null,
+        principalSs: principalSs.trim().toLowerCase() || null,
+        rlsScope: normalizedRlsScope || rlsScope,
         isActive: active,
-        sellerCanonical: role === 'sales' ? seller.trim().toLowerCase() : null,
+        sellerCanonical: hubs.includes('sales') ? seller.trim().toLowerCase() : null,
       }, user.id)
       onClose()
     } catch (e: unknown) { setErr((e as Error).message) }
@@ -172,35 +233,89 @@ function UserModal({ user, onClose, onSave }: ModalProps) {
             </div>
           </div>
 
-          <div>
-            <label className="adm-label">Nome completo</label>
-            <input type="text" required value={name} onChange={e => setName(e.target.value)}
-              placeholder="Nome Sobrenome" className="adm-input" />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2 sm:col-span-1">
+              <label className="adm-label">Nome completo</label>
+              <input type="text" required value={name} onChange={e => setName(e.target.value)}
+                placeholder="Nome Sobrenome" className="adm-input" />
+            </div>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="adm-label">Cargo na empresa</label>
+              <select value={cargo} onChange={e => setCargo(e.target.value as CompanyCargo)}
+                className="adm-select">
+                <option value="">Selecionar cargo…</option>
+                {CARGO_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div className="col-span-3 sm:col-span-1">
+              <label className="adm-label">Persona de dados</label>
+              <select value={personaData} onChange={e => setPersonaData(e.target.value as PersonaData)} className="adm-select">
+                {PERSONA_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div className="col-span-3 sm:col-span-1">
+              <label className="adm-label">RLS Scope</label>
+              <select value={personaData === 'ADMIN' ? 'ALL' : rlsScope} onChange={e => setRlsScope(e.target.value as RlsScope)} className="adm-select" disabled={personaData === 'ADMIN'}>
+                {RLS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="adm-label">Role do sistema</label>
-              <select required value={role} onChange={e => setRole(e.target.value as UserRole)}
-                className="adm-select">
-                <option value="">Selecionar…</option>
-                <option value="admin">Admin</option>
-                <option value="exec">Executivo</option>
-                <option value="sales">Sales</option>
-                <option value="automation">Automation</option>
-              </select>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="adm-label">Vínculo principal Owner</label>
+              <input type="text" value={principalOwner} onChange={e => setPrincipalOwner(e.target.value)}
+                placeholder="ex.: carlos moll"
+                className="adm-input"
+                disabled={personaData === 'SS'} />
             </div>
-            <div>
-              <label className="adm-label">Status</label>
-              <select value={active ? '1' : '0'} onChange={e => setActive(e.target.value === '1')}
-                className="adm-select">
-                <option value="1">Ativo</option>
-                <option value="0">Inativo</option>
-              </select>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="adm-label">Vínculo principal SS</label>
+              <input type="text" value={principalSs} onChange={e => setPrincipalSs(e.target.value)}
+                placeholder="ex.: gabriele oliveira"
+                className="adm-input"
+                disabled={personaData === 'BDM_CS'} />
             </div>
           </div>
 
-          {role === 'sales' && (
+          {/* Hub multi-select */}
+          <div>
+            <label className="adm-label">Módulos com acesso <span className="text-gray-600">(selecione um ou mais)</span></label>
+            <div className="grid grid-cols-3 gap-2 mt-2">
+              {HUB_OPTIONS.map(h => {
+                const on = hubs.includes(h.value)
+                return (
+                  <button type="button" key={h.value}
+                    onClick={() => toggleHub(h.value)}
+                    className={`adm-hub-btn${on ? ' active' : ''} ${h.badgeClass}`}>
+                    <i className={`ph ${h.icon} text-sm`} />
+                    <span>{h.label}</span>
+                    {on && <i className="ph ph-check-circle text-xs ml-auto" />}
+                  </button>
+                )
+              })}
+            </div>
+            {hubs.length > 0 && (
+              <p className="text-[10px] text-gray-500 mt-1.5 font-roboto">
+                Primário: <span className="text-gray-300">{ROLE_LABEL[hubs[0]]}</span>
+                {hubs.length > 1 && ` + ${hubs.length - 1} adicional(is)`}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="adm-label">Status</label>
+            <select value={active ? '1' : '0'} onChange={e => setActive(e.target.value === '1')}
+              className="adm-select">
+              <option value="1">Ativo</option>
+              <option value="0">Inativo</option>
+            </select>
+          </div>
+
+          {hubs.includes('sales') && (
             <div className="adm-scope-box">
               <label className="adm-label !text-xGreen flex items-center gap-2">
                 <i className="ph ph-link" /> Vinculação de Dados de Vendas
@@ -403,7 +518,7 @@ export default function Admin() {
             icon="ph-users"        accentClass="adm-kpi-cyan" />
           <KpiCard label="Escopos Sales"   value={users.filter(u => u.sellerCanonical).length}
             icon="ph-target"       accentClass="adm-kpi-green" />
-          <KpiCard label="Roles Distintas" value={new Set(users.map(u => u.role)).size}
+          <KpiCard label="Hubs Vinculados" value={users.reduce((s, u) => s + getUserHubs(u).length, 0)}
             icon="ph-shield-check" accentClass="adm-kpi-pink" />
         </div>
 
@@ -434,7 +549,7 @@ export default function Admin() {
                   <table className="adm-table">
                     <thead>
                       <tr>
-                        <th>Usuário</th><th>Role</th><th>Vinculação de Dados</th>
+                        <th>Usuário</th><th>Cargo</th><th>Persona/RLS</th><th>Hubs de Acesso</th><th>Vinculação de Dados</th>
                         <th>Criado em</th><th>Status</th><th className="text-right">Ações</th>
                       </tr>
                     </thead>
@@ -454,15 +569,33 @@ export default function Admin() {
                               </div>
                             </div>
                           </td>
+                          <td className="text-xs text-gray-400">
+                            {u.cargo
+                              ? <span className="font-roboto">{u.cargo}</span>
+                              : <span className="text-gray-600">—</span>}
+                          </td>
+                          <td className="text-xs text-gray-400">
+                            <div className="flex flex-col gap-0.5">
+                              <span>{u.personaData || derivePersonaData(u)}</span>
+                              <span className="text-gray-600">{u.rlsScope || '—'}</span>
+                            </div>
+                          </td>
                           <td>
-                            <span className={`adm-badge ${ROLE_BADGE[u.role] ?? 'adm-b-grey'}`}>
-                              {ROLE_LABEL[u.role] ?? u.role}
-                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {getUserHubs(u).map(h => (
+                                <span key={h} className={`adm-badge ${ROLE_BADGE[h] ?? 'adm-b-grey'} !text-[9px] !py-0.5`}>
+                                  {ROLE_LABEL[h] ?? h}
+                                </span>
+                              ))}
+                            </div>
                           </td>
                           <td className="font-mono text-xs text-gray-400">
-                            {u.sellerCanonical
-                              ? <span className="adm-badge adm-b-green !text-[10px]">{u.sellerCanonical}</span>
-                              : <span className="text-gray-600">—</span>}
+                            <div className="flex flex-wrap gap-1">
+                              {u.principalOwner && <span className="adm-badge adm-b-green !text-[10px]">owner:{u.principalOwner}</span>}
+                              {u.principalSs && <span className="adm-badge adm-b-purple !text-[10px]">ss:{u.principalSs}</span>}
+                              {!u.principalOwner && !u.principalSs && !u.sellerCanonical && <span className="text-gray-600">—</span>}
+                              {!u.principalOwner && !u.principalSs && u.sellerCanonical && <span className="adm-badge adm-b-green !text-[10px]">owner:{u.sellerCanonical}</span>}
+                            </div>
                           </td>
                           <td className="text-xs text-gray-500">{fmtDate(u.createdAt)}</td>
                           <td>

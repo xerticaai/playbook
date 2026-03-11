@@ -278,6 +278,7 @@
 
   function renderSummary(data) {
     const resumo = data?.resumo || {};
+    const metaBreakdown = data?.meta_breakdown || {};
     const totalRowsRaw = data?.net_total_por_vendedor || [];
     const incrementalRowsRaw = data?.net_incremental_por_vendedor || [];
 
@@ -294,9 +295,15 @@
     const netIncEl = document.getElementById('qs-net-incremental');
     const vendTotalEl = document.getElementById('qs-vendedores-total');
     const vendIncEl = document.getElementById('qs-vendedores-incremental');
+    const metaCsEl = document.getElementById('qs-meta-cs');
+    const metaBdmEl = document.getElementById('qs-meta-bdm');
+    const metaSsEl = document.getElementById('qs-meta-ss');
 
     if (netTotalEl) netTotalEl.textContent = money(resumo.net_total || 0);
     if (netIncEl) netIncEl.textContent = money(resumo.net_incremental || 0);
+    if (metaCsEl) metaCsEl.textContent = money(metaBreakdown.cs || 0);
+    if (metaBdmEl) metaBdmEl.textContent = money(metaBreakdown.bdm || 0);
+    if (metaSsEl) metaSsEl.textContent = money(metaBreakdown.sales_specialist || 0);
     const metaTotalFiltered = totalRows.reduce((sum, row) => sum + Number(row?.meta_bdm || 0), 0);
     if (vendTotalEl) vendTotalEl.textContent = `${totalRows.length} vendedores · Meta ${money(metaTotalFiltered)}`;
     if (vendIncEl) vendIncEl.textContent = `${incrementalRows.length} vendedores · Meta ${money(metaTotalFiltered)}`;

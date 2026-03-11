@@ -623,7 +623,7 @@
             <line x1="12" y1="20" x2="12" y2="4"/>
             <line x1="6" y1="20" x2="6" y2="14"/>
           </svg>
-          Receita por Vendedor
+          Metas de Revenue
         </button>
         <button class="exec-tab" data-tab="mapas" onclick="switchExecTab('mapas')">
           <svg class="exec-tab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1601,11 +1601,14 @@
           </div>
         </div><!-- FIM TAB ESTAGNADAS -->
 
-        <!-- TAB CONTENT: RECEITA POR VENDEDOR (ERP Gross/Net) -->
+        <!-- TAB CONTENT: METAS DE REVENUE (ERP Gross/Net) -->
         <div class="exec-tab-content" data-content="resumo-quarter" data-revenue-only="1" style="display:none;">
-          <h3><svg class="icon"><use href="#icon-chart"/></svg> Receita por Vendedor</h3>
+          <h3><svg class="icon"><use href="#icon-chart"/></svg> Metas de Revenue</h3>
           <p style="color: var(--text-gray); margin-bottom: 16px;">
-            Net Revenue agrupado por vendedor nas visões <strong>Total Faturado</strong> e <strong>Incremental (Novo)</strong>.
+            Net Revenue agrupado por vendedor nas visões <strong>Total Faturado</strong> e <strong>Incremental (Novo)</strong>, com metas separadas por <strong>CS</strong>, <strong>BDM</strong> e <strong>Sales Specialist</strong>.
+          </p>
+          <p style="color: var(--text-muted); margin: -8px 0 16px 0; font-size: 12px;">
+            Base de dados: faturamento consolidado de <strong>2026 + 2025</strong> (com override semanal para Q1 2026).
           </p>
 
           <div class="kpi-grid" style="margin-bottom: 16px;">
@@ -1618,6 +1621,21 @@
               <div class="kpi-title">Net Faturado Novo</div>
               <div class="kpi-value val-green" id="qs-net-incremental">-</div>
               <div class="kpi-subtitle" id="qs-vendedores-incremental">- vendedores</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-title">Meta CS</div>
+              <div class="kpi-value" id="qs-meta-cs">-</div>
+              <div class="kpi-subtitle">Tipo de meta CS</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-title">Meta BDM</div>
+              <div class="kpi-value" id="qs-meta-bdm">-</div>
+              <div class="kpi-subtitle">Metas com owner BDM</div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-title">Meta Sales Specialist</div>
+              <div class="kpi-value" id="qs-meta-ss">-</div>
+              <div class="kpi-subtitle">Metas com owner Sales Specialist</div>
             </div>
           </div>
 
@@ -1636,7 +1654,7 @@
                       <th style="text-align:right;">Net Revenue</th>
                       <th style="text-align:right;">Net Pagada</th>
                       <th style="text-align:right;">Net Pendente</th>
-                      <th style="text-align:right;">Meta BDM</th>
+                      <th style="text-align:right;">Meta Revenue</th>
                       <th style="text-align:right;">Ating. Cota (Inc.)</th>
                       <th style="text-align:right;">Oportunidades</th>
                     </tr>
@@ -1658,7 +1676,7 @@
                       <th style="text-align:right;">Net Revenue</th>
                       <th style="text-align:right;">Net Pagada</th>
                       <th style="text-align:right;">Net Pendente</th>
-                      <th style="text-align:right;">Meta BDM</th>
+                      <th style="text-align:right;">Meta Revenue</th>
                       <th style="text-align:right;">Ating. Cota (Inc.)</th>
                       <th style="text-align:right;">Oportunidades</th>
                     </tr>
@@ -1674,7 +1692,7 @@
           </div>
 
           <div id="qs-drilldown-overlay" class="qs-drilldown-overlay" onclick="window.closeQuarterSellerDrilldown && window.closeQuarterSellerDrilldown()"></div>
-          <aside id="qs-drilldown-panel" class="ai-card qs-drilldown-panel" aria-label="Drill-down de receita por vendedor">
+          <aside id="qs-drilldown-panel" class="ai-card qs-drilldown-panel" aria-label="Drill-down de metas de revenue por vendedor">
             <div class="qs-drilldown-header">
               <div class="qs-drilldown-title-row">
                 <h4 id="qs-drilldown-title" class="qs-drilldown-title">Drill-down por vendedor</h4>

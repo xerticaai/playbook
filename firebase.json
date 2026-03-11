@@ -50,6 +50,23 @@
         "**/.*",
         "**/node_modules/**"
       ],
+      "redirects": [
+        {
+          "source": "/vendedores",
+          "destination": "/sales",
+          "type": 302
+        },
+        {
+          "source": "/seller",
+          "destination": "/sales",
+          "type": 302
+        },
+        {
+          "source": "/dashboard",
+          "destination": "/executivo",
+          "type": 302
+        }
+      ],
       "rewrites": [
         {
           "source": "**",

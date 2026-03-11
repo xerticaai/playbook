@@ -3,8 +3,18 @@ import {
 } from 'react'
 import Background from '../components/Background'
 import { useTheme } from '../hooks/useTheme'
-import { getUserByEmail, fetchWeeklyAgenda } from '../lib/api'
-import type { XSalesUser, Deal, CrmActivity, AgendaData } from '../lib/types'
+import {
+  getUserByEmail,
+  fetchWeeklyAgenda,
+  fetchPortalContext,
+  fetchBdmCsKpi,
+  fetchBdmCsActionQueue,
+  fetchBdmCsHandoff,
+  fetchSsKpi,
+  fetchSsClosingQueue,
+} from '../lib/api'
+import type { XSalesUser, Deal, CrmActivity, AgendaData, PortalContext } from '../lib/types'
+import { getUserHubs, derivePersonaData } from '../lib/types'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const LOGO_GREEN = 'https://storage.googleapis.com/etp-bucket/Logos%20Xertica.ai%20(.png)/X%20-%20simbolo/X_symbol_variation8_Green_white.png'
@@ -17,6 +27,144 @@ const TAB_TITLES: Record<TabId, string> = {
   pipeline:   'Meu Pipeline',
   activities: 'Atividades CRM',
   calculator: 'Simulador de Comissão',
+}
+
+interface KpiSnapshot {
+  target_key: string
+  fiscal_q: string
+  meta: number
+  realizado: number
+  attainment_pct: number
+  gap: number
+}
+
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
+function asNumber(value: unknown): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+  return 0
+}
+
+function splitHints(raw: string): string[] {
+  return String(raw || '')
+    .split('|')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+function splitGaps(raw: string): string[] {
+  return String(raw || '')
+    .split(/[,;|]/g)
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+function inferCategoria(risco: string): Deal['Categoria_Pauta'] {
+  const v = risco.toLowerCase()
+  if (v.includes('zumbi')) return 'ZUMBI'
+  if (v.includes('crit')) return 'CRITICO'
+  if (v.includes('aten')) return 'ALTA_PRIORIDADE'
+  return 'MONITORAR'
+}
+
+function mapBdmActionToDeal(item: Record<string, unknown>): Deal {
+  const risco = asString(item.Risco_Principal)
+  const perguntas = asString(item.Perguntas_de_Auditoria_IA)
+  const idle = asNumber(item.Idle_Dias || item.Idle || item.idle_dias)
+  return {
+    deal_id: asString(item.Oportunidade),
+    Oportunidade: asString(item.Oportunidade),
+    Conta: asString(item.Conta),
+    Gross: asNumber(item.Gross),
+    Fase_Atual: normalizeStage(asString(item.Fase_Atual)),
+    Data_Prevista: asString(item.Data_Prevista),
+    Risco_Score: Math.max(0, 100 - asNumber(item.action_sort_rank) * 10),
+    Categoria_Pauta: inferCategoria(risco),
+    Proxima_Acao_Pipeline: perguntas,
+    acao_sugerida: asString(item.Acao_Sugerida || item.acao_sugerida || item.Acao_Desc || item.acao_desc || item.Perguntas_de_Auditoria_IA),
+    acao_code: asString(item.Acao_Code || item.acao_code),
+    velocity_predicao: asString(item.Velocity_Predicao || item.velocity_predicao),
+    idle_dias: idle > 0 ? idle : undefined,
+    risk_tags: [risco, asString(item.Status_Governanca_SS), asString(item.Elegibilidade_SS)].filter(Boolean),
+    sabatina_questions: splitHints(perguntas),
+    status_governanca_ss: asString(item.Status_Governanca_SS),
+    sales_specialist_envolvido: asString(item.ss_key || item.Sales_Specialist_Envolvido),
+    bant_score: asNumber(item.BANT_Score || item.bant_score),
+    meddic_score: asNumber(item.MEDDIC_Score || item.meddic_score),
+    bant_gaps: splitGaps(asString(item.BANT_Gaps || item.bant_gaps)),
+    meddic_gaps: splitGaps(asString(item.MEDDIC_Gaps || item.meddic_gaps)),
+    avaliacao_personas_ia: asString(item.Avaliacao_Personas_IA || item.personas_assessment),
+    flag_aprovacao_previa: asString(item.Flag_Aprovacao_Previa || item.flag_aprovacao_previa),
+    motivo_status_gtm: asString(item.Motivo_Status_GTM || item.motivo_status_gtm),
+    mudancas_close_date: asNumber(item.Mudancas_Close_Date || item.close_date_changes),
+  }
+}
+
+function mapSsQueueToDeal(item: Record<string, unknown>): Deal {
+  const risco = asString(item.Risco_Principal)
+  const perguntas = asString(item.Perguntas_de_Auditoria_IA)
+  const idle = asNumber(item.Idle_Dias || item.Idle || item.idle_dias)
+  return {
+    deal_id: asString(item.Oportunidade),
+    Oportunidade: asString(item.Oportunidade),
+    Conta: asString(item.Conta),
+    Gross: asNumber(item.Gross),
+    Fase_Atual: normalizeStage(asString(item.Fase_Atual)),
+    Data_Prevista: asString(item.Data_Prevista),
+    Risco_Score: risco.toLowerCase().includes('alto') ? 80 : (risco.toLowerCase().includes('medio') ? 55 : 25),
+    Categoria_Pauta: inferCategoria(risco),
+    Proxima_Acao_Pipeline: perguntas,
+    acao_sugerida: asString(item.Acao_Sugerida || item.acao_sugerida || item.Acao_Desc || item.acao_desc || item.Perguntas_de_Auditoria_IA),
+    acao_code: asString(item.Acao_Code || item.acao_code),
+    velocity_predicao: asString(item.Velocity_Predicao || item.velocity_predicao),
+    idle_dias: idle > 0 ? idle : undefined,
+    risk_tags: [risco, asString(item.Elegibilidade_SS), asString(item.Status_Governanca_SS)].filter(Boolean),
+    sabatina_questions: splitHints(perguntas),
+    status_governanca_ss: asString(item.Status_Governanca_SS),
+    sales_specialist_envolvido: asString(item.ss_key || item.Sales_Specialist_Envolvido),
+    bant_score: asNumber(item.BANT_Score || item.bant_score),
+    meddic_score: asNumber(item.MEDDIC_Score || item.meddic_score),
+    bant_gaps: splitGaps(asString(item.BANT_Gaps || item.bant_gaps)),
+    meddic_gaps: splitGaps(asString(item.MEDDIC_Gaps || item.meddic_gaps)),
+    avaliacao_personas_ia: asString(item.Avaliacao_Personas_IA || item.personas_assessment),
+    flag_aprovacao_previa: asString(item.Flag_Aprovacao_Previa || item.flag_aprovacao_previa),
+    motivo_status_gtm: asString(item.Motivo_Status_GTM || item.motivo_status_gtm),
+    mudancas_close_date: asNumber(item.Mudancas_Close_Date || item.close_date_changes),
+  }
+}
+
+function mapHandoffToActivities(items: Record<string, unknown>[]): CrmActivity[] {
+  return items.slice(0, 20).map((item) => ({
+    tipo: 'nota',
+    conta: asString(item.Conta),
+    data: asString(item.Data_Prevista) || new Date().toISOString(),
+    descricao: [
+      asString(item.Oportunidade),
+      asString(item.Risco_Principal),
+      asString(item.Status_Governanca_SS),
+      asString(item.Perguntas_de_Auditoria_IA),
+    ].filter(Boolean).join(' • '),
+  }))
+}
+
+function mapQueueToActivities(items: Record<string, unknown>[]): CrmActivity[] {
+  return items.slice(0, 20).map((item) => ({
+    tipo: 'nota',
+    conta: asString(item.Conta),
+    data: asString(item.Data_Prevista) || new Date().toISOString(),
+    descricao: [
+      asString(item.Oportunidade),
+      asString(item.Elegibilidade_SS),
+      asString(item.Status_Governanca_SS),
+      asString(item.Perguntas_de_Auditoria_IA),
+    ].filter(Boolean).join(' • '),
+  }))
 }
 
 // ─── Stage normalisation ─────────────────────────────────────────────────────
@@ -67,30 +215,12 @@ function stageCss(f?: string) {
   }
   return 'sl-badge ' + (m[f ?? ''] ?? 'sl-stg-prosp')
 }
-function categoriaCss(c?: string) {
-  const m: Record<string, string> = { ZUMBI: 'sl-b-red', CRITICO: 'sl-b-yellow', ALTA_PRIORIDADE: 'sl-b-green', MONITORAR: 'sl-b-gray' }
-  return m[c ?? ''] ?? 'sl-b-gray'
-}
 function riskClass(d: Deal): 'alto' | 'medio' | 'baixo' {
   const cat = d.Categoria_Pauta ?? '', score = d.Risco_Score ?? 0
   if (cat === 'ZUMBI' || score > 75) return 'alto'
   if (cat === 'CRITICO' || score > 45) return 'medio'
   return 'baixo'
 }
-
-// ─── Demo data ────────────────────────────────────────────────────────────────
-const DEMO_DEALS: Deal[] = [
-  { deal_id: 'D001', Oportunidade: 'Projeto Vertex AI', Conta: 'ACME Corp', Gross: 320000, Fase_Atual: 'Negociação', Data_Prevista: new Date(Date.now() + 15 * 86400000).toISOString().slice(0, 10), Confianca: 72, Dias_Funil: 45, Risco_Score: 65, Categoria_Pauta: 'CRITICO', Proxima_Acao_Pipeline: 'Enviar proposta revisada até sexta-feira.', Produtos: 'Vertex AI, BigQuery', Perfil_Cliente: 'Nomeada' },
-  { deal_id: 'D002', Oportunidade: 'Migração Cloud Run', Conta: 'Beta SA', Gross: 180000, Fase_Atual: 'Proposta', Data_Prevista: new Date(Date.now() + 28 * 86400000).toISOString().slice(0, 10), Confianca: 55, Dias_Funil: 32, Risco_Score: 40, Categoria_Pauta: 'MONITORAR', Produtos: 'Cloud Run, GKE', Perfil_Cliente: 'Transacional' },
-  { deal_id: 'D003', Oportunidade: 'Workspace Enterprise', Conta: 'Gama Ltda', Gross: 95000, Fase_Atual: 'Qualificação', Data_Prevista: new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10), Confianca: 38, Dias_Funil: 18, Risco_Score: 22, Categoria_Pauta: 'ALTA_PRIORIDADE', Produtos: 'Workspace Business Plus' },
-  { deal_id: 'D004', Oportunidade: 'Analytics Platform', Conta: 'Delta Inc', Gross: 520000, Fase_Atual: 'Fechamento', Data_Prevista: new Date(Date.now() + 8 * 86400000).toISOString().slice(0, 10), Confianca: 88, Dias_Funil: 67, Risco_Score: 15, Categoria_Pauta: 'ALTA_PRIORIDADE', Produtos: 'Looker, BigQuery', Perfil_Cliente: 'Nomeada', sabatina_questions: ['Qual o critério de decisão final?', 'Existe dependência de aprovação de board?', 'Qual a data de kick-off esperada?'] },
-  { deal_id: 'D005', Oportunidade: 'Data Warehouse Modernization', Conta: 'Épsilon SA', Gross: 240000, Fase_Atual: 'Prospecção', Data_Prevista: new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10), Confianca: 25, Dias_Funil: 120, Risco_Score: 88, Categoria_Pauta: 'ZUMBI', risk_tags: ['sem atividade 90d', 'stakeholder mudou'] },
-]
-const DEMO_ACTIVITIES: CrmActivity[] = [
-  { tipo: 'reuniao', conta: 'ACME Corp', data: new Date(Date.now() - 2 * 86400000).toISOString(), descricao: 'Demo técnica do Vertex AI realizada com o time de dados.' },
-  { tipo: 'email', conta: 'Beta SA', data: new Date(Date.now() - 5 * 86400000).toISOString(), descricao: 'Proposta comercial enviada para aprovação da diretoria.' },
-  { tipo: 'call', conta: 'Gama Ltda', data: new Date(Date.now() - 7 * 86400000).toISOString(), descricao: 'Qualificação de necessidades — confirmado interesse em Workspace.' },
-]
 
 // ─── Gate ────────────────────────────────────────────────────────────────────
 function Gate({ onSuccess }: { onSuccess: (u: XSalesUser) => void }) {
@@ -157,8 +287,10 @@ interface SidebarProps {
 function Sidebar({ user, viewingSeller, activeTab, oppCount, hasActivities, onTab, onLogout, quarter }: SidebarProps) {
   const displayed = viewingSeller ?? user
   const initials  = (displayed.displayName || 'U').split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
-  const roleLabel: Record<string, string> = { admin: 'Administrador', exec: 'Executivo', sales: 'Vendedor', automation: 'Automação' }
-  const canInspect = user.role !== 'sales'
+  const roleLabel: Record<string, string> = { admin: 'Administrador', exec: 'Executivo', sales: 'Vendedor', automation: 'Automação', marketing: 'Marketing', contratos: 'Contratos' }
+  const userHubs  = getUserHubs(user)
+  const canInspect = userHubs.includes('admin') || userHubs.includes('exec')
+  const primaryLabel = user.cargo || roleLabel[user.role] || user.role
 
   return (
     <aside className="sl-sidebar">
@@ -178,7 +310,7 @@ function Sidebar({ user, viewingSeller, activeTab, oppCount, hasActivities, onTa
             <p className="font-poppins text-xs font-semibold text-white truncate">{displayed.displayName || displayed.email}</p>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className="font-poppins text-[9px] uppercase tracking-wider text-gray-400 truncate">
-                {roleLabel[displayed.role] ?? displayed.role}
+                {primaryLabel}
               </span>
               {viewingSeller && (
                 <span className="sl-inspect-badge">inspeção</span>
@@ -247,6 +379,21 @@ function InspectSelect({ allUsers, current, viewingSeller, onChange }: {
 function TabDashboard({ deals, user, onGoToPipeline }: {
   deals: Deal[]; user: XSalesUser; onGoToPipeline: () => void
 }) {
+  if (!deals.length) {
+    return (
+      <div style={{ maxWidth: 1480, margin: '0 auto', padding: '24px 20px 30px' }}>
+        <div className="sl-empty-state">
+          <i className="ph ph-folder-open text-2xl text-gray-500" />
+          <p className="font-poppins text-sm font-semibold text-white">Nenhuma oportunidade encontrada</p>
+          <p className="font-roboto text-xs text-gray-400">
+            Ajuste os filtros ou aguarde a sincronização para visualizar o pipeline.
+          </p>
+          <button type="button" className="sl-empty-cta" onClick={onGoToPipeline}>Abrir pipeline</button>
+        </div>
+      </div>
+    )
+  }
+
   const firstName = (user.displayName || 'Vendedor').split(' ')[0]
   const gross     = deals.reduce((s, d) => s + (d.Gross || 0), 0)
   const criticos  = deals.filter(d => d.Categoria_Pauta === 'CRITICO' || d.Categoria_Pauta === 'ZUMBI').length
@@ -269,7 +416,7 @@ function TabDashboard({ deals, user, onGoToPipeline }: {
   if (!warItems.length) warItems.push({ icon: 'ph-check-circle', color: 'var(--x-green)', title: 'Pipeline saudável', body: 'Nenhum negócio crítico identificado.' })
 
   return (
-    <div className="sl-tab-content" style={{ maxWidth: 960, margin: '0 auto', padding: '28px 24px' }}>
+    <div className="sl-tab-content" style={{ maxWidth: 1480, margin: '0 auto', padding: '24px 20px 30px' }}>
       <div className="mb-6">
         <p className="font-poppins text-[10px] font-bold text-xGreen uppercase tracking-[.22em] mb-1">Bem-vindo ao seu painel</p>
         <h1 className="font-poppins text-2xl font-bold text-white mb-1">
@@ -396,6 +543,39 @@ function ScoreRing({ score }: { score?: number }) {
 }
 
 // ─── Pipeline tab ─────────────────────────────────────────────────────────────
+function priorityRank(d: Deal): number {
+  const velocity = String(d.velocity_predicao || '').toUpperCase()
+  const idle = d.idle_dias ?? 0
+  const risk = d.Risco_Score ?? 0
+  const slippage = d.mudancas_close_date ?? 0
+  let score = risk
+  if (velocity.includes('ESTAGN')) score += 45
+  else if (velocity.includes('DESACELER')) score += 25
+  if (idle >= 30) score += 25
+  if (idle >= 90) score += 40
+  if (slippage >= 2) score += 20
+  return score
+}
+
+function velocityTone(d: Deal): 'stagnado' | 'desacelerando' | 'ok' {
+  const v = String(d.velocity_predicao || '').toUpperCase()
+  if (v.includes('ESTAGN')) return 'stagnado'
+  if (v.includes('DESACELER')) return 'desacelerando'
+  return 'ok'
+}
+
+function Barmeter({ label, score }: { label: string; score?: number }) {
+  const value = Math.max(0, Math.min(100, score ?? 0))
+  return (
+    <div>
+      <div className="sl-rx-meter-head">
+        <span>{label}</span><span>{value}%</span>
+      </div>
+      <div className="sl-rx-meter-track"><div className="sl-rx-meter-fill" style={{ width: `${value}%` }} /></div>
+    </div>
+  )
+}
+
 function TabPipeline({ deals }: { deals: Deal[] }) {
   const [stageFilter, setStageFilter] = useState('todos')
   const [search, setSearch]           = useState('')
@@ -405,18 +585,21 @@ function TabPipeline({ deals }: { deals: Deal[] }) {
   const filtered = deals
     .filter(d => stageFilter === 'todos' || d.Fase_Atual === stageFilter)
     .filter(d => !search || (d.Oportunidade ?? '').toLowerCase().includes(search) || (d.Conta ?? '').toLowerCase().includes(search))
-  const maxDias = Math.max(1, ...deals.map(d => d.Dias_Funil ?? 0))
+    .sort((a, b) => priorityRank(b) - priorityRank(a))
+
+  const zombieDeals = deals.filter((d) => (d.idle_dias ?? 0) > 30 && (d.Dias_Funil ?? 0) > 90)
+  const slippageDeals = deals.filter((d) => (d.mudancas_close_date ?? 0) >= 2)
 
   function toggle(i: number) {
     setExpanded(prev => { const s = new Set(prev); s.has(i) ? s.delete(i) : s.add(i); return s })
   }
 
   return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '28px 24px' }}>
+    <div style={{ maxWidth: 1560, margin: '0 auto', padding: '24px 20px 34px' }}>
       <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
         <div>
-          <h1 className="font-poppins text-xl font-bold text-white">Meu Pipeline</h1>
-          <p className="font-roboto text-xs text-gray-400 mt-0.5">Pipeline de {filtered.length} oportunidades abertas</p>
+          <h1 className="font-poppins text-xl font-bold text-white">Fila de Ação Diária</h1>
+          <p className="font-roboto text-xs text-gray-400 mt-0.5">Prioridade invertida por risco e urgência ({filtered.length} oportunidades)</p>
         </div>
         <input type="text" value={search} onChange={e => setSearch(e.target.value.toLowerCase())}
           placeholder="Buscar oportunidade…"
@@ -431,6 +614,28 @@ function TabPipeline({ deals }: { deals: Deal[] }) {
         ))}
       </div>
 
+      <div className="sl-hygiene-grid mb-4">
+        <div className="sl-hygiene-card">
+          <p className="sl-hygiene-title">Negócios Zumbis</p>
+          <p className="sl-hygiene-value">{zombieDeals.length}</p>
+          <p className="sl-hygiene-sub">funil acima de 90d e inatividade acima de 30d</p>
+        </div>
+        <div className="sl-hygiene-card">
+          <p className="sl-hygiene-title">Alertas de Slippage</p>
+          <p className="sl-hygiene-value">{slippageDeals.length}</p>
+          <p className="sl-hygiene-sub">múltiplas mudanças de close date</p>
+        </div>
+      </div>
+
+      {deals.length === 0 ? (
+        <div className="sl-empty-state">
+          <i className="ph ph-database text-2xl text-gray-500" />
+          <p className="font-poppins text-sm font-semibold text-white">Sem dados de pipeline</p>
+          <p className="font-roboto text-xs text-gray-400">
+            Não há oportunidades carregadas para este contexto.
+          </p>
+        </div>
+      ) : (
       <div className="sl-glass" style={{ padding: 0, borderRadius: 16, overflow: 'hidden' }}>
         <div className="overflow-x-auto">
           <table className="sl-tbl">
@@ -439,7 +644,7 @@ function TabPipeline({ deals }: { deals: Deal[] }) {
                 <th style={{ width: 28 }} />
                 <th>ID</th><th>Oportunidade</th><th>Conta</th>
                 <th className="text-right">Valor (R$)</th><th>Etapa</th>
-                <th>Funil</th><th>Prev. Fechamento</th><th>Risco</th>
+                <th>Inatividade</th><th>Prev. Fechamento</th><th>Risco</th>
                 <th className="text-center">Score</th>
               </tr>
             </thead>
@@ -448,13 +653,18 @@ function TabPipeline({ deals }: { deals: Deal[] }) {
                 <tr><td colSpan={10} className="text-center py-10 text-gray-600 text-xs">Nenhuma oportunidade para este filtro.</td></tr>
               )}
               {filtered.map((d, i) => {
-                const pct    = Math.min(100, Math.round(((d.Dias_Funil ?? 0) / maxDias) * 100))
-                const barClr = pct > 70 ? '#fca5a5' : pct > 40 ? '#fcd34d' : 'var(--x-green)'
+                const idle = d.idle_dias ?? 0
+                const tone = velocityTone(d)
                 const isExp  = expanded.has(i)
                 const acao   = d.acao_sugerida ?? d.Proxima_Acao_Pipeline ?? ''
                 const sabatina = (d.sabatina_questions ?? []).slice(0, 3)
+                const gaps = [...(d.bant_gaps ?? []), ...(d.meddic_gaps ?? [])]
+                const ghosting = String(d.avaliacao_personas_ia || '').toLowerCase().includes('absente')
+                  || String(d.avaliacao_personas_ia || '').toLowerCase().includes('economic buyer')
+                  || String(d.Proxima_Acao_Pipeline || '').toLowerCase().includes('happy ears')
+                const hasGtmBlock = String(d.flag_aprovacao_previa || '').toUpperCase().includes('APROVACAO') || String(d.motivo_status_gtm || '').toUpperCase().includes('FORA')
                 return [
-                  <tr key={`row-${i}`} className={`sl-deal-row${isExp ? ' expanded' : ''}`} onClick={() => toggle(i)}>
+                  <tr key={`row-${i}`} className={`sl-deal-row ${tone}${isExp ? ' expanded' : ''}`} onClick={() => toggle(i)}>
                     <td style={{ padding: '8px 6px 8px 12px', width: 28 }}>
                       <i className={`ph ph-caret-right sl-expand-icon${isExp ? ' rotated' : ''}`} />
                     </td>
@@ -467,8 +677,8 @@ function TabPipeline({ deals }: { deals: Deal[] }) {
                     <td className="text-right font-poppins font-semibold text-white text-sm">{fmtR(d.Gross ?? 0)}</td>
                     <td><span className={stageCss(d.Fase_Atual)}>{d.Fase_Atual ?? '—'}</span></td>
                     <td>
-                      <div className="font-roboto text-xs text-gray-400 mb-0.5">{d.Dias_Funil ?? 0}d</div>
-                      <div className="sl-funil-bar"><div className="sl-funil-fill" style={{ width: pct + '%', background: barClr }} /></div>
+                      <div className="font-roboto text-xs text-gray-300">Inativo há <span className="text-red-300 font-semibold">{idle} dias</span></div>
+                      <div className={`sl-velocity-pill ${tone}`}>{d.velocity_predicao || 'SEM SINAL'}</div>
                     </td>
                     <td className="font-roboto text-sm text-gray-300">{fmtDate(d.Data_Prevista)}</td>
                     <td><RiskBadge deal={d} /></td>
@@ -479,35 +689,56 @@ function TabPipeline({ deals }: { deals: Deal[] }) {
                       <td colSpan={10} style={{ padding: 0 }}>
                         <div className="sl-details-inner grid grid-cols-1 md:grid-cols-3 gap-5">
                           <div>
-                            <p className="font-poppins text-[9px] font-bold text-xGreen uppercase tracking-[.18em] mb-2">Detalhes</p>
-                            <div className="space-y-1.5 text-[11px] text-gray-400">
-                              {d.Tipo_Oportunidade && <p><span className="text-gray-500">Tipo:</span> {d.Tipo_Oportunidade}</p>}
-                              {d.Produtos && <p><span className="text-gray-500">Produtos:</span> {d.Produtos}</p>}
-                              {d.Confianca != null && <p><span className="text-gray-500">Confiança:</span> {d.Confianca}%</p>}
-                              {d.Categoria_Pauta && (
-                                <p><span className="text-gray-500">Categoria:</span>{' '}
-                                  <span className={`sl-badge ${categoriaCss(d.Categoria_Pauta)}`}>{d.Categoria_Pauta}</span>
-                                </p>
+                            <p className="font-poppins text-[9px] font-bold text-xGreen uppercase tracking-[.18em] mb-2">Raio-X do Deal</p>
+                            <div className="space-y-2.5 text-[11px] text-gray-300">
+                              <Barmeter label="BANT Score" score={d.bant_score} />
+                              <Barmeter label="MEDDIC Score" score={d.meddic_score} />
+                              <div>
+                                <p className="text-[10px] text-gray-500 mb-1">Gaps críticos</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {gaps.length === 0 && <span className="sl-badge sl-b-green">Sem gaps</span>}
+                                  {gaps.map((g, idx) => (
+                                    <button type="button" key={idx} className="sl-gap-chip" title="Clique para atualizar no CRM">{g}</button>
+                                  ))}
+                                </div>
+                              </div>
+                              {ghosting && (
+                                <div className="sl-critical-alert">
+                                  Atenção: risco de Happy Ears. O decisor econômico está ausente das últimas interações.
+                                </div>
                               )}
                             </div>
                           </div>
                           <div>
-                            <p className="font-poppins text-[9px] font-bold text-xGreen uppercase tracking-[.18em] mb-2">Próxima Ação</p>
-                            <p className="text-[11px] text-gray-300 leading-relaxed">{acao || 'Nenhuma ação registrada.'}</p>
+                            <p className="font-poppins text-[9px] font-bold text-xGreen uppercase tracking-[.18em] mb-2">Ação Imediata</p>
+                            <button type="button" className="sl-main-action" onClick={(ev) => ev.stopPropagation()}>
+                              {d.acao_code ? `${d.acao_code} · ` : ''}{acao || 'Ação sugerida'}
+                            </button>
+                            <p className="text-[11px] text-gray-300 leading-relaxed mt-2">{d.Proxima_Acao_Pipeline || 'Sem orientação adicional.'}</p>
+                            <div className="mt-3">
+                              <p className="font-poppins text-[9px] font-bold text-xCyan uppercase tracking-[.18em] mb-1.5">Governança e Hand-off</p>
+                              <p className="text-[11px] text-gray-400">SS envolvido: <span className="text-white">{d.sales_specialist_envolvido || 'não informado'}</span></p>
+                              <p className="text-[11px] text-gray-400">Status SS: <span className="text-white">{d.status_governanca_ss || 'n/d'}</span></p>
+                              <p className="text-[11px] text-gray-400">Aprovação prévia: <span className="text-white">{d.flag_aprovacao_previa || 'OK'}</span></p>
+                              {d.motivo_status_gtm && <p className="text-[11px] text-gray-400">Motivo GTM: <span className="text-white">{d.motivo_status_gtm}</span></p>}
+                              <button type="button" className="sl-advance-btn" disabled={hasGtmBlock} onClick={(ev) => ev.stopPropagation()}>
+                                {hasGtmBlock ? 'Bloqueado: aprovação necessária' : 'Avançar fase'}
+                              </button>
+                            </div>
+                          </div>
+                          <div>
+                            <p className="font-poppins text-[9px] font-bold text-xCyan uppercase tracking-[.18em] mb-2">Prepare-se para a L10</p>
+                            <div className="sl-coaching-box">
+                              {(sabatina.length ? sabatina : splitHints(d.Proxima_Acao_Pipeline || '')).slice(0, 4).map((q, j) => (
+                                <p key={j} className="text-[11px] text-gray-300 leading-snug">• {String(q)}</p>
+                              ))}
+                            </div>
                             {(d.risk_tags ?? []).length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-2">
                                 {d.risk_tags!.map((t, j) => <span key={j} className="sl-badge sl-b-red" style={{ fontSize: 9 }}>{t}</span>)}
                               </div>
                             )}
                           </div>
-                          {sabatina.length > 0 && (
-                            <div>
-                              <p className="font-poppins text-[9px] font-bold text-xCyan uppercase tracking-[.18em] mb-2">Sabatina AI</p>
-                              <ol className="space-y-1.5 list-decimal list-inside text-[11px] text-gray-400">
-                                {sabatina.map((q, j) => <li key={j} className="leading-snug">{String(q)}</li>)}
-                              </ol>
-                            </div>
-                          )}
                         </div>
                       </td>
                     </tr>
@@ -518,6 +749,21 @@ function TabPipeline({ deals }: { deals: Deal[] }) {
           </table>
         </div>
       </div>
+      )}
+    </div>
+  )
+}
+
+function LoadingShell() {
+  return (
+    <div className="sl-loading-shell">
+      <div className="sl-loading-card sl-shimmer" />
+      <div className="sl-loading-grid">
+        <div className="sl-loading-card sl-shimmer" />
+        <div className="sl-loading-card sl-shimmer" />
+        <div className="sl-loading-card sl-shimmer" />
+      </div>
+      <div className="sl-loading-card lg sl-shimmer" />
     </div>
   )
 }
@@ -528,7 +774,7 @@ function TabActivities({ activities }: { activities: CrmActivity[] }) {
   const typeColor: Record<string, string> = { call: 'var(--x-cyan)', email: 'var(--x-green)', reuniao: 'var(--x-pink)', nota: 'var(--text-muted)' }
 
   return (
-    <div style={{ maxWidth: 700, margin: '0 auto', padding: '28px 24px' }}>
+    <div style={{ maxWidth: 1320, margin: '0 auto', padding: '24px 20px 30px' }}>
       <div className="mb-6">
         <h1 className="font-poppins text-xl font-bold text-white">Atividades CRM</h1>
         <p className="font-roboto text-xs text-gray-400 mt-0.5">Histórico de atividades do período</p>
@@ -563,7 +809,7 @@ function TabActivities({ activities }: { activities: CrmActivity[] }) {
 }
 
 // ─── Calculator tab ────────────────────────────────────────────────────────────
-function TabCalculator({ deals }: { deals: Deal[] }) {
+function TabCalculator({ deals, kpi }: { deals: Deal[]; kpi: KpiSnapshot | null }) {
   const earnable = deals.filter(d => (d.Gross ?? 0) > 0)
   const [checked, setChecked] = useState<Set<number>>(new Set())
   const [mult, setMult]       = useState(3)
@@ -574,7 +820,7 @@ function TabCalculator({ deals }: { deals: Deal[] }) {
   const base = Array.from(checked).reduce((sum, i) => sum + (earnable[i]?.Gross ?? 0), 0)
 
   return (
-    <div style={{ maxWidth: 860, margin: '0 auto', padding: '28px 24px' }}>
+    <div style={{ maxWidth: 1320, margin: '0 auto', padding: '24px 20px 30px' }}>
       <div className="mb-6">
         <h1 className="font-poppins text-2xl font-bold text-white">Simulador de Ganhos</h1>
         <p className="font-roboto text-xs text-gray-400">Selecione as oportunidades e ajuste o multiplicador.</p>
@@ -621,6 +867,11 @@ function TabCalculator({ deals }: { deals: Deal[] }) {
               <p className="font-poppins text-3xl font-bold" style={{ background: 'linear-gradient(90deg,var(--x-green),#80FFB0)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
                 {fmtR(base * mult / 100)}
               </p>
+              {kpi && (
+                <p className="font-roboto text-[10px] text-gray-400 mt-2">
+                  Meta: {fmtK(kpi.meta)} · Realizado: {fmtK(kpi.realizado)} · Atingimento: {kpi.attainment_pct.toFixed(1)}%
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -633,15 +884,28 @@ function TabCalculator({ deals }: { deals: Deal[] }) {
 export default function Sales() {
   const { theme, toggle: toggleTheme } = useTheme()
   const [currentUser,    setCurrentUser]    = useState<XSalesUser | null>(null)
+  const [portalContext,  setPortalContext]  = useState<PortalContext | null>(null)
   const [viewingSeller,  setViewingSeller]  = useState<XSalesUser | null>(null)
   const [allUsers,       setAllUsers]       = useState<XSalesUser[]>([])
   const [agenda,         setAgenda]         = useState<AgendaData | null>(null)
   const [allDeals,       setAllDeals]       = useState<Deal[]>([])
+  const [activitiesData, setActivitiesData] = useState<CrmActivity[]>([])
+  const [kpiSnapshot,    setKpiSnapshot]    = useState<KpiSnapshot | null>(null)
+  const [effectivePersona, setEffectivePersona] = useState<string | null>(null)
+  const [dataMode,       setDataMode]       = useState<'legacy' | 'v2'>('legacy')
+  const [loadError,      setLoadError]      = useState<string | null>(null)
   const [activeTab,      setActiveTab]      = useState<TabId>('dashboard')
   const [quarter]        = useState('FY26-Q2')
   const [globalSearch,   setGlobalSearch]   = useState('')
   const [loading,        setLoading]        = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
+
+  function isV2Enabled(): boolean {
+    const qs = new URLSearchParams(window.location.search)
+    if (qs.get('v2') === '0') return false
+    if (qs.get('v2') === '1') return true
+    return localStorage.getItem('xsales_use_v2') !== '0'
+  }
 
   // Restore session
   useEffect(() => {
@@ -650,7 +914,7 @@ export default function Sales() {
     try {
       const u = JSON.parse(saved) as XSalesUser
       setCurrentUser(u)
-      loadData(u.sellerCanonical ?? null)
+      loadData(u, null)
     } catch { sessionStorage.removeItem(SESSION_KEY) }
 
     // load user list for inspect mode
@@ -660,41 +924,133 @@ export default function Sales() {
     } catch { /* ignore */ }
   }, [])
 
-  async function loadData(canonical: string | null) {
+  async function loadData(baseUser: XSalesUser, inspectUser: XSalesUser | null) {
+    const targetUser = inspectUser ?? baseUser
+    const canonical = targetUser.sellerCanonical ?? null
     if (!canonical) { setAgenda(null); setAllDeals([]); return }
+    setLoadError(null)
     setLoading(true)
+    let v2Failed = false
     try {
+      if (isV2Enabled()) {
+        try {
+          const ctx = await fetchPortalContext(baseUser.email)
+          setPortalContext(ctx)
+
+          const targetPersona = inspectUser ? derivePersonaData(targetUser) : ctx.persona
+          setEffectivePersona(targetPersona)
+          const ownerOverride = inspectUser ? (targetUser.principalOwner || targetUser.sellerCanonical || undefined) : undefined
+          const ssOverride = inspectUser ? (targetUser.principalSs || undefined) : undefined
+
+          if (targetPersona === 'BDM_CS' || targetPersona === 'ADMIN') {
+            const [kpiRes, queueRes, handoffRes] = await Promise.all([
+              fetchBdmCsKpi(baseUser.email, quarter, ownerOverride),
+              fetchBdmCsActionQueue(baseUser.email, quarter, 150, ownerOverride),
+              fetchBdmCsHandoff(baseUser.email, quarter, 80, ownerOverride),
+            ])
+            const queueItems = queueRes.items as Record<string, unknown>[]
+            const handoffItems = handoffRes.items as Record<string, unknown>[]
+            const deals = queueItems.map(mapBdmActionToDeal)
+            const activities = mapHandoffToActivities(handoffItems)
+            const kpiItem = (kpiRes.items[0] || {}) as Record<string, unknown>
+            setAllDeals(deals)
+            setActivitiesData(activities)
+            setKpiSnapshot({
+              target_key: asString(kpiItem.owner_key),
+              fiscal_q: asString(kpiItem.fiscal_q),
+              meta: asNumber(kpiItem.meta_net_faturado),
+              realizado: asNumber(kpiItem.net_faturado_incremental),
+              attainment_pct: asNumber(kpiItem.attainment_pct),
+              gap: asNumber(kpiItem.gap_net),
+            })
+            setAgenda(null)
+            setDataMode('v2')
+            setLoadError(null)
+            return
+          }
+
+          if (targetPersona === 'SS') {
+            const [kpiRes, queueRes] = await Promise.all([
+              fetchSsKpi(baseUser.email, quarter, ssOverride),
+              fetchSsClosingQueue(baseUser.email, quarter, 150, ssOverride),
+            ])
+            const queueItems = queueRes.items as Record<string, unknown>[]
+            const deals = queueItems.map(mapSsQueueToDeal)
+            const activities = mapQueueToActivities(queueItems)
+            const kpiItem = (kpiRes.items[0] || {}) as Record<string, unknown>
+            setAllDeals(deals)
+            setActivitiesData(activities)
+            setKpiSnapshot({
+              target_key: asString(kpiItem.ss_key),
+              fiscal_q: asString(kpiItem.fiscal_q),
+              meta: asNumber(kpiItem.meta_net_gerado),
+              realizado: asNumber(kpiItem.net_gerado_elegivel),
+              attainment_pct: asNumber(kpiItem.attainment_pct),
+              gap: asNumber(kpiItem.gap_net),
+            })
+            setAgenda(null)
+            setDataMode('v2')
+            setLoadError(null)
+            return
+          }
+        } catch (e) {
+          v2Failed = true
+          const msg = e instanceof Error ? e.message : 'erro desconhecido'
+          setLoadError(`Falha no modo v2 (${msg}). Tentando legado...`)
+        }
+      }
+
       const result = await fetchWeeklyAgenda(canonical)
       if (result) {
         setAgenda(result)
         setAllDeals((result.deals ?? []).map(d => ({ ...d, Fase_Atual: normalizeStage(d.Fase_Atual) })))
+        setActivitiesData(result.performance?.last_activities ?? [])
+        setLoadError(null)
+        setDataMode('legacy')
+        setEffectivePersona(derivePersonaData(targetUser))
       } else {
-        useDemoData()
+        const msg = v2Failed
+          ? 'Falha no v2 e não encontramos dados no legado para este vendedor.'
+          : 'Não encontramos dados no legado para este vendedor.'
+        setLoadError(msg)
+        clearDataState()
       }
-    } catch {
-      useDemoData()
+      setPortalContext(null)
+      setKpiSnapshot(null)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'erro desconhecido'
+      setLoadError(`Falha ao carregar dados (${msg}).`) 
+      clearDataState()
     } finally { setLoading(false) }
   }
 
-  function useDemoData() {
-    setAgenda({ vendedor: 'Demo', deals: DEMO_DEALS, summary: {}, performance: { last_activities: DEMO_ACTIVITIES } })
-    setAllDeals(DEMO_DEALS)
+  function clearDataState() {
+    setAgenda(null)
+    setAllDeals([])
+    setActivitiesData([])
+    setKpiSnapshot(null)
+    setDataMode('legacy')
+    setEffectivePersona(null)
   }
 
   function onSuccess(u: XSalesUser) {
     setCurrentUser(u)
-    loadData(u.sellerCanonical ?? null)
+    loadData(u, null)
   }
 
   function logout() {
     sessionStorage.removeItem(SESSION_KEY)
     setCurrentUser(null); setViewingSeller(null); setAgenda(null); setAllDeals([])
+    setActivitiesData([]); setPortalContext(null); setKpiSnapshot(null); setEffectivePersona(null)
   }
 
   async function changeInspect(seller: XSalesUser | null) {
     setViewingSeller(seller)
-    const canonical = (seller ?? currentUser)?.sellerCanonical ?? null
-    await loadData(canonical)
+    if (currentUser) await loadData(currentUser, seller)
+  }
+
+  async function retryCurrentView() {
+    if (currentUser) await loadData(currentUser, viewingSeller)
   }
 
   function onGlobalSearch(val: string) {
@@ -702,7 +1058,7 @@ export default function Sales() {
     if (val) setActiveTab('pipeline')
   }
 
-  const activities = agenda?.performance?.last_activities ?? DEMO_ACTIVITIES
+  const activities = dataMode === 'v2' ? activitiesData : (agenda?.performance?.last_activities ?? [])
   const dealsForDisplay = globalSearch
     ? allDeals.filter(d => (d.Oportunidade ?? '').toLowerCase().includes(globalSearch) || (d.Conta ?? '').toLowerCase().includes(globalSearch))
     : allDeals
@@ -740,6 +1096,9 @@ export default function Sales() {
               <h2 className="font-poppins text-[15px] font-semibold text-white">{TAB_TITLES[activeTab]}</h2>
               <div className="h-3.5 w-px bg-white/15 hidden sm:block" />
               <span className="font-poppins text-[10px] text-gray-500 uppercase tracking-[.15em] hidden sm:block">{quarter}</span>
+              <span className={`font-poppins text-[10px] uppercase tracking-[.15em] hidden sm:block ${dataMode === 'v2' ? 'text-xCyan' : 'text-gray-500'}`}>
+                {dataMode === 'v2' ? `v2 ${effectivePersona || portalContext?.persona || ''}` : 'legado'}
+              </span>
             </div>
             <div className="flex items-center gap-3">
               <div className="relative hidden md:block">
@@ -769,17 +1128,42 @@ export default function Sales() {
             </div>
           )}
 
+          {/* Data source/status banner */}
+          <div className="sl-data-banner">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className={`sl-data-pill ${dataMode === 'v2' ? 'is-v2' : 'is-legacy'}`}>
+                {dataMode === 'v2' ? `modo v2 ${portalContext?.persona || ''}` : 'modo legado'}
+              </span>
+              <span className="font-roboto text-[11px] text-gray-400">
+                {dataMode === 'v2'
+                  ? 'Dados carregados por persona/RLS com endpoints v2.'
+                  : 'Dados carregados por endpoint legado de agenda semanal.'}
+              </span>
+              {dataMode === 'v2' && kpiSnapshot && (
+                <span className="font-roboto text-[11px] text-gray-500">
+                  alvo: {kpiSnapshot.target_key || 'n/a'} · {kpiSnapshot.fiscal_q || quarter}
+                </span>
+              )}
+            </div>
+            {loadError && (
+              <div className="flex items-center gap-2.5 flex-wrap mt-2">
+                <span className="sl-data-alert">{loadError}</span>
+                <button type="button" onClick={retryCurrentView} className="sl-data-retry">
+                  Tentar novamente
+                </button>
+              </div>
+            )}
+          </div>
+
           {/* Tab content */}
           <main className="sl-tab-area">
             {loading && (
-              <div className="flex items-center justify-center py-20">
-                <p className="font-poppins text-sm text-gray-500 animate-pulse">Carregando dados…</p>
-              </div>
+              <LoadingShell />
             )}
             {!loading && activeTab === 'dashboard'  && <TabDashboard deals={dealsForDisplay} user={viewingSeller ?? currentUser!} onGoToPipeline={() => setActiveTab('pipeline')} />}
             {!loading && activeTab === 'pipeline'   && <TabPipeline deals={dealsForDisplay} />}
             {!loading && activeTab === 'activities' && <TabActivities activities={activities} />}
-            {!loading && activeTab === 'calculator' && <TabCalculator deals={allDeals} />}
+            {!loading && activeTab === 'calculator' && <TabCalculator deals={allDeals} kpi={kpiSnapshot} />}
           </main>
         </div>
       </div>

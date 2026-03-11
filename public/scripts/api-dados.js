@@ -1,6 +1,16 @@
 // Comunicação com a API: fetch, cache, loadDashboardData, normalizeCloudResponse, processWordClouds
 async function fetchJsonNoCache(url) {
-  const buildUrlWithTs = () => url + (url.includes('?') ? '&' : '?') + `_ts=${Date.now()}`;
+  const stripTsParam = (rawUrl) => {
+    const cleaned = String(rawUrl || '')
+      .replace(/([?&])_ts=\d+/g, '$1')
+      .replace(/[?&]$/, '')
+      .replace('?&', '?')
+      .replace('&&', '&');
+    return cleaned;
+  };
+
+  const cleanUrl = stripTsParam(url);
+  const buildUrlWithTs = () => `${cleanUrl}${cleanUrl.includes('?') ? '&' : '?'}_ts=${Date.now()}`;
   const maxAttempts = 3;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -13,12 +23,13 @@ async function fetchJsonNoCache(url) {
     });
 
     const text = await response.text();
-    const throttled = response.status === 429 || /rate\s+exceeded/i.test(text || '');
+    const throttled = [403, 429, 502, 503, 504].includes(response.status)
+      || /rate\s+exceeded/i.test(text || '');
 
     if (!response.ok) {
       if (throttled && attempt < maxAttempts) {
-        const waitMs = attempt * 700;
-        log(`[API RETRY] 429/throttle em ${url}. Tentativa ${attempt + 1}/${maxAttempts} em ${waitMs}ms`);
+        const waitMs = attempt * 1000;
+        log(`[API RETRY] Instabilidade em ${cleanUrl}. Tentativa ${attempt + 1}/${maxAttempts} em ${waitMs}ms`);
         await new Promise((resolve) => setTimeout(resolve, waitMs));
         continue;
       }
@@ -30,8 +41,8 @@ async function fetchJsonNoCache(url) {
       data = text ? JSON.parse(text) : null;
     } catch (e) {
       if (throttled && attempt < maxAttempts) {
-        const waitMs = attempt * 700;
-        log(`[API RETRY] Resposta throttle nao-JSON em ${url}. Tentativa ${attempt + 1}/${maxAttempts} em ${waitMs}ms`);
+        const waitMs = attempt * 1000;
+        log(`[API RETRY] Resposta de instabilidade nao-JSON em ${cleanUrl}. Tentativa ${attempt + 1}/${maxAttempts} em ${waitMs}ms`);
         await new Promise((resolve) => setTimeout(resolve, waitMs));
         continue;
       }
@@ -60,11 +71,9 @@ async function fetchWithCache(url, cacheKey, cacheMinutes = 5) {
     }
   }
   
-  // Busca da API com timestamp para evitar cache do navegador
-  const separator = url.includes('?') ? '&' : '?';
-  const urlWithTs = `${url}${separator}_ts=${Date.now()}`;
-  log(`[CACHE] 🌐 Fetch: ${urlWithTs.substring(0, 80)}...`);
-  const data = await fetchJsonNoCache(urlWithTs);
+  // Busca da API (fetchJsonNoCache já aplica cache-bust com _ts sem duplicar)
+  log(`[CACHE] 🌐 Fetch: ${url.substring(0, 80)}...`);
+  const data = await fetchJsonNoCache(url);
   
   // Salva no cache
   try {
@@ -173,21 +182,22 @@ async function loadDashboardData(forceRefresh = false) {
     const needsTopOppsFallback = !!queryString;
     const insightsRagPromise = Promise.resolve({ aiInsights: { status: 'disabled', wins: '', losses: '', recommendations: [] }, deals: [] });
     // Se for forçar refresh, adicionar nocache=true para bypassar o cache do servidor (TTL 120s)
-    const noCacheParam = forceRefresh ? '&nocache=true' : '';
+    const withNoCache = (requestUrl) => {
+      if (!forceRefresh) return requestUrl;
+      return `${requestUrl}${requestUrl.includes('?') ? '&' : '?'}nocache=true`;
+    };
 
-    const ts = Date.now();
-    const sep = queryString ? '&' : '?';
     const [metrics, pipelineData, prioritiesData, actionsData, wonDataCached, lostDataCached, patternsData, salesSpecialistData, insightsRagData, fallbackPipelineData, fallbackWonData, fallbackLostData] = await Promise.all([
-      fetchJsonNoCache(`${API_BASE_URL}/api/metrics${queryString}${sep}_ts=${ts}${noCacheParam}`),
-      fetchJsonNoCache(`${API_BASE_URL}/api/pipeline?limit=500${queryString ? '&' + params.toString() : ''}&_ts=${ts}${noCacheParam}`),
-      fetchJsonNoCache(`${API_BASE_URL}/api/priorities?limit=100${queryString ? '&' + params.toString() : ''}&_ts=${ts}${noCacheParam}`),
-      fetchJsonNoCache(`${API_BASE_URL}/api/actions?urgencia=ALTA&limit=50${queryString ? '&' + params.toString() : ''}&_ts=${ts}${noCacheParam}`),
+      fetchJsonNoCache(withNoCache(`${API_BASE_URL}/api/metrics${queryString}`)),
+      fetchJsonNoCache(withNoCache(`${API_BASE_URL}/api/pipeline?limit=500${queryString ? '&' + params.toString() : ''}`)),
+      fetchJsonNoCache(withNoCache(`${API_BASE_URL}/api/priorities?limit=100${queryString ? '&' + params.toString() : ''}`)),
+      fetchJsonNoCache(withNoCache(`${API_BASE_URL}/api/actions?urgencia=ALTA&limit=50${queryString ? '&' + params.toString() : ''}`)),
       fetchWithCache(wonUrl + (forceRefresh ? (wonUrl.includes('?') ? '&' : '?') + 'nocache=true' : ''), `cache_won_${cacheKey}`, queryString ? 1 : 2),
       fetchWithCache(lostUrl + (forceRefresh ? (lostUrl.includes('?') ? '&' : '?') + 'nocache=true' : ''), `cache_lost_${cacheKey}`, queryString ? 1 : 2),
-      fetchJsonNoCache(`${API_BASE_URL}/api/analyze-patterns${queryString}${sep}_ts=${ts}${noCacheParam}`),
-      fetchJsonNoCache(`${API_BASE_URL}/api/sales-specialist${queryString}${sep}_ts=${ts}${noCacheParam}`),
+      fetchJsonNoCache(withNoCache(`${API_BASE_URL}/api/analyze-patterns${queryString}`)),
+      fetchJsonNoCache(withNoCache(`${API_BASE_URL}/api/sales-specialist${queryString}`)),
       insightsRagPromise,
-      needsTopOppsFallback ? fetchJsonNoCache(`${API_BASE_URL}/api/pipeline?limit=500&_ts=${ts}${noCacheParam}`) : Promise.resolve([]),
+      needsTopOppsFallback ? fetchJsonNoCache(withNoCache(`${API_BASE_URL}/api/pipeline?limit=500`)) : Promise.resolve([]),
       needsTopOppsFallback ? fetchWithCache(`${API_BASE_URL}/api/closed/won?limit=5000`, 'cache_won_all', 2) : Promise.resolve([]),
       needsTopOppsFallback ? fetchWithCache(`${API_BASE_URL}/api/closed/lost?limit=5000`, 'cache_lost_all', 2) : Promise.resolve([])
     ]);
